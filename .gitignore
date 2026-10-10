@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# kube-triage-agent local state
+.env
+**/.env.local
+**/.venv/
+**/node_modules/
+**/.next/
+*.log
+backups/
+.playwright-cli/
+output/playwright/
