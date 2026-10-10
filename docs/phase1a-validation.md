@@ -16,7 +16,7 @@
 | A8 审批回归 | PASS | API 验收通过 `interrupt()`、approve/reject；浏览器分别显示 `Simulated approval approved/rejected`。 |
 | A9 持久化 | PASS | 验收脚本只重启本项目 API，随后同一 Thread 的 State/History 仍可读。Worker 崩溃恢复 NOT RUN。 |
 | A10 审计 | PASS | 验收脚本在重启前检查 API 日志：有 `outcome=success` 与 `outcome=rejected` 的 `mcp_tool_call`，且不含当前 Token；断连演练有 `error_type=connection`。 |
-| A11 GitHub Actions | NOT RUN | 根目录 `.github/workflows/ci.yml` 已配置；PR 创建后补入 run URL 与状态。静态本机检查不能替代 Actions。 |
+| A11 GitHub Actions | PASS | PR #2 的 [CI run 38096772392](https://github.com/Vc-great/kube-triage-agent/actions/runs/38096772392) 结论 `success`；`python`、`web`、`compose` 三个 Job 均通过。 |
 
 ## 按测试类型区分
 
@@ -27,7 +27,7 @@
 | Compose 静态 | `POSTGRES_USER=ci_user POSTGRES_DB=ci_db POSTGRES_PASSWORD=ci-placeholder-only DEMO_API_TOKEN=ci-placeholder-only docker compose -f infra/compose.yaml config --quiet` | PASS，无输出。 |
 | API/SSE 自动化 | `python3 scripts/acceptance.py` | PASS，20 项均打印 PASS；检查 401、MCP、审批、重启持久化和审计。 |
 | 真实浏览器 | Playwright CLI `open/snapshot/fill/click/reload` | PASS；看见 Tool Call 和结果、approve/reject、旧 Key 被要求重输、新 Key 可读 Thread。 |
-| GitHub Actions | PR workflow | NOT RUN，等待 PR 推送触发后的远端证据。 |
+| GitHub Actions | [PR #2 / run 38096772392](https://github.com/Vc-great/kube-triage-agent/actions/runs/38096772392) | PASS，远端 `python`、`web`、`compose` 三 Job 完成且结论 `success`。 |
 
 ## 边界与风险
 
