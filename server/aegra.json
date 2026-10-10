@@ -1,0 +1,11 @@
+{
+  "graphs": {
+    "agent": "./src/kube_triage/graph.py:graph"
+  },
+  "http": {
+    "cors": {
+      "allow_origins": ["http://localhost:13000", "http://127.0.0.1:13000"],
+      "allow_credentials": false
+    }
+  }
+}
