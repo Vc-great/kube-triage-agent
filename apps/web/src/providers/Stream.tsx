@@ -4,7 +4,7 @@ import React, {
   ReactNode,
   useState,
   useEffect,
-  useMemo,
+  useCallback,
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
@@ -58,10 +58,13 @@ async function checkGraphStatus(
 ): Promise<boolean> {
   try {
     const headers = new Headers();
+    headers.set("Content-Type", "application/json");
     if (apiKey) headers.set("X-Api-Key", apiKey);
     if (authScheme) headers.set("X-Auth-Scheme", authScheme);
 
-    const res = await fetch(`${apiUrl}/info`, {
+    const res = await fetch(`${apiUrl}/assistants/search`, {
+      method: "POST",
+      body: JSON.stringify({ limit: 1 }),
       headers,
     });
 
@@ -78,12 +81,14 @@ const StreamSession = ({
   apiUrl,
   assistantId,
   authScheme,
+  onInvalidKey,
 }: {
   children: ReactNode;
   apiKey: string | null;
   apiUrl: string;
   assistantId: string;
   authScheme?: string;
+  onInvalidKey: () => void;
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
@@ -117,6 +122,7 @@ const StreamSession = ({
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
+        onInvalidKey();
         toast.error("Failed to connect to LangGraph server", {
           description: () => (
             <p>
@@ -130,7 +136,7 @@ const StreamSession = ({
         });
       }
     });
-  }, [apiKey, apiUrl, authScheme]);
+  }, [apiKey, apiUrl, authScheme, onInvalidKey]);
 
   return (
     <StreamContext.Provider value={{ ...streamValue, apiUrl }}>
@@ -173,10 +179,14 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const finalAssistantId = assistantId || envAssistantId;
   const finalAuthScheme = authScheme || envAuthScheme || "";
 
-  const apiKey = useMemo(() => getApiKey(finalApiUrl) || "", [finalApiUrl]);
+  const [apiKey, setStoredApiKey] = useState(() => getApiKey(finalApiUrl) || "");
+  const onInvalidKey = useCallback(() => {
+    storeApiKey(finalApiUrl, "");
+    setStoredApiKey("");
+  }, [finalApiUrl]);
 
   // Show the form if we: don't have an API URL, or don't have an assistant ID
-  if (!finalApiUrl || !finalAssistantId) {
+  if (!finalApiUrl || !finalAssistantId || !apiKey) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center p-4">
         <div className="animate-in fade-in-0 zoom-in-95 bg-background flex max-w-3xl flex-col rounded-lg border shadow-lg">
@@ -204,6 +214,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
 
               setApiUrl(apiUrl);
               storeApiKey(apiUrl, apiKey);
+              setStoredApiKey(apiKey);
               setAssistantId(assistantId);
               setAuthScheme(isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "");
 
@@ -247,19 +258,18 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="apiKey">LangSmith API Key</Label>
+              <Label htmlFor="apiKey">Demo API Key<span className="text-rose-500">*</span></Label>
               <p className="text-muted-foreground text-sm">
-                This is <strong>NOT</strong> required if using a local LangGraph
-                server. This value is stored in your browser's local storage and
-                is only used to authenticate requests sent to your LangGraph
-                server.
+                Enter DEMO_API_TOKEN from this project's local .env. It is stored in
+                this browser's localStorage, so use only on your own machine.
               </p>
               <PasswordInput
                 id="apiKey"
                 name="apiKey"
                 defaultValue={apiKey ?? ""}
                 className="bg-background"
-                placeholder="lsv2_pt_..."
+                placeholder="Local demo token"
+                required
               />
             </div>
 
@@ -302,6 +312,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
       apiUrl={finalApiUrl}
       assistantId={finalAssistantId}
       authScheme={finalAuthScheme || undefined}
+      onInvalidKey={onInvalidKey}
     >
       {children}
     </StreamSession>

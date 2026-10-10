@@ -20,7 +20,17 @@ def local_port():
     return 12026
 
 
+def local_token():
+    for line in open(".env", encoding="utf-8"):
+        if line.startswith("DEMO_API_TOKEN="):
+            token = line.split("=", 1)[1].strip()
+            if token and token != "REPLACE_WITH_RANDOM_URL_SAFE_TOKEN":
+                return token
+    raise RuntimeError("DEMO_API_TOKEN is missing")
+
+
 BASE = os.environ.get("API_BASE", f"http://127.0.0.1:{local_port()}").rstrip("/")
+TOKEN = local_token()
 results = []
 
 
@@ -29,23 +39,25 @@ def record(name, ok, detail=""):
     print(f"{'PASS' if ok else 'FAIL'} {name}{': ' + detail if detail else ''}")
 
 
-def request(path, method="GET", body=None):
+def request(path, method="GET", body=None, token=TOKEN):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         BASE + path,
         data=data,
         method=method,
-        headers={"Content-Type": "application/json"} if data else {},
+        headers={**({"Content-Type": "application/json"} if data else {}),
+                 **({"X-Api-Key": token} if token else {})},
     )
     with urllib.request.urlopen(req, timeout=45) as response:
         return json.load(response)
 
 
-def stream(thread_id, body):
+def stream(thread_id, body, token=TOKEN):
     req = urllib.request.Request(
         BASE + f"/threads/{thread_id}/runs/stream",
         data=json.dumps({"assistant_id": "agent", "stream_mode": ["updates", "values", "messages-tuple"], **body}).encode(),
-        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        headers={"Content-Type": "application/json", "Accept": "text/event-stream",
+                 **({"X-Api-Key": token} if token else {})},
         method="POST",
     )
     events = []
@@ -85,6 +97,25 @@ def wait_health():
     return False
 
 
+def denied(fn):
+    try:
+        fn()
+    except urllib.error.HTTPError as exc:
+        return exc.code == 401
+    return False
+
+
+def audit_ok():
+    logs = subprocess.run(
+        ["./scripts/compose.sh", "logs", "api", "--no-color", "--tail=2000"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    events = [line for line in logs.splitlines() if '"event": "mcp_tool_call"' in line]
+    return (TOKEN not in logs and
+            any('"outcome": "success"' in line for line in events) and
+            any('"outcome": "rejected"' in line for line in events))
+
+
 try:
     record("health", wait_health())
     assistants = request("/assistants/search", "POST", {"limit": 100})
@@ -92,18 +123,42 @@ try:
     thread = request("/threads", "POST", {})
     thread_id = thread["thread_id"]
     record("thread create", bool(thread_id))
+    record("anonymous assistant/thread/state/history/run/SSE denied", all([
+        denied(lambda: request("/assistants/search", "POST", {"limit": 1}, token=None)),
+        denied(lambda: request(f"/threads/{thread_id}", token=None)),
+        denied(lambda: request(f"/threads/{thread_id}/state", token=None)),
+        denied(lambda: request(f"/threads/{thread_id}/history", token=None)),
+        denied(lambda: request(f"/threads/{thread_id}/runs", "POST", {"assistant_id": "agent"}, token=None)),
+        denied(lambda: stream(thread_id, {"input": {"messages": []}}, token=None)),
+    ]))
+    record("wrong key thread/run denied", all([
+        denied(lambda: request(f"/threads/{thread_id}", token="wrong-key")),
+        denied(lambda: stream(thread_id, {"input": {"messages": []}}, token="wrong-key")),
+    ]))
 
     first = stream(thread_id, {"input": {"messages": [{"role": "human", "content": "hello"}]}})
-    record("run and stream", bool(first) and "Phase 0 mock echo" in messages_text(state(thread_id)))
-    second = stream(thread_id, {"input": {"messages": [{"role": "human", "content": [{"type": "text", "text": "status"}]}]}})
+    record("run and stream", bool(first) and "Phase 1A mock echo" in messages_text(state(thread_id)))
+    second = stream(thread_id, {"input": {"messages": [{"role": "human", "content": [{"type": "text", "text": "pods demo"}]}]}})
     second_text = json.dumps(second, ensure_ascii=False) + messages_text(state(thread_id))
-    record("mock tool call/result", "get_demo_cluster_status" in second_text and "mock" in second_text)
-    record("two-round history", len(request(f"/threads/{thread_id}/history")) >= 3)
+    record("real MCP adapter tool call/result", "list_pods" in second_text and "static-fixture" in second_text and "CrashLoopBackOff" in second_text)
+    stream(thread_id, {"input": {"messages": [{"role": "human", "content": "events demo crashloop-pod"}]}})
+    record("events mock", "Back-off restarting failed container" in messages_text(state(thread_id)))
+    stream(thread_id, {"input": {"messages": [{"role": "human", "content": "logs demo crashloop-pod"}]}})
+    record("logs mock", "database unavailable" in messages_text(state(thread_id)))
+    for namespace in ("default", "kube-system"):
+        stream(thread_id, {"input": {"messages": [{"role": "human", "content": f"pods {namespace}"}]}})
+        record(f"namespace {namespace} denied", "Namespace denied" in messages_text(state(thread_id)))
+    record("audit success/rejection without token", audit_ok())
+    record("multi-round history", len(request(f"/threads/{thread_id}/history")) >= 3)
 
     interrupted = stream(thread_id, {"input": {"messages": [{"role": "human", "content": [{"type": "text", "text": "/approve-demo"}]}]}})
     before = state(thread_id)
     interrupted_text = json.dumps(interrupted, ensure_ascii=False) + json.dumps(before, ensure_ascii=False)
     record("interrupt pending", "demo_approval" in interrupted_text and bool(before.get("next")))
+    record("anonymous/wrong-key resume denied", all([
+        denied(lambda: stream(thread_id, {"command": {"resume": {"decision": "approve"}}}, token=None)),
+        denied(lambda: stream(thread_id, {"command": {"resume": {"decision": "approve"}}}, token="wrong-key")),
+    ]))
     stream(thread_id, {"command": {"resume": {"decision": "approve"}}})
     record("resume approved", "approval approved" in messages_text(state(thread_id)))
 

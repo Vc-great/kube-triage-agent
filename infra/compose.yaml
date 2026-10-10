@@ -33,7 +33,9 @@ services:
     build:
       context: ../server
     environment:
-      AUTH_TYPE: noop
+      AUTH_TYPE: custom
+      DEMO_API_TOKEN: ${DEMO_API_TOKEN:?set DEMO_API_TOKEN}
+      MCP_SERVER_URL: http://mock-mcp:8000/mcp
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
@@ -48,11 +50,19 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+      mock-mcp: {condition: service_started}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:2026/health', timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 30
+    restart: unless-stopped
+    networks: [private]
+
+  mock-mcp:
+    build:
+      context: ../server
+    command: ["python", "-m", "kube_triage.mock_mcp"]
     restart: unless-stopped
     networks: [private]
 
