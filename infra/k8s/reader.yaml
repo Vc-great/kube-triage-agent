@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-triage-demo
+  labels:
+    app.kubernetes.io/part-of: kube-triage-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-triage-reader
+  namespace: kube-triage-demo
+  labels:
+    app.kubernetes.io/part-of: kube-triage-agent
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-triage-reader
+  namespace: kube-triage-demo
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-triage-reader
+  namespace: kube-triage-demo
+subjects:
+  - kind: ServiceAccount
+    name: kube-triage-reader
+    namespace: kube-triage-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-triage-reader

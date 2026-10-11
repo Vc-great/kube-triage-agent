@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: triage-sample
+  namespace: kube-triage-demo
+  labels:
+    app.kubernetes.io/part-of: kube-triage-agent
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  containers:
+    - name: sample
+      image: busybox:1.36.1
+      command: ["sh", "-c", "echo 'triage sample: started'; echo 'triage sample: complete'"]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}

@@ -1,4 +1,4 @@
-"""Deterministic demo graph: real MCP transport, static data, no LLM or Kubernetes."""
+"""Deterministic graph for native Kubernetes MCP tools; no LLM or repair."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import interrupt
 
-from kube_triage.mcp_client import call_tool
+from kube_triage.mcp_client import NAMESPACE, call_tool
 
 
 def _last_user_text(state: MessagesState) -> str:
@@ -31,15 +31,17 @@ def _last_user_text(state: MessagesState) -> str:
 
 def parse_demo_command(text: str) -> tuple[str, dict] | None:
     parts = text.strip().lower().split()
-    if not parts or parts[0] not in {"pods", "events", "logs"}:
+    if not parts or parts[0] not in {"pods", "pod", "events", "logs"}:
         return None
     if parts[0] == "pods" and len(parts) == 2:
-        return "list_pods", {"namespace": parts[1]}
-    if parts[0] in {"events", "logs"} and len(parts) == 3:
-        name = "get_pod_events" if parts[0] == "events" else "get_pod_logs"
-        args = {"namespace": parts[1], "pod_name": parts[2]}
-        if name == "get_pod_logs":
-            args["tail_lines"] = 20
+        return "pods_list_in_namespace", {"namespace": parts[1]}
+    if parts[0] == "events" and len(parts) == 2:
+        return "events_list", {"namespace": parts[1]}
+    if parts[0] in {"pod", "logs"} and len(parts) == 3:
+        name = "pods_get" if parts[0] == "pod" else "pods_log"
+        args = {"namespace": parts[1], "name": parts[2]}
+        if name == "pods_log":
+            args["tail"] = 20
         return name, args
     return "invalid_command", {"namespace": parts[1] if len(parts) > 1 else ""}
 
@@ -55,14 +57,15 @@ def _route(state: MessagesState) -> Literal["tool_request", "approval_prompt", "
 
 def _echo(state: MessagesState) -> dict:
     return {"messages": [AIMessage(content=(
-        "这是 Mock 演示。试试 pods demo、events demo crashloop-pod、logs demo crashloop-pod。"
+        f"试试 pods {NAMESPACE}、pod {NAMESPACE} crashloop-pod、"
+        f"events {NAMESPACE}、logs {NAMESPACE} crashloop-pod。"
         if _last_user_text(state).strip().lower() == "status"
-        else f"Phase 1A mock echo: {_last_user_text(state)}"))]}
+        else f"Phase 1B echo: {_last_user_text(state)}"))]}
 
 
 def _request_tool(state: MessagesState) -> dict:
     name, args = parse_demo_command(_last_user_text(state))
-    return {"messages": [AIMessage(content="正在查询静态 Mock MCP 数据。",
+    return {"messages": [AIMessage(content="正在查询 Kubernetes MCP 工具。",
         tool_calls=[{"name": name, "args": args, "id": f"demo-{uuid4().hex}"}])]}
 
 
@@ -82,16 +85,7 @@ def _summarize(state: MessagesState) -> dict:
     if not result["ok"]:
         message = result["error"]
     else:
-        payload = result["result"]
-        if isinstance(payload, dict) and "pods" in payload:
-            detail = ", ".join(f"{pod['name']}: {pod['status']}" for pod in payload["pods"])
-        elif isinstance(payload, dict) and "events" in payload:
-            detail = "; ".join(payload["events"])
-        elif isinstance(payload, dict) and "logs" in payload:
-            detail = payload["logs"]
-        else:
-            detail = str(payload)
-        message = f"Mock MCP 结果（static-fixture，非真实 Kubernetes）：{detail}"
+        message = result["result"]
     return {"messages": [AIMessage(content=message)]}
 
 

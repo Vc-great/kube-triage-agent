@@ -1,1 +1,1 @@
-"""Phase 0 deterministic demo graph. No Kubernetes integration."""
+"""Deterministic Kubernetes MCP demo graph."""

@@ -35,7 +35,7 @@ services:
     environment:
       AUTH_TYPE: custom
       DEMO_API_TOKEN: ${DEMO_API_TOKEN:?set DEMO_API_TOKEN}
-      MCP_SERVER_URL: http://mock-mcp:8000/mcp
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://mock-mcp:8000/mcp}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
@@ -63,6 +63,16 @@ services:
     build:
       context: ../server
     command: ["python", "-m", "kube_triage.mock_mcp"]
+    restart: unless-stopped
+    networks: [private]
+
+  k8s-mcp:
+    profiles: ["real"]
+    image: ghcr.io/containers/kubernetes-mcp-server:v0.0.67
+    command: ["--config", "/etc/kube-triage/config.toml"]
+    volumes:
+      - ./k8s-mcp/config.toml:/etc/kube-triage/config.toml:ro
+      - ../.local/kubeconfig:/run/kube-triage/kubeconfig:ro
     restart: unless-stopped
     networks: [private]
 
