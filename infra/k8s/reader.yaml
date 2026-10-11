@@ -19,6 +19,8 @@ kind: Role
 metadata:
   name: kube-triage-reader
   namespace: kube-triage-demo
+  labels:
+    app.kubernetes.io/part-of: kube-triage-agent
 rules:
   - apiGroups: [""]
     resources: ["pods", "events"]
@@ -32,6 +34,8 @@ kind: RoleBinding
 metadata:
   name: kube-triage-reader
   namespace: kube-triage-demo
+  labels:
+    app.kubernetes.io/part-of: kube-triage-agent
 subjects:
   - kind: ServiceAccount
     name: kube-triage-reader

@@ -33,4 +33,4 @@ Real 模式镜像固定为 `ghcr.io/containers/kubernetes-mcp-server:v0.0.67`，
 
 开发检查：`cd server && uv sync --frozen --python 3.13 && uv run --frozen ruff check src tests && uv run --frozen pytest -q`；`cd apps/web && pnpm install --frozen-lockfile && pnpm lint && pnpm build`。
 
-设计与验收：[Phase 1B 设计](docs/phase1b-design.md)、[验证记录](docs/phase1b-validation.md)、[面试问答](docs/phase1b-interview.md)。历史：[Phase 1A 设计](docs/phase1a-design.md)、[隔离说明](docs/isolation.md)。
+设计与验收：[Phase 1B 设计](docs/phase1b-design.md)、[验证记录](docs/phase1b-validation.md)、[Real 执行记录](docs/phase1b-real-e2e.md)、[SSH 操作手册](docs/phase1b-ssh-guide.md)、[面试问答](docs/phase1b-interview.md)。历史：[Phase 1A 设计](docs/phase1a-design.md)、[隔离说明](docs/isolation.md)。

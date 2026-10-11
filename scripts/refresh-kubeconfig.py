@@ -5,6 +5,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -12,6 +13,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 NAMESPACE = "kube-triage-demo"
 ACCOUNT = "kube-triage-reader"
+REMOTE_SOURCE = r'''
+import base64
+import json
+import pathlib
+import subprocess
+import sys
+
+try:
+    source = json.loads(subprocess.check_output(
+        ["kubectl", "config", "view", "--raw", "--minify", "-o", "json"],
+        stderr=subprocess.DEVNULL, text=True))
+    cluster = source["clusters"][0]["cluster"]
+    ca = cluster.get("certificate-authority-data")
+    if not ca and cluster.get("certificate-authority"):
+        path = pathlib.Path(cluster["certificate-authority"])
+        if not path.is_absolute():
+            path = pathlib.Path.home() / ".kube" / path
+        ca = base64.b64encode(path.read_bytes()).decode()
+    if (not cluster["server"].startswith("https://") or not ca or
+            cluster.get("insecure-skip-tls-verify", False)):
+        raise ValueError("trusted HTTPS cluster required")
+    token = subprocess.check_output(
+        ["kubectl", "-n", "kube-triage-demo", "create", "token",
+         "kube-triage-reader", "--duration=24h"],
+        stderr=subprocess.DEVNULL, text=True).strip()
+    print(json.dumps({"server": cluster["server"], "ca": ca,
+                      "insecure": cluster.get("insecure-skip-tls-verify", False),
+                      "token": token}))
+except Exception:
+    print("SSH kubeconfig source failed", file=sys.stderr)
+    sys.exit(1)
+'''
 
 
 def kubectl(*args: str) -> str:
@@ -20,32 +53,46 @@ def kubectl(*args: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--context", required=True, help="Confirmed bootstrap context")
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--context", help="Confirmed local bootstrap context")
+    source_group.add_argument("--ssh-host", help="Confirmed SSH management host")
     parser.add_argument("--confirm", required=True,
-                        help=f"Type the exact context name and /{NAMESPACE}")
+                        help=f"Type the exact context or SSH host name and /{NAMESPACE}")
     args = parser.parse_args()
-    if args.confirm != f"{args.context}/{NAMESPACE}":
+    source_name = args.context or args.ssh_host
+    if args.confirm != f"{source_name}/{NAMESPACE}":
         parser.error("context/namespace confirmation did not match")
-
-    source = json.loads(kubectl("config", "view", "--raw", "--minify",
-                                "--context", args.context, "-o", "json"))
-    cluster = source["clusters"][0]["cluster"]
-    server = cluster["server"]
+    if args.ssh_host:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.ssh_host):
+            parser.error("SSH host must be a simple host name or alias")
+        response = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", args.ssh_host, "python3", "-"],
+            input=REMOTE_SOURCE, capture_output=True, text=True, check=False)
+        if response.returncode:
+            parser.error("SSH kubeconfig source failed; no credential was written")
+        data = json.loads(response.stdout)
+        server, ca, token = data["server"], data["ca"], data["token"]
+        insecure = data["insecure"]
+    else:
+        source = json.loads(kubectl("config", "view", "--raw", "--minify",
+                                    "--context", args.context, "-o", "json"))
+        cluster = source["clusters"][0]["cluster"]
+        server = cluster["server"]
+        ca = cluster.get("certificate-authority-data")
+        if not ca and cluster.get("certificate-authority"):
+            ca_path = Path(cluster["certificate-authority"])
+            if not ca_path.is_absolute():
+                source_file = Path(os.environ.get("KUBECONFIG", str(Path.home() / ".kube/config"))
+                                   .split(os.pathsep)[0])
+                ca_path = source_file.parent / ca_path
+            ca = base64.b64encode(ca_path.read_bytes()).decode()
+        token = kubectl("--context", args.context, "-n", NAMESPACE, "create", "token",
+                        ACCOUNT, "--duration=24h")
+        insecure = cluster.get("insecure-skip-tls-verify", False)
     if not server.startswith("https://"):
         parser.error("Kubernetes API server must use HTTPS")
-    ca = cluster.get("certificate-authority-data")
-    if not ca and cluster.get("certificate-authority"):
-        ca_path = Path(cluster["certificate-authority"])
-        if not ca_path.is_absolute():
-            source_file = Path(os.environ.get("KUBECONFIG", str(Path.home() / ".kube/config"))
-                               .split(os.pathsep)[0])
-            ca_path = source_file.parent / ca_path
-        ca = base64.b64encode(ca_path.read_bytes()).decode()
-    if not ca or cluster.get("insecure-skip-tls-verify"):
+    if not ca or insecure:
         parser.error("trusted CA data is required; insecure TLS is forbidden")
-
-    token = kubectl("--context", args.context, "-n", NAMESPACE, "create", "token",
-                    ACCOUNT, "--duration=24h")
     if not token:
         raise RuntimeError("kubectl returned an empty token")
     config = {
@@ -57,6 +104,8 @@ def main() -> None:
             "cluster": "target", "user": ACCOUNT, "namespace": NAMESPACE}}],
     }
     directory = ROOT / ".local"
+    if directory.is_symlink():
+        parser.error(".local must be a real project directory")
     directory.mkdir(mode=0o700, exist_ok=True)
     os.chmod(directory, 0o700)
     with tempfile.NamedTemporaryFile("w", dir=directory, prefix=".kubeconfig-",

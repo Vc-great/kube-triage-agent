@@ -1,5 +1,20 @@
 # Phase 1B 验证记录（2026-10-11）
 
+> 本文件下方原表记录 PR #3 代码阶段的历史执行状态。2026-10-11 独立 Real 执行分支的最新状态见 [phase1b-real-e2e.md](phase1b-real-e2e.md)。原表中的 `origin/main=5d5a124` 是当时的基线；本轮 fetch 后主线为 `59ec23a`。历史 Mock PASS 不代表本轮 Real PASS。
+
+| 本轮 Real 验收项 | 状态 | 证据 |
+| --- | --- | --- |
+| 正确集群与专属资源归属 | PASS | `k8s-m` → `k8s-master01`，context `kubernetes-admin@kubernetes`，API `192.168.31.136:6443`；目标对象创建前均不存在，创建后有项目标签 |
+| ServiceAccount、Role、RoleBinding | PASS | 仅 `kube-triage-demo`，`pods/events get,list`、`pods/log get` |
+| Mac Docker 到 API 的 TLS | PASS | 项目 API 容器以 CA 验证 `/livez` 为 HTTP 200；Real MCP 四个调用均用带 CA 的受限 kubeconfig 成功 |
+| 受限身份允许与拒绝矩阵 | PASS | 本轮 `kubectl auth can-i` 的 yes/no 与实际跨 Namespace、Secret Forbidden 一致；独立无效 Token 返回 401 |
+| 真实 Pod 与 Event API | PASS | 受限 `kubectl` 读取 `triage-sample` 和真实 Event；这不是 MCP 调用 |
+| 真实 Pod Log | PASS | 镜像导入项目 Pod 所在节点缓存后，Pod `Succeeded`，受限身份读到两行真实日志 |
+| Real MCP 四工具与 Aegra ToolMessage/SSE | PASS | `tools/list` 恰好四个原生只读工具；四次 Real 调用与四条 Aegra HTTP/SSE 命令都返回真实对象，无 Mock 标记 |
+| 浏览器 Real 展示 | NOT RUN | 页面需项目 API Key；自动审批拒绝将 Token 写入剪贴板，等待用户手动输入；HTTP/SSE 结果不代替 UI |
+| Real 停服恢复、Mock 审批/Checkpoint 运行回归 | PASS | MCP 停止时连接错误、恢复后真实 Pod 读取；更新旧 Mock 镜像后 `scripts/acceptance.py` 全部通过 |
+| GitHub CI | NOT RUN | 待本轮 Draft PR 建立后核对 |
+
 状态含义：PASS 为实际通过；FAIL 为实际失败；NOT RUN 为尚未执行。Mock 结果不能代替真实 Kubernetes 验收。
 
 | 范围 | 项目 | 状态 | 证据 / 原因 |
