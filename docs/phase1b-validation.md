@@ -11,6 +11,7 @@
 | Python | ruff | PASS | 修正 import 顺序后复跑 |
 | Web | lint / build | PASS | lint：0 error、18 条原有 warning；Next.js build 成功 |
 | Mock | 参数、Namespace、额外字段、超时、错误分类 | PASS | 单元测试覆盖；Mock 返回 `mock=true` |
+| Mock 协议 | 独立 Streamable HTTP 四项工具调用 | PASS | 临时进程中 `tools/list` 恰好四项；四次 `call_tool()` 均返回 static-fixture；跨 Namespace 在客户端拒绝，直接 MCP 的额外参数返回 `isError=true` |
 | Aegra Mock E2E | Auth/Thread/SSE/审批/Checkpoint/重启 | NOT RUN | 宿主机已有同名 `kube-triage-agent` Compose 项目由其它 worktree 管理；不覆盖运行实例 |
 | 集群只读预检 | context/API/nodes/namespaces | NOT RUN | `kubectl config current-context` 报未设置 context，无法确定目标 |
 | 固定镜像 | 无真实凭据启动、`tools/list` 与 JSON Schema | PASS | 临时容器加载项目 TOML；仅四项工具；`pods_log.tail` Schema 最小值 0，本项目限制 1～100 |
@@ -24,7 +25,9 @@
 - `kubectl config current-context`：未设置 context；未调用集群写 API。
 - Host Docker 29.7.2、arm64；`docker compose ls` 显示同名项目已有五个运行容器，配置来自其它 worktree。未 stop、up、down、prune 它们。
 - 起初本地没有 v0.0.67 镜像；GHCR OCI manifest 证实有 linux/arm64。已拉取固定镜像并用临时无 Token kubeconfig 启动隔离容器，随机绑定 127.0.0.1 端口读取 `tools/list` 后立即停止和删除临时文件；该检查不证明 Kubernetes 连接。
+- 使用 0600 的无凭据临时 kubeconfig 再次启动固定镜像，确认本机 Docker Desktop 的非 root 容器可读取只读挂载文件；这不证明其它 Docker Host 的 UID 映射相同。
 - 实际 Schema：`pods_list_in_namespace` 必填 `namespace`；`pods_get` 必填 `name`；`pods_log` 必填 `name`，`tail` 默认 100、最小 0；`events_list` 无必填字段。本项目为了 Namespace 隔离全部显式传 `namespace`，日志固定传 `tail=20` 并拒绝 0。
+- Draft PR #3 的 CI 三项（python、web、compose）全部通过：[Actions run](https://github.com/Vc-great/kube-triage-agent/actions/runs/38143421115)。
 
 ## 获授权后的逐项命令
 
