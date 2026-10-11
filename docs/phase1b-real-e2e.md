@@ -69,6 +69,6 @@
 | 最终服务状态 | PASS | API 已切回 Real，六个项目容器运行；Postgres/Redis/Web ID 不变，其它项目容器 ID/状态不变 |
 | 浏览器 Real 展示 | NOT RUN | 本地页面需要 API Key，自动审批拒绝系统剪贴板传递；待用户手动输入后可复核 |
 
-本轮静态回归：`uv run --python 3.13 --frozen --offline ruff check src tests` 全部通过，`pytest -q` 为 13 passed；`python3 -m py_compile scripts/refresh-kubeconfig.py`、`git diff --check`、Real Compose `config --quiet` 通过。首次未指定 Python 版本时选中 3.14，离线缓存缺少对应 `grpcio`；按仓库 README 改用已有 3.13 后成功。Web build 未重跑（Web 源码未改）；GitHub CI 待本轮 Draft PR 建立后核对。
+本轮静态回归：`uv run --python 3.13 --frozen --offline ruff check src tests` 全部通过，`pytest -q` 为 13 passed；`python3 -m py_compile scripts/refresh-kubeconfig.py`、`git diff --check`、Real Compose `config --quiet` 通过。首次未指定 Python 版本时选中 3.14，离线缓存缺少对应 `grpcio`；按仓库 README 改用已有 3.13 后成功。本地 Web build 未重跑（Web 源码未改）；[Draft PR #4](https://github.com/Vc-great/kube-triage-agent/pull/4) 的 GitHub CI `python`、`compose`、`web` 三项均已成功。
 
 浏览器展示是尚缺的硬性证据。任何集群资源清理或删除仍需另行授权。

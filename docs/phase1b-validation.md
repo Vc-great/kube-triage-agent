@@ -13,7 +13,7 @@
 | Real MCP 四工具与 Aegra ToolMessage/SSE | PASS | `tools/list` 恰好四个原生只读工具；四次 Real 调用与四条 Aegra HTTP/SSE 命令都返回真实对象，无 Mock 标记 |
 | 浏览器 Real 展示 | NOT RUN | 页面需项目 API Key；自动审批拒绝将 Token 写入剪贴板，等待用户手动输入；HTTP/SSE 结果不代替 UI |
 | Real 停服恢复、Mock 审批/Checkpoint 运行回归 | PASS | MCP 停止时连接错误、恢复后真实 Pod 读取；更新旧 Mock 镜像后 `scripts/acceptance.py` 全部通过 |
-| GitHub CI | NOT RUN | 待本轮 Draft PR 建立后核对 |
+| GitHub CI | PASS | [Draft PR #4](https://github.com/Vc-great/kube-triage-agent/pull/4) 的 `python`、`compose`、`web` 三项均成功 |
 
 状态含义：PASS 为实际通过；FAIL 为实际失败；NOT RUN 为尚未执行。Mock 结果不能代替真实 Kubernetes 验收。
 
