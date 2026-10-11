@@ -8,6 +8,7 @@
 
 - Host Git/SSH 的 `git fetch origin`：`origin/main=59ec23a0bcd07c25b257d7a7ebdd83ccd28845d8`，本轮分支 `codex/phase1b-real-e2e`。
 - `ssh k8s-m` 的主机名为 `k8s-master01`，`kubectl config current-context` 为 `kubernetes-admin@kubernetes`；`kubectl cluster-info` 指向 `https://192.168.31.136:6443`。节点为 `k8s-master01` Ready、`k8s-node01` Ready、`k8s-node02` NotReady。SSH 别名和这组三节点与用户指定的个人学习集群相符。
+- 后续用户报告已在三节点配置 containerd 代理并验证 Docker Hub 镜像实际拉取/运行，临时测试 Pod 已清理。本轮重新执行 `ssh k8s-m 'kubectl get nodes -o wide'`，独立确认 `k8s-master01`、`k8s-node01`、`k8s-node02` **均 Ready**；`triage-sample` 仍为 `Succeeded`。上条 NotReady 是首次预检的历史快照，不代表当前状态。项目未修改节点代理配置。
 - 写入前对 `kube-triage-demo` Namespace、同名 ServiceAccount、Role、RoleBinding 和 `triage-sample` Pod 的 `kubectl get` 均返回 NotFound。随后只执行 `ssh k8s-m 'kubectl apply -f -' < infra/k8s/reader.yaml`；四个对象均报告 created，三类命名空间对象的 `app.kubernetes.io/part-of` 标签均为 `kube-triage-agent`。
 - Namespace 没有 Pod 后，单独执行 `ssh k8s-m 'kubectl apply -f -' < infra/k8s/triage-sample.yaml`；Pod 报告 created，位于 `k8s-node01` 且有相同归属标签。未更改其它 Namespace 或工作负载。
 

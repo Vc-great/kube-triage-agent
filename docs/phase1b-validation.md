@@ -4,7 +4,7 @@
 
 | 本轮 Real 验收项 | 状态 | 证据 |
 | --- | --- | --- |
-| 正确集群与专属资源归属 | PASS | `k8s-m` → `k8s-master01`，context `kubernetes-admin@kubernetes`，API `192.168.31.136:6443`；目标对象创建前均不存在，创建后有项目标签 |
+| 正确集群与专属资源归属 | PASS | `k8s-m` → `k8s-master01`，context `kubernetes-admin@kubernetes`，API `192.168.31.136:6443`；目标对象创建前均不存在，创建后有项目标签。用户完成节点代理配置后，本轮只读复核三节点均 Ready |
 | ServiceAccount、Role、RoleBinding | PASS | 仅 `kube-triage-demo`，`pods/events get,list`、`pods/log get` |
 | Mac Docker 到 API 的 TLS | PASS | 项目 API 容器以 CA 验证 `/livez` 为 HTTP 200；Real MCP 四个调用均用带 CA 的受限 kubeconfig 成功 |
 | 受限身份允许与拒绝矩阵 | PASS | 本轮 `kubectl auth can-i` 的 yes/no 与实际跨 Namespace、Secret Forbidden 一致；独立无效 Token 返回 401 |
