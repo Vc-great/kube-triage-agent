@@ -1,6 +1,6 @@
 # Phase 1B 面试问答
 
-> 以下原有问答描述代码设计与 PR #3 Mock 证据。本轮另外验证了受限 kubectl、RBAC、TLS、Real MCP 四工具及 Aegra ToolMessage/SSE；浏览器展示仍未运行，详见 [执行记录](phase1b-real-e2e.md)。面试时必须区分这几层证据。
+> 以下原有问答描述代码设计与 PR #3 Mock 证据。本轮另外验证了受限 kubectl、RBAC、TLS、Real MCP 四工具、Aegra ToolMessage/SSE 及浏览器展示，详见 [执行记录](phase1b-real-e2e.md)。面试时仍应区分这几层证据。
 
 1. **为什么 Phase 1B 不写 KubernetesAdapter？** `graph.py:parse_demo_command()` 已直接生成四个原生工具调用；只有一个上游实现，额外业务模型会增加映射和调试成本。通用协议转换由 `mcp_client.py` 使用 `langchain-mcp-adapters` 完成。
 2. **MCP Tool Schema 有什么作用？** Server 的 `tools/list` 描述工具名、参数与必填项；`mcp_client.py:_allowed_tools()` 还检查集合恰好四项。上游 `pods_log` 用 `name`、`tail`，所以 `graph.py` 必须按这个 Schema 组参。
@@ -22,7 +22,7 @@
 | ServiceAccount、Role、RoleBinding、日志子资源 | `infra/k8s/reader.yaml` | 项目 SA 的受限 kubeconfig 对目标 `pods/events` 的 get/list 与 `pods/log` 的 get 为 yes；跨 Namespace、Secret 和写为 no，真实越权请求为 403 | SA 定义身份，Role 定义命名空间内权限，RoleBinding 绑定二者；`pods/log` 是独立资源 | `pods get` 能自动读日志吗？不能，需单独授予 `pods/log get` |
 | Client/MCP/RBAC 三层限制 | `mcp_client.py:validate_call()`、`config.toml`、`reader.yaml` | Real Aegra 对跨 Namespace 命令返回 `Namespace denied`；MCP `tools/list` 恰好四读工具；真实 API 越权请求返回 Forbidden | Client 约束应用调用，MCP 配置控制可见工具，RBAC 是 API 最终授权；前两层不能代替 RBAC | `read_only=true` 为何不够？它不限制 Namespace，也不能约束绕过 MCP 使用 Token |
 | 短期 Token、401/403 | `refresh-kubeconfig.py`、`mcp_client.py:_error_type()` | SSH 来源生成 24h 受限 Token，`.local` 为 0700、kubeconfig 为 0600；独立无效 Token 经验证 TLS 后返回 401，真实越权为 403；未等待 Token 过期 | 不把管理员身份给容器；手工刷新即可，无需轮换平台 | 401 看凭据有效期/身份，403 看 Role、RoleBinding 和 Namespace；不能混为一谈 |
-| 原生 Schema、ToolMessage、Checkpoint、SSE | `graph.py:parse_demo_command()`、`_execute_tool()`、`_summarize()`；`mcp_client.py:_allowed_tools()`；`infra/compose.yaml` | 四条 Real Aegra 命令分别有正确 tool_calls、ToolMessage、SSE 和真实对象；Mock 回归证明 Postgres Checkpoint 与模拟审批重启持久。浏览器展示仍 NOT RUN | 原生参数便于追踪；结果限制 16Ki，8 秒超时，避免无限内容进入 UI/Checkpoint | 浏览器显示文字能证明真实 MCP 吗？还需核对工具名、参数、ToolMessage、SSE 与非 `mock=true` 的集群对象 |
+| 原生 Schema、ToolMessage、Checkpoint、SSE | `graph.py:parse_demo_command()`、`_execute_tool()`、`_summarize()`；`mcp_client.py:_allowed_tools()`；`infra/compose.yaml` | 四条 Real Aegra 命令分别有正确 tool_calls、ToolMessage、SSE 和真实对象；浏览器也逐项显示四个工具与 Pod/Event/Log；Mock 回归证明 Postgres Checkpoint 与模拟审批重启持久 | 原生参数便于追踪；结果限制 16Ki，8 秒超时，避免无限内容进入 UI/Checkpoint | 浏览器显示文字能证明真实 MCP 吗？还需核对工具名、参数、ToolMessage、SSE 与非 `mock=true` 的集群对象 |
 | 固定规则与未来阶段 | `graph.py:_route()`、`parse_demo_command()`、`_approval()` | 四类命令由字符串规则选择工具，`/approve-demo` 仅模拟 interrupt/resume；没有模型规划、真实修复 | Phase 1B 先缩小权限与协议故障面，便于复现和解释 | 这是自主 Tool Calling 吗？不是；LLM 选工具与故障诊断属于后续 Phase 2，尚未实现 |
 
-本轮两个可讲的真实故障及修复：`triage-sample` 因节点无法直连 Docker Hub 进入 `ImagePullBackOff`，从 Mac 经代理拉取精确 amd64 镜像并流式导入该节点缓存后成功；运行中 Compose 五容器来自两个旧 worktree，先核对项目标签与卷，再把主工作树快进至 `origin/main` 并选为唯一后续操作目录。浏览器结果仍需用户手动输入本地 API Key 后复核，不能把 HTTP/SSE PASS 说成 UI PASS。
+本轮两个可讲的真实故障及修复：`triage-sample` 因节点无法直连 Docker Hub 进入 `ImagePullBackOff`，从 Mac 经代理拉取精确 amd64 镜像并流式导入该节点缓存后成功；运行中 Compose 五容器来自两个旧 worktree，先核对项目标签与卷，再把主工作树快进至 `origin/main` 并选为唯一后续操作目录。浏览器页面需用户手动输入本地 API Key；实际完成 UI 验收后，HTTP/SSE 与 UI 分别记录为 PASS。

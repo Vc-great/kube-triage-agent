@@ -11,7 +11,7 @@
 | 真实 Pod 与 Event API | PASS | 受限 `kubectl` 读取 `triage-sample` 和真实 Event；这不是 MCP 调用 |
 | 真实 Pod Log | PASS | 镜像导入项目 Pod 所在节点缓存后，Pod `Succeeded`，受限身份读到两行真实日志 |
 | Real MCP 四工具与 Aegra ToolMessage/SSE | PASS | `tools/list` 恰好四个原生只读工具；四次 Real 调用与四条 Aegra HTTP/SSE 命令都返回真实对象，无 Mock 标记 |
-| 浏览器 Real 展示 | NOT RUN | 页面需项目 API Key；自动审批拒绝将 Token 写入剪贴板，等待用户手动输入；HTTP/SSE 结果不代替 UI |
+| 浏览器 Real 展示 | PASS | 用户手动输入项目 API Key 后，Agent Chat 页面依次显示 Pod、详情、Event、Log 的原生工具调用和真实结果；未使用被自动审批拒绝的剪贴板方式 |
 | Real 停服恢复、Mock 审批/Checkpoint 运行回归 | PASS | MCP 停止时连接错误、恢复后真实 Pod 读取；更新旧 Mock 镜像后 `scripts/acceptance.py` 全部通过 |
 | GitHub CI | PASS | [Draft PR #4](https://github.com/Vc-great/kube-triage-agent/pull/4) 的 `python`、`compose`、`web` 三项均成功 |
 
