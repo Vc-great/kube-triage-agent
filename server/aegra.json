@@ -2,6 +2,10 @@
   "graphs": {
     "agent": "./src/kube_triage/graph.py:graph"
   },
+  "auth": {
+    "path": "./src/kube_triage/auth.py:auth",
+    "disable_studio_auth": true
+  },
   "http": {
     "cors": {
       "allow_origins": ["http://localhost:13000", "http://127.0.0.1:13000"],

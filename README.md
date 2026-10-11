@@ -1,27 +1,23 @@
-# kube-triage-agent — Phase 0
+# kube-triage-agent — Phase 1A Demo
 
-本仓库目前仅是 **本地隔离演示**。Graph 无 LLM Key、无 Kubernetes/MCP 连接、无集群写操作。`AUTH_TYPE=noop` 表示任何可访问 API 的人都能读写 Thread/Run；只允许本机或可信 SSH Tunnel 使用，严禁公网暴露。
-
-## 一键启动
+单用户本机演示：Aegra 鉴权、LangGraph 确定性路由、跨容器 Mock MCP、审计和 CI。Pod/Event/Log 全是静态 fixture；没有真实 Kubernetes、LLM、自动修复或部署操作。
 
 ```bash
-./scripts/start.sh
+make up       # 首次生成本项目私有 .env；构建五个 Compose 服务
+make ps       # 查看本项目容器
+make check    # Compose 静态校验 + API/SSE/审批/持久化验收
+make down     # 停止，仅本项目，保留数据库卷
 ```
 
-脚本首次生成不入 Git 的 `.env`（独立随机数据库密码），只读检查端口，静态校验 Compose，再以固定项目名启动。打开 [Web](http://localhost:13000)；[API health](http://localhost:12026/health)。在聊天里输入 `status` 可见 `get_demo_cluster_status` 模拟工具调用；输入 `/approve-demo` 可进入模拟审批。默认仅监听宿主机 `127.0.0.1`。
+打开 [Web](http://localhost:13000)。从本项目 `.env` 的 `DEMO_API_TOKEN` 取值，填入页面的 **Demo API Key**；请勿把值复制到截图、Issue 或聊天。输入 `pods demo`、`events demo crashloop-pod`、`logs demo crashloop-pod`；`pods default` 会被拒绝。`/approve-demo` 可测试模拟审批。API 默认是 `127.0.0.1:12026`，MCP/PostgreSQL/Redis 不发布宿主机端口。
 
-固定 Compose 调用形式：
+开发检查：
 
 ```bash
-docker compose -p kube-triage-agent --env-file .env -f infra/compose.yaml ps
+cd server && uv sync --frozen --python 3.13 && uv run --frozen ruff check src tests && uv run --frozen pytest -q
+cd apps/web && pnpm install --frozen-lockfile && pnpm lint && pnpm build
 ```
 
-`make ps`、`make logs`、`make check`、`make down` 调用相同的项目限定脚本。`make down` 保留数据。`make reset` 会列出本项目卷并要求输入完整确认语后才删除本项目卷。不要将 `.env` 或 `backups/` 提交 Git。
+只允许个人本机或可信 SSH Tunnel 访问。固定 Token 存于本项目 `.env` 和浏览器 localStorage，后者可被同源脚本读取；这不是公网或生产级身份方案。绝不提交 `.env`。`make reset` 需要人工输入确认语才会删除本项目卷，通常无需执行。若浏览器 Key 错误，受保护的 Assistant 查询会提示重输。
 
-## 实现边界
-
-- `apps/web/` 从 [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) commit `28cfb43a62b7179ed4065dd761e16ece8c29d983` 导入，保留上游 [MIT LICENSE](apps/web/LICENSE)、pnpm 锁文件与上游 README。更新时比较该 commit 与新版本并移植本项目差异；不混用 npm lockfile。
-- `server/` 使用 PyPI `aegra-cli==0.10.8`（包括 `aegra-api`），不复制 Aegra 源码。Aegra 采用 Apache-2.0。Graph 仅有模拟响应、模拟工具和 `interrupt()` 审批。更新时改版本、重生成 `uv.lock` 并重跑验收。
-- `infra/compose.yaml` 是唯一正式部署入口；数据库和 Redis 是本项目独立容器和 Compose 命名卷。后续 MCP 接口位置为 `server/src/kube_triage/` 内新增只读 MCP adapter，在独立鉴权和审批策略完成前不接真实集群。
-
-详细架构、环境变量、隔离、备份和执行证据见 [docs/architecture.md](docs/architecture.md)、[docs/deployment.md](docs/deployment.md)、[docs/isolation.md](docs/isolation.md)、[docs/versions.md](docs/versions.md)、[docs/phase0-validation.md](docs/phase0-validation.md)。
+设计和学习资料：[Phase 1A 设计](docs/phase1a-design.md)、[验收证据](docs/phase1a-validation.md)、[面试问答](docs/phase1a-interview.md)、[隔离说明](docs/isolation.md)。Phase 0 的实测记录保留在 [Phase 0 验证](docs/phase0-validation.md)。
