@@ -56,7 +56,7 @@
 | A12 | PASS | 独立API执行层对events_list/default及resources_scale本Namespace返回error_type=policy；传输前拒绝，未发送跨Namespace或写请求。这证明应用策略，不冒称新一轮真实RBAC全面验证。 |
 | A13 | NOT RUN | 未启动本次Web、无用户人工亲验；静态删除旧卡、lint通过不等于UI E2E。 |
 | A14 | PASS | 当前中文文档/启动/隔离/历史边界更新；`docs/phase*`、eval/Golden、Fixtures无diff；历史12次与B06=FAIL原样。 |
-| A15 | NOT RUN | Draft PR建立后补记录；独立Review待办、不自动合并。 |
+| A15 | PASS | [Draft PR #10](https://github.com/Vc-great/kube-triage-agent/pull/10)，实现提交4c21540；初次CI三项SUCCESS。独立Review待办、保持Draft、不自动合并。 |
 
 ## 实际命令与结果
 
@@ -101,7 +101,7 @@ Thread `94f4f51c-10f3-4cab-b199-aa2b68460029`，Run `878001bd-8c0d-4f86-8115-bcc
 
 ## 交付与待独立Review
 
-Draft PR、Head SHA、真实CI链接在交付后补充。Reviewer重点：正式缺参的启动/Run错误边界；test保护是否与正式Compose隔离；旧Checkpoint无写入映射；Reader缓存变更；真实Repair策略无顺手改动；A09与A13缺口不能被CI/静态测试掩盖。等待独立Reviewer与用户决定，保持Draft，不自动合并。
+[Draft PR #10](https://github.com/Vc-great/kube-triage-agent/pull/10)已建立；实现提交`4c21540d57a48f9ee736c78f211eb1e9fe28bf2f`，另有本文交付记录提交。首次[CI运行38255508615](https://github.com/Vc-great/kube-triage-agent/actions/runs/38255508615)的python/web/compose均为SUCCESS（2026-10-12北京时间21:25核对）。该CI包含默认pnpm build成功，与本机Turbopack执行环境失败分开记录。最新Head/检查以PR页面和最终交付快照为准。Reviewer重点：正式缺参的启动/Run错误边界；test保护是否与正式Compose隔离；旧Checkpoint无写入映射；Reader缓存变更；真实Repair策略无顺手改动；A09与A13缺口不能被CI/静态测试掩盖。等待独立Reviewer与用户决定，保持Draft，不自动合并。
 
 ## 60–90秒面试复盘
 
