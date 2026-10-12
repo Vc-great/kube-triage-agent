@@ -1,36 +1,22 @@
-# kube-triage-agent — Phase 1B Demo
+# kube-triage-agent — Phase 2 Demo
 
-单用户本机演示：Aegra 鉴权、LangGraph 确定性命令、原生 Kubernetes MCP 只读工具。默认使用独立 Mock MCP；Real 模式使用项目专属短期 ServiceAccount kubeconfig。没有 LLM、诊断推理或自动修复。
+单用户学习项目：Aegra + LangGraph + 四个原生 Kubernetes MCP 只读工具。`LLM_ENABLED=false`（默认）保留 Phase 1B Mock 命令；`true` 使用实际支持标准 Tool Calling 的 OpenAI 兼容模型，自主选择工具并给出中文证据报告。没有自动修复。
 
-## 默认 Mock
+## 本 worktree 的安全启动
 
-```bash
-make up       # 首次生成项目私有 .env；仅管理 -p kube-triage-agent
-make ps
-make check
-make down     # 仅停本项目容器，保留数据卷
-```
-
-打开 [Web](http://localhost:13000)，输入本项目 `.env` 的 `DEMO_API_TOKEN`。可试 `pods kube-triage-demo`、`pod kube-triage-demo healthy-pod`、`events kube-triage-demo`、`logs kube-triage-demo crashloop-pod`。Mock 输出含 `mock=true`；`/approve-demo` 仍只模拟审批。API 绑定 `127.0.0.1:12026`，MCP、PostgreSQL、Redis 没有宿主机端口。
-
-## 授权后启用 Real
-
-先只读检查目标：`kubectl config current-context`、`kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'`、`kubectl get nodes`、`kubectl get ns`。确认 context、API 地址、`kube-triage-demo` 归属和 Docker 容器可达性。**只有在确认正确 context 与项目资源后**，人工 bootstrap 身份才执行：
+稳定 Compose 项目位于 `/Users/vc/code/kube-triage-agent`。**不要从新 worktree 用固定项目名 `kube-triage-agent` 执行 up/down/build**。本地离线开发只需：
 
 ```bash
-kubectl --context <CONFIRMED_CONTEXT> apply -f infra/k8s/reader.yaml
-# 可选：kubectl --context <CONFIRMED_CONTEXT> apply -f infra/k8s/triage-sample.yaml
-python3 scripts/refresh-kubeconfig.py --context <CONFIRMED_CONTEXT> --confirm <CONFIRMED_CONTEXT>/kube-triage-demo
+cd server
+uv sync --frozen --python 3.13
+uv run --frozen ruff check src tests
+uv run --frozen pytest -q
 ```
 
-脚本申请约 24 小时短期 Token；实际 TTL 由集群决定。它只写 Git 忽略的 `.local/kubeconfig`（0600），不会显示 Token。过期时以同样命令手工轮换，再用 `MCP_SERVER_URL=http://k8s-mcp:8080/mcp ./scripts/compose.sh --profile real up -d --force-recreate k8s-mcp` 重建本项目 MCP 容器，使只读文件挂载更新。不要挂载管理员 kubeconfig。先以 `KUBECONFIG=.local/kubeconfig kubectl auth can-i` 验证本 Namespace Pod/Event/Log 读取为 yes，跨 Namespace、Secret、写操作为 no。容器内部必须能访问 kubeconfig 中的 HTTPS API Server；Host 可达不等于容器可达。
+如需独立 Compose 联调，先准备此 worktree 私有 `.env`（复制 `.env.example`，设置本项目独立密码和 Token），使用独立项目名和回环端口，例如 `COMPOSE_PROJECT_NAME=kube-triage-phase2 API_PORT=12027 WEB_PORT=13001 NEXT_PUBLIC_API_URL=http://localhost:12027 docker compose -f infra/compose.yaml up -d --build`。具名卷会跟随项目名隔离。清理仅对这个项目执行同样前缀加 `down`，不要加 `--volumes`。Web 的 Aegra API Key 是 `DEMO_API_TOKEN`，只在本地浏览器输入；模型 Key 只进入 API 容器。
 
-```bash
-MCP_SERVER_URL=http://k8s-mcp:8080/mcp ./scripts/compose.sh --profile real up -d --build --wait
-```
+## LLM 配置
 
-Real 模式镜像固定为 `ghcr.io/containers/kubernetes-mcp-server:v0.0.67`，不发布宿主机端口。直接启动前须确保本项目没有另一个 worktree 正在用同一个 Compose project，以免覆盖该实例。关闭只用 `./scripts/compose.sh --profile real down`；这不会删除卷。清理集群资源须再次核对 context，由人工执行 `kubectl --context <CONFIRMED_CONTEXT> delete -f infra/k8s/triage-sample.yaml`（若曾应用）和 `kubectl --context <CONFIRMED_CONTEXT> delete -f infra/k8s/reader.yaml`，随后删除本项目 `.local/kubeconfig`。这些操作不会触及其它项目。
+`.env` 中设置 `LLM_ENABLED=true`、`LLM_MODEL`、`LLM_API_KEY`；自托管 OpenAI 兼容服务可选设置 `LLM_BASE_URL`。确认供应商真实支持标准 Tool Calling，并从 **API 容器内部**检查 URL 可达性；`localhost` 指向容器本身。缺模型名或 Key 会返回明确配置错误，不能以 Mock 结果冒充。无 Key 可保留 `false`，旧命令如 `pod kube-triage-demo crashloop-pod` 仍可用。真实 Agent 示例：`kube-triage-demo 中的 crashloop-pod 为什么一直重启？请自主调查。`
 
-开发检查：`cd server && uv sync --frozen --python 3.13 && uv run --frozen ruff check src tests && uv run --frozen pytest -q`；`cd apps/web && pnpm install --frozen-lockfile && pnpm lint && pnpm build`。
-
-设计与验收：[Phase 1B 设计](docs/phase1b-design.md)、[验证记录](docs/phase1b-validation.md)、[Real 执行记录](docs/phase1b-real-e2e.md)、[SSH 操作手册](docs/phase1b-ssh-guide.md)、[面试问答](docs/phase1b-interview.md)。历史：[Phase 1A 设计](docs/phase1a-design.md)、[隔离说明](docs/isolation.md)。
+Real Kubernetes 路径、受限 ServiceAccount 和 TLS 校验见 [Phase 1B Real E2E](docs/phase1b-real-e2e.md)；仅查询已有资源，`triage-sample` 是正常 Pod。Phase 2 的实际验收结论见 [验证记录](docs/phase2-validation.md)，架构见 [设计](docs/phase2-design.md)，面试复习见 [问答](docs/phase2-interview.md)。
