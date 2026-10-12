@@ -78,9 +78,10 @@ def parse_demo_command(text: str) -> tuple[str, dict] | None:
 
 def _route(state: MessagesState) -> Literal[
         "llm", "tool_request", "approval_prompt", "repair_prepare", "echo"]:
-    text = _last_user_text(state).strip().lower()
-    if text == "/repair-demo":
+    raw_text = _last_user_text(state).strip()
+    if raw_text == "/repair-demo":
         return "repair_prepare"
+    text = raw_text.lower()
     if text.startswith("/approve-demo"):
         return "approval_prompt"
     if enabled():

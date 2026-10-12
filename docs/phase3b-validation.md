@@ -10,7 +10,7 @@
 
 | 项 | 状态 | 证据与范围 |
 | --- | --- | --- |
-| A01 | **PASS** | `cd server && uv run --frozen ruff check src tests` 无错误；`uv run --frozen pytest -q` **64 passed**。`cd apps/web && pnpm lint` 返回 0，有仓库原有 18 条 warning；`pnpm build` 返回 0。Mock 与 Real override 的 `docker compose ... config --quiet` 均通过。两份新 YAML 静态解析为 Deployment 及 SA/Role/RoleBinding。 |
+| A01 | **PASS** | `cd server && uv run --frozen ruff check src tests` 无错误；`uv run --frozen pytest -q` **65 passed**。`cd apps/web && pnpm lint` 返回 0，有仓库原有 18 条 warning；`pnpm build` 返回 0。Mock 与 Real override 的 `docker compose ... config --quiet` 均通过。两份新 YAML 静态解析为 Deployment 及 SA/Role/RoleBinding。 |
 | A02 | **PASS** | `REPAIR_ENABLED` 缺省为 false，单元测试断言 `/repair-demo` 在关闭时不查询 Repairer。隔离 Aegra 验收的旧 echo、Reader 四工具、`/approve-demo` interrupt/resume 全 PASS；原四工具和预算未改。真实 LLM 本轮未重跑。 |
 | A03 | **PASS** | `python3 scripts/acceptance_phase3b.py`：真实 Aegra Thread/SSE 有 `repair_approval`，State `next` 挂起，Checkpoint 的 proposal_id 前后相同；网页显示 `kube-triage-demo/Deployment/triage-repair-demo：0→1` 和 `simulated=true`。 |
 | A04 | **PASS** | Aegra API 与网页各自执行 Reject，State 为 `rejected`；审批节点不调用写工具。Mock API 重建后审计汇总仅有一次 `repair_scale_call`，对应本轮唯一 Approve。 |
@@ -40,4 +40,4 @@
 
 ## 已知风险与 CI
 
-GET→UPDATE 存在并发竞态，写回执丢失无法证明 exactly-once；同一目标出现别的写入来源时，回查为 1 也不能归功于本次请求。Repairer 凭据同时用于 API 的固定 Deployment 归属 GET 与 Repair MCP 的 scale GET/UPDATE，需按演练窗口短期使用。Pod 列表如果不可解析，Ready 为 unknown，不可当作就绪。`busybox:1.36.1` 沿用项目已有样例，但真实节点是否缓存该镜像未验证。Phase 3A 的 CrashLoop/OOM 因果 grounding 问题仍在。远程 GitHub CI：待 Draft PR 建立后补充真实结论。
+GET→UPDATE 存在并发竞态，写回执丢失无法证明 exactly-once；同一目标出现别的写入来源时，回查为 1 也不能归功于本次请求。Repairer 凭据同时用于 API 的固定 Deployment 归属 GET 与 Repair MCP 的 scale GET/UPDATE，需按演练窗口短期使用。Pod 列表如果不可解析，Ready 为 unknown，不可当作就绪。`busybox:1.36.1` 沿用项目已有样例，但真实节点是否缓存该镜像未验证。Phase 3A 的 CrashLoop/OOM 因果 grounding 问题仍在。Draft PR #8 的首轮远程 [GitHub CI run 38206356860](https://github.com/Vc-great/kube-triage-agent/actions/runs/38206356860)：`compose`、`python`、`web` 均 PASS；后续提交应以 PR 最新 CI 状态为准。

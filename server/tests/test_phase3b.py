@@ -24,6 +24,7 @@ def demo_deployment(uid="demo-uid"):
 def test_repair_command_is_exact_and_disabled(monkeypatch):
     assert agent._route({"messages": [HumanMessage(content="/repair-demo")]}) == "repair_prepare"
     assert agent._route({"messages": [HumanMessage(content="/repair-demo other")]}) != "repair_prepare"
+    assert agent._route({"messages": [HumanMessage(content="/REPAIR-DEMO")]}) != "repair_prepare"
     monkeypatch.delenv("REPAIR_ENABLED", raising=False)
 
     async def forbidden():
