@@ -25,19 +25,19 @@
 
 ## Gate B：真实集群
 
-用户未对 `ssh k8s-m` 所指集群、两份清单、短期 Token 创建及最终真人网页 Approve 给出独立明确授权。因此 B01–B08 均为 **BLOCKED / NOT RUN**：未 SSH、未 apply、未创建 Repairer Token、未启动 Real Repair MCP、未发起真实 `resources_scale`。静态 YAML、Compose 和上游代码检查不能代替真实 RBAC allow/deny、tools/list、Pod Ready 或重启验收。真实 HITL Demo **尚未通过 Gate B**。
+2026-10-12 在实时 `origin/main=010d8f4` 上执行了独立的 [真实 E2E 验收](phase3b-gateb-real-e2e.md)，复现步骤见 [Gate B runbook](phase3b-gateb-runbook.md)。用户在 B01 后明确批准两份清单、Repairer 短期 Token 与独立 Compose，并确认亲自在网页点击 Approve。真实 `Deployment/triage-repair-demo` 由 0→1，最终 Pod Ready；**严格矩阵仍为部分通过**，因为审批 Thread 和 `/repair-demo` 由 Codex 为 B05 网页检查创建/输入，未遵循 B06 由用户本人新建 Thread 并输入命令的步骤。没有第二次真实写入来重演该步骤。
 
-| 项 | 状态 | 尚需证据 |
+| 项 | 状态 | 实际证据 |
 | --- | --- | --- |
-| B01 | **BLOCKED** | 真实集群身份、Namespace 与同名对象的只读核查。 |
-| B02 | **BLOCKED** | 单独许可后仅应用两份清单，生成 0600 短期凭据。 |
-| B03 | **BLOCKED** | Repairer 与 Reader SA 的实名 RBAC allow/deny。 |
-| B04 | **BLOCKED** | Real Repair MCP 恰好一工具、Reader 四工具、模型只绑定四读工具的运行态证据。 |
-| B05 | **BLOCKED** | 真实网页 Reject 后 scale 仍为 0。 |
-| B06 | **BLOCKED** | 新 Thread 提案与用户本人 Approve 导致真实唯一一次 0→1。 |
-| B07 | **BLOCKED** | 真实 scale、Pod Ready 和断连/越权结果。 |
-| B08 | **BLOCKED** | 真实审批 Thread 的重启持久化与其他服务/资源无影响。 |
+| B01 | **PASS** | `k8s-m`、Context、三节点、项目 Namespace 与无同名对象的只读预检；稳定栈及端口盘点。 |
+| B02 | **PASS** | 经单独授权应用两份清单；Deployment UID `5c908332…`、初始 Scale=0；0600 短期 Repairer kubeconfig。 |
+| B03 | **PASS** | 实际 Repairer/Reader kubeconfig `auth can-i` 10/10 符合预期；没有用写请求测试 deny。 |
+| B04 | **PASS（修复后）** | `v0.0.67` Real Reader 四工具、Repair 仅 `resources_scale`，真实 Pod 列表与无 scale 参数的 GET=0；零值省略解析 Bug 已修复。 |
+| B05 | **PASS** | Reject Thread 的 SSE/State/Checkpoint 一致，结构化 Reject 后零 scale 审计、真实副本仍为 0，网页刷新后拒绝消息仍在。 |
+| B06 | **FAIL（流程偏差）** | 用户本人网页点击，应用审计单次 `resources_scale`，真实 0→1；但用户未本人新建/输入此 Thread。 |
+| B07 | **PASS（分层验证）** | Deployment Desired=1/Ready=1，目标 Pod Running/Ready；Graph 当时 Ready 为 unknown，Reader YAML 序列解析 Bug 修复后只读回查 ready。 |
+| B08 | **PASS（已执行范围）** | 审批 Thread 5 个 checkpoint、网页/API 重启后 History 一致；本轮 API 写开关关闭，独立资源与临时凭据精确清理，其它项目容器 ID 未变。 |
 
 ## 已知风险与 CI
 
-GET→UPDATE 存在并发竞态，写回执丢失无法证明 exactly-once；同一目标出现别的写入来源时，回查为 1 也不能归功于本次请求。Repairer 凭据同时用于 API 的固定 Deployment 归属 GET 与 Repair MCP 的 scale GET/UPDATE，需按演练窗口短期使用。Pod 列表如果不可解析，Ready 为 unknown，不可当作就绪。`busybox:1.36.1` 沿用项目已有样例，但真实节点是否缓存该镜像未验证。Phase 3A 的 CrashLoop/OOM 因果 grounding 问题仍在。Draft PR #8 的首轮远程 [GitHub CI run 38206356860](https://github.com/Vc-great/kube-triage-agent/actions/runs/38206356860)：`compose`、`python`、`web` 均 PASS；后续提交应以 PR 最新 CI 状态为准。
+GET→UPDATE 存在并发竞态，写回执丢失无法证明 exactly-once；同一目标出现别的写入来源时，回查为 1 也不能归功于本次请求。Repairer 凭据同时用于 API 的固定 Deployment 归属 GET 与 Repair MCP 的 scale GET/UPDATE，需按演练窗口短期使用。本轮真实节点成功运行 `busybox:1.36.1`，但不能判定是新拉取还是节点缓存，也不保证未来镜像环境。Phase 3A 的 CrashLoop/OOM 因果 grounding 问题仍在。旧 Draft PR #8 首轮远程 [GitHub CI run 38206356860](https://github.com/Vc-great/kube-triage-agent/actions/runs/38206356860) 的 `compose`、`python`、`web` 均 PASS；本轮新 PR 须以其自身 CI 为准。

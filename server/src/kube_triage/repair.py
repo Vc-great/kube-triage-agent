@@ -163,7 +163,13 @@ def parse_scale(result: object) -> dict:
     if not isinstance(data, dict):
         raise TypeError("Scale response is not an object")
     metadata = data.get("metadata") or {}
-    replicas = (data.get("spec") or {}).get("replicas")
+    spec = data.get("spec")
+    if not isinstance(spec, dict):
+        raise TypeError("Scale response spec is invalid")
+    replicas = spec.get("replicas")
+    # Kubernetes omits the zero-valued ScaleSpec.replicas field in its YAML response.
+    if not spec and (data.get("status") or {}).get("replicas") == 0:
+        replicas = 0
     if (metadata.get("name") != NAME or metadata.get("namespace") != NAMESPACE or
             not isinstance(replicas, int) or isinstance(replicas, bool) or replicas < 0):
         raise ValueError("Scale response target or replicas is invalid")
@@ -192,7 +198,7 @@ async def pod_readiness(thread_id: str | None) -> str:
         return "unknown (Reader MCP unavailable)"
     try:
         data = yaml.safe_load(response["result"])
-        pods = data.get("items", data.get("pods", []))
+        pods = data if isinstance(data, list) else data.get("items", data.get("pods", []))
         if not isinstance(pods, list):
             return "unknown (Pod list shape)"
         matched = [p for p in pods if (p.get("metadata") or {}).get("labels", {}).get("app") == NAME]
