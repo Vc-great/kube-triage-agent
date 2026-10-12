@@ -1,0 +1,1 @@
+{"kind":"fixture","name":"healthy-pod","phase":"Running","restartCount":0,"event":"Successfully started container","log":"starting demo app\nready","containerStatuses":[{"name":"app","ready":true,"restartCount":0,"state":{"running":{"startedAt":"2026-10-12T00:00:00Z"}},"lastState":{}}]}

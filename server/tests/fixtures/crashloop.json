@@ -1,1 +1,0 @@
-{"kind":"fixture","name":"crashloop-pod","phase":"Running","container_state":"CrashLoopBackOff","restartCount":5,"event":"Back-off restarting failed container","log":"database unavailable; exiting with code 1"}
