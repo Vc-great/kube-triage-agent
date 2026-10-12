@@ -8,11 +8,22 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+ENV_FILE = os.environ.get("ACCEPTANCE_ENV_FILE", ".env")
+
+
+def compose_command(*arguments):
+    project = os.environ.get("ACCEPTANCE_COMPOSE_PROJECT")
+    if project:
+        return ["docker", "compose", "-p", project, "--env-file", ENV_FILE,
+                "-f", "infra/compose.yaml", *arguments]
+    return ["./scripts/compose.sh", *arguments]
 
 
 def local_port():
     try:
-        for line in open(".env", encoding="utf-8"):
+        for line in Path(ENV_FILE).read_text(encoding="utf-8").splitlines():
             if line.startswith("API_PORT="):
                 return int(line.split("=", 1)[1].strip())
     except OSError:
@@ -21,7 +32,7 @@ def local_port():
 
 
 def local_token():
-    for line in open(".env", encoding="utf-8"):
+    for line in Path(ENV_FILE).read_text(encoding="utf-8").splitlines():
         if line.startswith("DEMO_API_TOKEN="):
             token = line.split("=", 1)[1].strip()
             if token and token != "REPLACE_WITH_RANDOM_URL_SAFE_TOKEN":
@@ -107,7 +118,7 @@ def denied(fn):
 
 def audit_ok():
     logs = subprocess.run(
-        ["./scripts/compose.sh", "logs", "api", "--no-color", "--tail=2000"],
+        compose_command("logs", "api", "--no-color", "--tail=2000"),
         capture_output=True, text=True, check=True,
     ).stdout
     events = [line for line in logs.splitlines() if '"event": "mcp_tool_call"' in line]
@@ -140,7 +151,11 @@ try:
     record("run and stream", bool(first) and "Phase 1B echo" in messages_text(state(thread_id)))
     second = stream(thread_id, {"input": {"messages": [{"role": "human", "content": [{"type": "text", "text": "pods kube-triage-demo"}]}]}})
     second_text = json.dumps(second, ensure_ascii=False) + messages_text(state(thread_id))
-    record("MCP adapter tool call/result", "pods_list_in_namespace" in second_text and "static-fixture" in second_text and "CrashLoopBackOff" in second_text)
+    record("MCP adapter tool call/result", "pods_list_in_namespace" in second_text and
+           "static-fixture" in second_text and "crashloop-pod" in second_text)
+    stream(thread_id, {"input": {"messages": [{"role": "human", "content":
+        "pod kube-triage-demo crashloop-pod"}]}})
+    record("container waiting reason", "CrashLoopBackOff" in messages_text(state(thread_id)))
     stream(thread_id, {"input": {"messages": [{"role": "human", "content": "pod kube-triage-demo healthy-pod"}]}})
     record("pod mock", "healthy-pod" in messages_text(state(thread_id)))
     stream(thread_id, {"input": {"messages": [{"role": "human", "content": "events kube-triage-demo"}]}})
@@ -168,7 +183,7 @@ try:
     stream(thread_id, {"command": {"resume": {"decision": "reject"}}})
     record("resume rejected", "approval rejected" in messages_text(state(thread_id)))
 
-    subprocess.run(["./scripts/compose.sh", "restart", "api"], check=True)
+    subprocess.run(compose_command("restart", "api"), check=True)
     record("api restart health", wait_health())
     after = state(thread_id)
     record("thread persists after api restart", "approval rejected" in messages_text(after))

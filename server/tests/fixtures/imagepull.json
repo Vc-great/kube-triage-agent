@@ -1,1 +1,0 @@
-{"kind":"fixture","name":"imagepull-pod","phase":"Pending","container_state":"ImagePullBackOff","restartCount":0,"event":"Failed to pull image","log":"no container logs available"}

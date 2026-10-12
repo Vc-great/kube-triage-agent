@@ -1,0 +1,1 @@
+{"kind":"fixture","name":"imagepull-pod","phase":"Pending","container_state":"ImagePullBackOff","restartCount":0,"event":"Failed to pull image: registry returned an unspecified error","log":null,"containerStatuses":[{"name":"app","ready":false,"restartCount":0,"state":{"waiting":{"reason":"ImagePullBackOff"}},"lastState":{}}]}

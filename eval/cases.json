@@ -1,0 +1,6 @@
+[
+  {"id":"crashloop","question":"请调查 kube-triage-demo 中的 crashloop-pod 是否异常，给出证据、可能原因和未确认事项。","target_pod":"crashloop-pod","expected_label":"CrashLoopBackOff","required_evidence":["pod_container_state","restart_or_event"],"forbidden_claims":["database_server_definitely_down_without_proof"]},
+  {"id":"imagepull","question":"请调查 kube-triage-demo 中的 imagepull-pod 是否异常，给出证据、可能原因和未确认事项。","target_pod":"imagepull-pod","expected_label":"ImagePullBackOff","required_evidence":["pod_container_state","target_event"],"forbidden_claims":["specific_pull_cause_without_proof","invented_container_logs"]},
+  {"id":"oomkilled","question":"请调查 kube-triage-demo 中的 oom-pod 是否异常，给出证据、可能原因和未确认事项。","target_pod":"oom-pod","expected_label":"OOMKilled","required_evidence":["last_terminated_reason","restart_or_event"],"forbidden_claims":["oom_inferred_from_exit_code_alone"]},
+  {"id":"healthy","question":"请调查 kube-triage-demo 中的 healthy-pod 是否异常，给出证据、可能原因和未确认事项。","target_pod":"healthy-pod","expected_label":"no_fault_evidence","required_evidence":["pod_running_ready"],"forbidden_claims":["invented_fault","running_proves_business_healthy"]}
+]

@@ -1,4 +1,7 @@
-"""Static MCP fixtures with the same four native tool names and parameters."""
+"""Four consistent synthetic Pods exposed through the native read-only MCP tools."""
+
+import json
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
@@ -6,7 +9,9 @@ from kube_triage.mcp_client import NAMESPACE
 
 mcp = FastMCP("kube-triage-mock", host="0.0.0.0", port=8000, stateless_http=True,
               json_response=True)
-PODS = {"crashloop-pod", "healthy-pod"}
+FIXTURES = Path(__file__).parent / "fixtures"
+PODS = {item["name"]: item for path in FIXTURES.glob("*.json")
+        if (item := json.loads(path.read_text(encoding="utf-8")))}
 
 
 def check_namespace(namespace: str) -> None:
@@ -21,12 +26,10 @@ def check_pod(name: str) -> None:
 
 @mcp.tool()
 def pods_list_in_namespace(namespace: str) -> dict:
-    """List two static Pods; never query Kubernetes."""
+    """List all synthetic Pods; never query Kubernetes."""
     check_namespace(namespace)
     return {"mock": True, "source": "static-fixture", "namespace": namespace, "pods": [
-        {"name": "healthy-pod", "status": "Running"},
-        {"name": "crashloop-pod", "status": "CrashLoopBackOff"},
-    ]}
+        {"name": item["name"], "phase": item["phase"]} for item in PODS.values()]}
 
 
 @mcp.tool()
@@ -34,8 +37,10 @@ def pods_get(namespace: str, name: str) -> dict:
     """Return a static Pod detail."""
     check_namespace(namespace)
     check_pod(name)
+    item = PODS[name]
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
-            "name": name, "status": "CrashLoopBackOff" if name == "crashloop-pod" else "Running"}
+            "name": name, "status": {"phase": item["phase"],
+            "containerStatuses": item["containerStatuses"]}}
 
 
 @mcp.tool()
@@ -43,20 +48,28 @@ def events_list(namespace: str) -> dict:
     """Return static Events from the requested namespace."""
     check_namespace(namespace)
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
-            "events": ["Back-off restarting failed container", "Successfully started container"]}
+            "events": [{"involvedObject": {"kind": "Pod", "name": item["name"],
+                         "namespace": namespace},
+                        "type": "Normal" if item["name"] == "healthy-pod" else "Warning",
+                        "reason": "Failed" if item["name"] == "imagepull-pod" else
+                        "BackOff" if item["name"] != "healthy-pod" else "Started",
+                        "message": item["event"]} for item in PODS.values()]}
 
 
 @mcp.tool()
-def pods_log(namespace: str, name: str, tail: int = 20) -> dict:
+def pods_log(namespace: str, name: str, tail: int = 20, container: str | None = None) -> dict:
     """Return bounded static logs."""
     check_namespace(namespace)
     check_pod(name)
     if isinstance(tail, bool) or not isinstance(tail, int) or not 1 <= tail <= 100:
         raise ValueError("tail must be an integer from 1 to 100")
-    fixture = (["starting demo app", "database unavailable", "exiting with code 1"]
-               if name == "crashloop-pod" else ["starting demo app", "ready"])
+    if container is not None and container != "app":
+        raise ValueError("Unknown demo container")
+    fixture = PODS[name]["log"]
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
-            "name": name, "logs": "\n".join(fixture[-tail:])}
+            "name": name, "container": container or "app", "available": fixture is not None,
+            "logs": "\n".join(fixture.splitlines()[-tail:]) if fixture is not None else None,
+            "reason": "container has not started" if fixture is None else None}
 
 
 # FastMCP's generated Pydantic argument models ignore extra fields by default.

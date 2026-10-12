@@ -20,3 +20,14 @@ uv run --frozen pytest -q
 `.env` 中设置 `LLM_ENABLED=true`、`LLM_MODEL`、`LLM_API_KEY`；自托管 OpenAI 兼容服务可选设置 `LLM_BASE_URL`。确认供应商真实支持标准 Tool Calling，并从 **API 容器内部**检查 URL 可达性；`localhost` 指向容器本身。缺模型名或 Key 会返回明确配置错误，不能以 Mock 结果冒充。无 Key 可保留 `false`，旧命令如 `pod kube-triage-demo crashloop-pod` 仍可用。真实 Agent 示例：`kube-triage-demo 中的 crashloop-pod 为什么一直重启？请自主调查。`
 
 Real Kubernetes 路径、受限 ServiceAccount 和 TLS 校验见 [Phase 1B Real E2E](docs/phase1b-real-e2e.md)；仅查询已有资源，`triage-sample` 是正常 Pod。Phase 2 的实际验收结论见 [验证记录](docs/phase2-validation.md)，架构见 [设计](docs/phase2-design.md)，面试复习见 [问答](docs/phase2-interview.md)。
+
+## Phase 3A：合成数据诊断评测
+
+在**独立** Compose 项目中准备私有 `.local/phase3a.env`（`LLM_ENABLED=true`、现有已批准的模型配置、独立数据库密码和 API Token，`MCP_SERVER_URL=http://mock-mcp:8000/mcp`；不要提交或打印密钥），仅启动 `postgres redis api mock-mcp`。不要从此 Worktree 使用硬编码项目名的 `scripts/compose.sh`，也不要连接真实 Kubernetes。
+
+```bash
+docker compose -p kube-triage-phase3a-eval --env-file .local/phase3a.env -f infra/compose.yaml up -d --build postgres redis mock-mcp api
+python3 scripts/eval_phase3a.py --cases eval/cases.json --repeats 3 --out .local/eval-runs/phase3a-baseline --env-file .local/phase3a.env
+```
+
+先用 `--dry-run` 只校验 Golden；它不产生真实分数。Runner 写入 Git 忽略的私有证据与 `reviews.json` 待人工评分。数据流与公式见 [设计](docs/phase3a-design.md)，本轮 12 次结果见 [报告](docs/phase3a-report.md)，面试复习见 [问答](docs/phase3a-interview.md)。

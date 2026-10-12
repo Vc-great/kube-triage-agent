@@ -12,7 +12,7 @@ from kube_triage import graph as agent
 from kube_triage import mcp_client
 from kube_triage.mcp_client import NAMESPACE
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).parents[1] / "src" / "kube_triage" / "fixtures"
 
 
 def run(messages):
@@ -209,9 +209,10 @@ def test_prompt_injection_cannot_expand_execution_scope(llm):
 
 def test_fixture_categories_are_explicit_and_distinct():
     cases = [json.loads(path.read_text()) for path in FIXTURES.glob("*.json")]
-    assert len(cases) == 3 and all(case["kind"] == "fixture" for case in cases)
+    assert len(cases) == 4 and all(case["kind"] == "fixture" for case in cases)
     assert {case.get("container_state", case.get("last_terminated_reason"))
-            for case in cases} == {"CrashLoopBackOff", "ImagePullBackOff", "OOMKilled"}
+            for case in cases if case["name"] != "healthy-pod"} == {
+                "CrashLoopBackOff", "ImagePullBackOff", "OOMKilled"}
     assert next(c for c in cases if c["name"] == "crashloop-pod")["phase"] == "Running"
 
 
