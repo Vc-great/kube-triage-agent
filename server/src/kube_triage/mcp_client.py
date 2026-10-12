@@ -35,12 +35,18 @@ def validate_call(name: str, arguments: dict) -> None:
         pod = arguments.get("name")
         if not isinstance(pod, str) or len(pod) > 253 or not POD_NAME.fullmatch(pod):
             raise ValueError("name must be a Kubernetes-style Pod name")
+    allowed = required.copy()
     if name == "pods_log":
-        required.add("tail")
-        tail = arguments.get("tail")
+        allowed.update({"tail", "container"})
+        tail = arguments.get("tail", 20)
         if isinstance(tail, bool) or not isinstance(tail, int) or not 1 <= tail <= 100:
             raise ValueError("tail must be an integer from 1 to 100")
-    if set(arguments) != required:
+        if "container" in arguments:
+            container = arguments["container"]
+            if (not isinstance(container, str) or len(container) > 253 or
+                    not POD_NAME.fullmatch(container)):
+                raise ValueError("container must be a Kubernetes-style name")
+    if not required <= set(arguments) or not set(arguments) <= allowed:
         raise ValueError("Unexpected or missing tool parameters")
 
 
@@ -98,7 +104,8 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
     try:
         validate_call(name, arguments)
         tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
-        result = await asyncio.wait_for(tools[name].ainvoke(arguments), MCP_TIMEOUT_SECONDS)
+        safe_args = {**arguments, "tail": arguments.get("tail", 20)} if name == "pods_log" else arguments
+        result = await asyncio.wait_for(tools[name].ainvoke(safe_args), MCP_TIMEOUT_SECONDS)
         return {"ok": True, "result": _display_result(result)}
     except (TypeError, ValueError) as exc:
         outcome, error_type = "rejected", "policy"

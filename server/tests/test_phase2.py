@@ -110,6 +110,30 @@ def test_execution_rejects_unsafe_model_calls(llm, name, args):
     assert tools[0].status == "error" and "policy" in tools[0].content
 
 
+def test_pods_log_native_optional_arguments(monkeypatch):
+    seen = []
+
+    class LogTool:
+        async def ainvoke(self, arguments):
+            seen.append(arguments)
+            return {"logs": "fixture"}
+
+    async def discovered():
+        return {"pods_log": LogTool()}
+
+    monkeypatch.setattr(mcp_client, "_allowed_tools", discovered)
+    base = {"namespace": NAMESPACE, "name": "crashloop-pod"}
+    assert asyncio.run(mcp_client.call_tool("pods_log", base))["ok"]
+    assert seen == [{**base, "tail": 20}]
+    assert asyncio.run(mcp_client.call_tool(
+        "pods_log", {**base, "container": "sample"}))["ok"]
+    assert seen[-1] == {**base, "container": "sample", "tail": 20}
+    for invalid in ({**base, "tail": 101}, {**base, "container": "bad/name"},
+                    {**base, "extra": "x"}):
+        assert asyncio.run(mcp_client.call_tool("pods_log", invalid))["error_type"] == "policy"
+    assert len(seen) == 2
+
+
 def test_tool_budget_pairs_rejected_calls_and_resets_next_question(llm):
     batch = [call("events_list", {"namespace": NAMESPACE}, str(i)) for i in range(8)]
     model = FakeModel([AIMessage(content="", tool_calls=batch),
