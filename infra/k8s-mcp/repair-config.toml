@@ -1,0 +1,14 @@
+port = "8080"
+bind_address = "0.0.0.0"
+stateless = true
+kubeconfig = "/run/kube-triage/repair-kubeconfig"
+cluster_provider_strategy = "kubeconfig"
+read_only = false
+toolsets = ["core"]
+enabled_tools = ["resources_scale"]
+list_output = "yaml"
+
+[[denied_resources]]
+group = ""
+version = "v1"
+kind = "Secret"

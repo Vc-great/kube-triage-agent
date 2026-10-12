@@ -15,6 +15,7 @@ import { ThreadView } from "../agent-inbox";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
 import { DemoApprovalView } from "./demo-approval";
+import { RepairApprovalView } from "./repair-approval";
 import { useArtifact } from "../artifact";
 
 function CustomComponent({
@@ -88,6 +89,10 @@ function Interrupt({
     !Array.isArray(fallbackValue) &&
     fallbackValue?.kind === "demo_approval" &&
     fallbackValue?.mock === true;
+  const isRepairApproval =
+    !Array.isArray(fallbackValue) &&
+    fallbackValue?.kind === "repair_approval" &&
+    typeof fallbackValue?.proposal?.proposal_id === "string";
 
   return (
     <>
@@ -98,7 +103,9 @@ function Interrupt({
       {interrupt &&
       !isAgentInboxInterruptSchema(interrupt) &&
       (isLastMessage || hasNoAIOrToolMessages) ? (
-        isDemoApproval ? (
+        isRepairApproval ? (
+          <RepairApprovalView proposal={fallbackValue.proposal} />
+        ) : isDemoApproval ? (
           <DemoApprovalView question={String(fallbackValue.question ?? "Review mock action")} />
         ) : (
           <GenericInterruptView interrupt={fallbackValue} />

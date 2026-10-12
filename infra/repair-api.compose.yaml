@@ -1,0 +1,6 @@
+services:
+  api:
+    environment:
+      REPAIR_KUBECONFIG: /run/kube-triage/repair-kubeconfig
+    volumes:
+      - ../.local/repair-kubeconfig:/run/kube-triage/repair-kubeconfig:ro

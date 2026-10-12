@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manually issue a short-lived reader token and write a single-context kubeconfig."""
+"""Manually issue a short-lived project SA token and write a single-context kubeconfig."""
 
 import argparse
 import base64
@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 NAMESPACE = "kube-triage-demo"
 ACCOUNT = "kube-triage-reader"
+REPAIR_ACCOUNT = "kube-triage-repairer"
 REMOTE_SOURCE = r'''
 import base64
 import json
@@ -21,6 +22,9 @@ import subprocess
 import sys
 
 try:
+    account = sys.argv[1]
+    if account not in {"kube-triage-reader", "kube-triage-repairer"}:
+        raise ValueError("unexpected account")
     source = json.loads(subprocess.check_output(
         ["kubectl", "config", "view", "--raw", "--minify", "-o", "json"],
         stderr=subprocess.DEVNULL, text=True))
@@ -36,7 +40,7 @@ try:
         raise ValueError("trusted HTTPS cluster required")
     token = subprocess.check_output(
         ["kubectl", "-n", "kube-triage-demo", "create", "token",
-         "kube-triage-reader", "--duration=24h"],
+         account, "--duration=24h"],
         stderr=subprocess.DEVNULL, text=True).strip()
     print(json.dumps({"server": cluster["server"], "ca": ca,
                       "insecure": cluster.get("insecure-skip-tls-verify", False),
@@ -56,17 +60,21 @@ def main() -> None:
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--context", help="Confirmed local bootstrap context")
     source_group.add_argument("--ssh-host", help="Confirmed SSH management host")
+    parser.add_argument("--account", choices=[ACCOUNT, REPAIR_ACCOUNT], default=ACCOUNT)
     parser.add_argument("--confirm", required=True,
-                        help=f"Type the exact context or SSH host name and /{NAMESPACE}")
+                        help="Type source/namespace (repairer also requires /account)")
     args = parser.parse_args()
     source_name = args.context or args.ssh_host
-    if args.confirm != f"{source_name}/{NAMESPACE}":
+    expected = f"{source_name}/{NAMESPACE}"
+    if args.account == REPAIR_ACCOUNT:
+        expected += f"/{REPAIR_ACCOUNT}"
+    if args.confirm != expected:
         parser.error("context/namespace confirmation did not match")
     if args.ssh_host:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.ssh_host):
             parser.error("SSH host must be a simple host name or alias")
         response = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", args.ssh_host, "python3", "-"],
+            ["ssh", "-o", "BatchMode=yes", args.ssh_host, "python3", "-", args.account],
             input=REMOTE_SOURCE, capture_output=True, text=True, check=False)
         if response.returncode:
             parser.error("SSH kubeconfig source failed; no credential was written")
@@ -87,7 +95,7 @@ def main() -> None:
                 ca_path = source_file.parent / ca_path
             ca = base64.b64encode(ca_path.read_bytes()).decode()
         token = kubectl("--context", args.context, "-n", NAMESPACE, "create", "token",
-                        ACCOUNT, "--duration=24h")
+                        args.account, "--duration=24h")
         insecure = cluster.get("insecure-skip-tls-verify", False)
     if not server.startswith("https://"):
         parser.error("Kubernetes API server must use HTTPS")
@@ -96,12 +104,12 @@ def main() -> None:
     if not token:
         raise RuntimeError("kubectl returned an empty token")
     config = {
-        "apiVersion": "v1", "kind": "Config", "current-context": "kube-triage-reader",
+        "apiVersion": "v1", "kind": "Config", "current-context": args.account,
         "clusters": [{"name": "target", "cluster": {
             "server": server, "certificate-authority-data": ca}}],
-        "users": [{"name": ACCOUNT, "user": {"token": token}}],
-        "contexts": [{"name": "kube-triage-reader", "context": {
-            "cluster": "target", "user": ACCOUNT, "namespace": NAMESPACE}}],
+        "users": [{"name": args.account, "user": {"token": token}}],
+        "contexts": [{"name": args.account, "context": {
+            "cluster": "target", "user": args.account, "namespace": NAMESPACE}}],
     }
     directory = ROOT / ".local"
     if directory.is_symlink():
@@ -113,8 +121,9 @@ def main() -> None:
         os.chmod(output.name, 0o600)
         json.dump(config, output, indent=2)
         temporary = Path(output.name)
-    temporary.replace(directory / "kubeconfig")
-    print("Wrote project-only .local/kubeconfig (mode 0600); token was not displayed.")
+    destination = "repair-kubeconfig" if args.account == REPAIR_ACCOUNT else "kubeconfig"
+    temporary.replace(directory / destination)
+    print(f"Wrote project-only .local/{destination} (mode 0600); token was not displayed.")
 
 
 if __name__ == "__main__":

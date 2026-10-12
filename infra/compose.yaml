@@ -40,6 +40,9 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      REPAIR_ENABLED: ${REPAIR_ENABLED:-false}
+      REPAIR_SIMULATED: ${REPAIR_SIMULATED:-false}
+      REPAIR_MCP_SERVER_URL: ${REPAIR_MCP_SERVER_URL:-}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
@@ -77,6 +80,24 @@ services:
     volumes:
       - ./k8s-mcp/config.toml:/etc/kube-triage/config.toml:ro
       - ../.local/kubeconfig:/run/kube-triage/kubeconfig:ro
+    restart: unless-stopped
+    networks: [private]
+
+  repair-mcp:
+    profiles: ["repair"]
+    image: ghcr.io/containers/kubernetes-mcp-server:v0.0.67
+    command: ["--config", "/etc/kube-triage/repair-config.toml"]
+    volumes:
+      - ./k8s-mcp/repair-config.toml:/etc/kube-triage/repair-config.toml:ro
+      - ../.local/repair-kubeconfig:/run/kube-triage/repair-kubeconfig:ro
+    restart: unless-stopped
+    networks: [private]
+
+  mock-repair-mcp:
+    profiles: ["repair-mock"]
+    build:
+      context: ../server
+    command: ["python", "-m", "kube_triage.mock_repair_mcp"]
     restart: unless-stopped
     networks: [private]
 
