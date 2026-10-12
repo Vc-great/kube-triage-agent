@@ -9,8 +9,8 @@ class ConfigurationError(ValueError):
 
 def test_mode() -> bool:
     mode = os.getenv("TRIAGE_ENV", "production")
-    if mode not in {"production", "test"}:
-        raise ConfigurationError("TRIAGE_ENV 必须为 production 或 test")
+    if mode not in {"production", "development", "test"}:
+        raise ConfigurationError("TRIAGE_ENV 必须为 production、development 或 test")
     simulated = os.getenv("REPAIR_SIMULATED", "false").lower()
     if simulated not in {"true", "false"}:
         raise ConfigurationError("REPAIR_SIMULATED 必须为 true 或 false")
@@ -34,6 +34,8 @@ def reader_url() -> str:
     testing = test_mode()
     url = os.getenv("MCP_SERVER_URL", "").strip()
     expected = "http://mock-mcp:8000/mcp" if testing else "http://k8s-mcp:8080/mcp"
+    if os.getenv("TRIAGE_ENV") == "development":
+        expected = "http://127.0.0.1:18080/mcp"
     if url != expected:
         raise ConfigurationError("Reader 配置错误：必须使用当前环境的项目内部 MCP endpoint")
     return url

@@ -33,6 +33,8 @@ jobs:
         working-directory: apps/web
       - run: pnpm lint
         working-directory: apps/web
+      - run: node scripts/check-api-keys.mjs
+        working-directory: apps/web
       - run: pnpm build
         working-directory: apps/web
   compose:
@@ -42,6 +44,8 @@ jobs:
       - run: |
           docker compose -p kube-triage-ci-real -f infra/compose.yaml config --quiet
           docker compose -p kube-triage-ci-test -f infra/test.compose.yaml --profile repair-mock config --quiet
+          docker compose -p kube-triage-ci-dev01 -f infra/compose.yaml -f infra/dev01.compose.yaml config --quiet
+          bash -n scripts/dev01-compose.sh scripts/deploy-dev01.sh infra/postgres/init-dev-db.sh
         env:
           POSTGRES_USER: ci_user
           POSTGRES_DB: ci_db
@@ -49,3 +53,8 @@ jobs:
           DEMO_API_TOKEN: ci-placeholder-only
           LLM_MODEL: ci-placeholder-only
           LLM_API_KEY: ci-placeholder-only
+          POSTGRES_DEV_USER: ci_dev
+          POSTGRES_DEV_DB: ci_dev
+          POSTGRES_DEV_PASSWORD: ci-placeholder-only
+          READER_UID: '1000'
+          READER_GID: '1000'

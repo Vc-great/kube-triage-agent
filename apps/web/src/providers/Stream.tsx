@@ -5,6 +5,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useSyncExternalStore,
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
@@ -153,6 +154,21 @@ const AGENT_BUILDER_AUTH_SCHEME = "langsmith-api-key";
 export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
+  const hydrated = useSyncExternalStore(
+    useCallback(() => () => {}, []),
+    () => true,
+    () => false,
+  );
+  return hydrated ? (
+    <StreamProviderContent>{children}</StreamProviderContent>
+  ) : (
+    <div className="flex min-h-screen items-center justify-center">加载中…</div>
+  );
+};
+
+const StreamProviderContent: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   // Get environment variables
   const envApiUrl: string | undefined = process.env.NEXT_PUBLIC_API_URL;
   const envAssistantId: string | undefined =
@@ -179,7 +195,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const finalAssistantId = assistantId || envAssistantId;
   const finalAuthScheme = authScheme || envAuthScheme || "";
 
-  const [apiKey, setStoredApiKey] = useState(() => getApiKey(finalApiUrl) || "");
+  const [apiKey, setStoredApiKey] = useState(
+    () => getApiKey(finalApiUrl) || "",
+  );
   const onInvalidKey = useCallback(() => {
     storeApiKey(finalApiUrl, "");
     setStoredApiKey("");
@@ -258,10 +276,13 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="apiKey">Demo API Key<span className="text-rose-500">*</span></Label>
+              <Label htmlFor="apiKey">
+                Demo API Key<span className="text-rose-500">*</span>
+              </Label>
               <p className="text-muted-foreground text-sm">
-                Enter DEMO_API_TOKEN from this project's local .env. It is stored in
-                this browser's localStorage, so use only on your own machine.
+                Enter DEMO_API_TOKEN from this project's local .env. It is
+                stored in this browser's localStorage, so use only on your own
+                machine.
               </p>
               <PasswordInput
                 id="apiKey"

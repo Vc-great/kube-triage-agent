@@ -1,5 +1,7 @@
 # 当前部署与只读验收
 
+dev01 完整应用、IP/端口访问与 Mac 两种开发模式见 [dev01 部署与 Mac 开发](dev01-deployment.md)。下文保留独立本地 Compose 的运行方式。
+
 正常运行需要支持标准 Tool Calling 的真实 OpenAI 兼容模型（`LLM_MODEL`、`LLM_API_KEY`、可选 `LLM_BASE_URL`），以及已经批准、仍有效、仅限 `kube-triage-demo` 的 Reader kubeconfig。不要使用管理员身份、关闭 TLS/CA、自动签发 Token 或修改 RBAC。凭据缺失/过期时 Real E2E 为 BLOCKED；pytest 仍可离线执行。
 
 ## 先核对，再启动独立项目

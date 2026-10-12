@@ -1,5 +1,7 @@
 # kube-triage-agent：正式 Real，Mock 仅供测试
 
+dev01 完整部署与 Mac 原生开发见 [部署与开发指南](docs/dev01-deployment.md)：`make dev-web` 只调前端并连接远端 API；`make dev` 联调本地前后端并连接远端独立开发数据；切换前执行 `make dev-stop`。
+
 单用户 AI 全栈学习与面试 Demo：Aegra Thread/Run/SSE/Checkpoint + LangGraph + 原生 Reader MCP。正式自然语言诊断恒走真实 OpenAI 兼容 LLM → 四个只读 MCP 工具 → Kubernetes API，Namespace 固定为 `kube-triage-demo`。缺配置、未批准 Reader URL 和生产模拟配置均 Fail Closed；无 Echo、固定命令或 Mock 回退。
 
 ## 独立项目快速启动
