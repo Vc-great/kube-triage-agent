@@ -2,6 +2,31 @@
 
 单用户学习项目：Aegra + LangGraph + 四个原生 Kubernetes MCP 只读工具。`LLM_ENABLED=false`（默认）保留 Phase 1B Mock 命令；`true` 使用实际支持标准 Tool Calling 的 OpenAI 兼容模型，自主选择工具并给出中文证据报告。没有自动修复。
 
+## Phase 3B：受控 0→1 演练
+
+默认 `REPAIR_ENABLED=false`，`/repair-demo` 不会写 Kubernetes。唯一固定目标是 `kube-triage-demo/Deployment/triage-repair-demo`，预期从 0 扩到 1。模型仍只有原四个只读工具；网页必须在同一 Aegra Thread 审批含 `proposal_id` 的提案。0→1 不代表 Pod Ready，更不代表 CrashLoop/OOM 根因得到修复。设计、实际验收与面试问答见 [设计](docs/phase3b-design.md)、[验证](docs/phase3b-validation.md)、[问答](docs/phase3b-interview.md)。
+
+**离线模拟**：在此 Worktree 创建私有 `.local/phase3b.env`（独立数据库密码和 API Token，端口 12027/13001，`LLM_ENABLED=false`、`REPAIR_ENABLED=true`、`REPAIR_SIMULATED=true`、`REPAIR_MCP_SERVER_URL=http://mock-repair-mcp:8001/mcp`）。仅用独立项目运行：
+
+```bash
+docker compose -p kube-triage-phase3b-demo --profile repair-mock --env-file .local/phase3b.env -f infra/compose.yaml up -d --build --wait postgres redis mock-mcp mock-repair-mcp api web
+python3 scripts/acceptance_phase3b.py
+```
+
+模拟提案和结果带 `simulated=true`；Mock 的写入只改变其进程内存。切勿将模拟结果写成真实集群恢复。
+
+**真实演练准备（须另获单独授权后执行）**：先只读确认 `ssh k8s-m` 所指集群、命名空间和同名对象。若同名 Deployment 已存在且归属标签或内容不符，停止。获明确授权后才可应用**仅** `infra/k8s/repair-demo.yaml` 与 `infra/k8s/repair-rbac.yaml`，并生成短期凭据：
+
+```bash
+ssh k8s-m 'kubectl apply -f -' < infra/k8s/repair-demo.yaml
+ssh k8s-m 'kubectl apply -f -' < infra/k8s/repair-rbac.yaml
+python3 scripts/refresh-kubeconfig.py --ssh-host k8s-m --account kube-triage-repairer --confirm k8s-m/kube-triage-demo/kube-triage-repairer
+```
+
+私有 `.local/repair-kubeconfig` 权限为 0600。真实启动必须使用独立项目、`--profile repair`、`-f infra/compose.yaml -f infra/repair-api.compose.yaml`，设置 `REPAIR_ENABLED=true`、`REPAIR_SIMULATED=false`、`REPAIR_MCP_SERVER_URL=http://repair-mcp:8080/mcp`、`MCP_SERVER_URL=http://k8s-mcp:8080/mcp`，并有 Reader 私有凭据；`repair-mcp` 只有一个原生 `resources_scale` 工具，不发布宿主机端口。用户须在网页亲自 Approve。此处只记载手工步骤，本轮没有获得真实集群写入授权。
+
+停止模拟项目可手工运行相同 `-p/--profile/--env-file/-f` 前缀加 `down`；任何卷删除、集群 scale 回退或资源删除都需单独核对和确认，不能自动执行。
+
 ## 本 worktree 的安全启动
 
 稳定 Compose 项目位于 `/Users/vc/code/kube-triage-agent`。**不要从新 worktree 用固定项目名 `kube-triage-agent` 执行 up/down/build**。本地离线开发只需：
