@@ -230,3 +230,5 @@ __marimo__/
 backups/
 .playwright-cli/
 output/playwright/
+
+.idea
