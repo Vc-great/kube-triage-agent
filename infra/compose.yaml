@@ -36,6 +36,10 @@ services:
       AUTH_TYPE: custom
       DEMO_API_TOKEN: ${DEMO_API_TOKEN:?set DEMO_API_TOKEN}
       MCP_SERVER_URL: ${MCP_SERVER_URL:-http://mock-mcp:8000/mcp}
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}

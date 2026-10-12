@@ -23,6 +23,8 @@ _tools = None
 
 
 def validate_call(name: str, arguments: dict) -> None:
+    if not isinstance(arguments, dict):
+        raise TypeError("Tool parameters must be an object")
     required = {"namespace"}
     if name not in ALLOWED_TOOLS:
         raise ValueError("Tool denied: not on the read-only allowlist")
@@ -98,7 +100,7 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
         tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
         result = await asyncio.wait_for(tools[name].ainvoke(arguments), MCP_TIMEOUT_SECONDS)
         return {"ok": True, "result": _display_result(result)}
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         outcome, error_type = "rejected", "policy"
         return {"ok": False, "error": str(exc), "error_type": error_type}
     except Exception as exc:  # noqa: BLE001 - SDK raises transport and tool errors
@@ -107,6 +109,8 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
         return {"ok": False, "error": message, "error_type": error_type}
     finally:
         logger.info(json.dumps({"event": "mcp_tool_call", "thread_id": thread_id,
-            "tool_name": name, "namespace": NAMESPACE if arguments.get("namespace") == NAMESPACE
+            "tool_name": name if name in ALLOWED_TOOLS else "<denied>",
+            "namespace": NAMESPACE if isinstance(arguments, dict) and
+            arguments.get("namespace") == NAMESPACE
             else "<denied>", "duration_ms": round((time.monotonic() - start) * 1000),
             "outcome": outcome, "error_type": error_type}, ensure_ascii=False))
