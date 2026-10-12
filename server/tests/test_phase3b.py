@@ -72,6 +72,41 @@ def test_simulated_deployment_matches_real_policy(monkeypatch):
     assert repair.validate_deployment(data) == "simulated-demo-uid"
 
 
+def test_parse_real_scale_zero_omitted_from_spec():
+    response = [{"type": "text", "text": """# Current resource scale (YAML) is below
+apiVersion: autoscaling/v1
+kind: Scale
+metadata:
+  name: triage-repair-demo
+  namespace: kube-triage-demo
+  uid: demo-uid
+spec: {}
+status:
+  replicas: 0
+"""}]
+    assert repair.parse_scale(response) == {"replicas": 0, "uid": "demo-uid"}
+    response[0]["text"] = response[0]["text"].replace("  replicas: 0", "  replicas: 1")
+    with pytest.raises(ValueError):
+        repair.parse_scale(response)
+
+
+def test_pod_readiness_accepts_real_mcp_yaml_sequence(monkeypatch):
+    async def pods(_name, _args, _thread_id):
+        return {"ok": True, "result": """- metadata:
+    name: triage-sample
+    labels: {app: other}
+- metadata:
+    name: triage-repair-demo-abc
+    labels: {app: triage-repair-demo}
+  status:
+    conditions:
+      - {type: Ready, status: 'True'}
+"""}
+
+    monkeypatch.setattr(repair, "call_tool", pods)
+    assert asyncio.run(repair.pod_readiness("test-thread")) == "ready"
+
+
 @pytest.mark.parametrize("decision,expected_writes", [
     ({"decision": "reject"}, 0),
     ({"decision": "approve", "proposal_id": "wrong"}, 0),
