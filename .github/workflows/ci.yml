@@ -39,9 +39,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose -f infra/compose.yaml config --quiet
+      - run: |
+          docker compose -p kube-triage-ci-real -f infra/compose.yaml config --quiet
+          docker compose -p kube-triage-ci-test -f infra/test.compose.yaml --profile repair-mock config --quiet
         env:
           POSTGRES_USER: ci_user
           POSTGRES_DB: ci_db
           POSTGRES_PASSWORD: ci-placeholder-only
           DEMO_API_TOKEN: ci-placeholder-only
+          LLM_MODEL: ci-placeholder-only
+          LLM_API_KEY: ci-placeholder-only

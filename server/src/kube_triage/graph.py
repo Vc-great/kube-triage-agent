@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -14,8 +15,9 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import interrupt
 
 from kube_triage import repair
-from kube_triage.llm import chat_model, enabled
-from kube_triage.mcp_client import NAMESPACE, _allowed_tools, call_tool
+from kube_triage.config import ConfigurationError
+from kube_triage.llm import chat_model
+from kube_triage.mcp_client import MCP_TIMEOUT_SECONDS, _allowed_tools, call_tool
 from kube_triage.prompts import SYSTEM_PROMPT
 
 MAX_TOOL_CALLS = 6
@@ -59,50 +61,8 @@ def _last_user_text(state: MessagesState) -> str:
     return ""
 
 
-def parse_demo_command(text: str) -> tuple[str, dict] | None:
-    parts = text.strip().lower().split()
-    if not parts or parts[0] not in {"pods", "pod", "events", "logs"}:
-        return None
-    if parts[0] == "pods" and len(parts) == 2:
-        return "pods_list_in_namespace", {"namespace": parts[1]}
-    if parts[0] == "events" and len(parts) == 2:
-        return "events_list", {"namespace": parts[1]}
-    if parts[0] in {"pod", "logs"} and len(parts) == 3:
-        name = "pods_get" if parts[0] == "pod" else "pods_log"
-        args = {"namespace": parts[1], "name": parts[2]}
-        if name == "pods_log":
-            args["tail"] = 20
-        return name, args
-    return "invalid_command", {"namespace": parts[1] if len(parts) > 1 else ""}
-
-
-def _route(state: MessagesState) -> Literal[
-        "llm", "tool_request", "approval_prompt", "repair_prepare", "echo"]:
-    raw_text = _last_user_text(state).strip()
-    if raw_text == "/repair-demo":
-        return "repair_prepare"
-    text = raw_text.lower()
-    if text.startswith("/approve-demo"):
-        return "approval_prompt"
-    if enabled():
-        return "llm"
-    if parse_demo_command(text):
-        return "tool_request"
-    return "echo"
-
-
-def _echo(state: MessagesState) -> dict:
-    return {"messages": [AIMessage(content=(
-        f"试试 pods {NAMESPACE}、pod {NAMESPACE} crashloop-pod、"
-        f"events {NAMESPACE}、logs {NAMESPACE} crashloop-pod。"
-        if _last_user_text(state).strip().lower() == "status"
-        else f"Phase 1B echo: {_last_user_text(state)}"))]}
-
-
-def _request_tool(state: MessagesState) -> dict:
-    name, args = parse_demo_command(_last_user_text(state))
-    return {"messages": [AIMessage(content="正在查询 Kubernetes MCP 工具。",
-        tool_calls=[{"name": name, "args": args, "id": f"demo-{uuid4().hex}"}])]}
+def _route(state: MessagesState) -> Literal["llm", "repair_prepare"]:
+    return "repair_prepare" if _last_user_text(state).strip() == "/repair-demo" else "llm"
 
 
 async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
@@ -131,9 +91,9 @@ async def _llm(state: MessagesState) -> dict:
         return {"messages": [AIMessage(content=(
             "已达到本轮模型决策上限（4 轮）。请根据上方证据人工核查；"
             "若证据不足，不能断言根因。"))]}
+    model = chat_model()  # Configuration errors fail the Run, never become a healthy answer.
     try:
-        model = chat_model()
-        tools = list((await _allowed_tools()).values())
+        tools = list((await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)).values())
         model = model.bind_tools(tools)
         reply = await model.ainvoke([SystemMessage(content=SYSTEM_PROMPT),
                                       *state["messages"]])
@@ -147,8 +107,8 @@ async def _llm(state: MessagesState) -> dict:
                 "模型未返回内容或标准 Tool Call；本次诊断未完成。"))]}
         reply.name = "triage_llm"
         return {"messages": [reply]}
-    except ValueError as exc:
-        return {"messages": [AIMessage(content=str(exc))]}
+    except ConfigurationError:
+        raise
     except Exception as exc:  # noqa: BLE001 - provider/MCP errors vary by SDK
         name = type(exc).__name__.lower()
         if "ratelimit" in name or "429" in str(exc):
@@ -164,33 +124,6 @@ async def _llm(state: MessagesState) -> dict:
 
 def _after_llm(state: MessagesState) -> Literal["tools", "__end__"]:
     return "tools" if state["messages"][-1].tool_calls else END
-
-
-def _after_tools(state: MessagesState) -> Literal["llm", "summarize"]:
-    return "llm" if enabled() else "summarize"
-
-
-def _summarize(state: MessagesState) -> dict:
-    result = json.loads(state["messages"][-1].content)
-    if not result["ok"]:
-        message = result["error"]
-    else:
-        message = result["result"]
-    return {"messages": [AIMessage(content=message)]}
-
-
-def _approval(_state: MessagesState) -> dict:
-    decision = interrupt({"kind": "demo_approval", "mock": True,
-        "question": "Approve this simulated action? No cluster action will run.",
-        "options": ["approve", "reject"]})
-    approved = isinstance(decision, dict) and decision.get("decision") == "approve"
-    outcome = "approved" if approved else "rejected"
-    return {"messages": [AIMessage(
-        content=f"Simulated approval {outcome}; no Kubernetes action was performed.")]}
-
-
-def _approval_prompt(_state: MessagesState) -> dict:
-    return {"messages": [AIMessage(content="Mock approval required. Review the pending request below.")]}
 
 
 def _repair_stop(message: str, status: str = "denied") -> dict:
@@ -324,23 +257,13 @@ async def _repair_execute(state: AgentState, config: RunnableConfig) -> dict:
 
 builder = StateGraph(AgentState)
 builder.add_node("llm", _llm)
-builder.add_node("echo", _echo)
-builder.add_node("tool_request", _request_tool)
 builder.add_node("tools", _execute_tool)
-builder.add_node("summarize", _summarize)
-builder.add_node("approval", _approval)
-builder.add_node("approval_prompt", _approval_prompt)
 builder.add_node("repair_prepare", _repair_prepare)
 builder.add_node("repair_approval", _repair_approval)
 builder.add_node("repair_execute", _repair_execute)
 builder.add_conditional_edges(START, _route)
 builder.add_conditional_edges("llm", _after_llm)
-builder.add_edge("echo", END)
-builder.add_edge("tool_request", "tools")
-builder.add_conditional_edges("tools", _after_tools)
-builder.add_edge("summarize", END)
-builder.add_edge("approval_prompt", "approval")
-builder.add_edge("approval", END)
+builder.add_edge("tools", "llm")
 builder.add_conditional_edges("repair_prepare", _after_repair_prepare)
 builder.add_conditional_edges("repair_approval", _after_repair_approval)
 builder.add_edge("repair_execute", END)

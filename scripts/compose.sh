@@ -9,8 +9,12 @@ if grep -q '^DEMO_API_TOKEN=REPLACE_WITH_RANDOM_URL_SAFE_TOKEN$' .env || ! grep 
   echo "Set a unique DEMO_API_TOKEN in .env first." >&2
   exit 2
 fi
-if grep -q '^POSTGRES_PASSWORD=REPLACE_WITH_RANDOM_URL_SAFE_PASSWORD$' .env; then
+if grep -q '^POSTGRES_PASSWORD=REPLACE_WITH_RANDOM_URL_SAFE_PASSWORD$' .env || ! grep -q '^POSTGRES_PASSWORD=.' .env; then
   echo "Set a unique POSTGRES_PASSWORD in .env first." >&2
   exit 2
 fi
-exec docker compose -p kube-triage-agent --env-file .env -f infra/compose.yaml "$@"
+if [[ -z "${COMPOSE_PROJECT_NAME:-}" ]]; then
+  echo "Set an explicit COMPOSE_PROJECT_NAME after checking project ownership." >&2
+  exit 2
+fi
+exec docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f infra/compose.yaml "$@"

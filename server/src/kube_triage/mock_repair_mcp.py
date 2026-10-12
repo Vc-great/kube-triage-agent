@@ -32,4 +32,8 @@ for tool in mcp._tool_manager.list_tools():
 
 
 if __name__ == "__main__":
+    from kube_triage.config import test_mode
+
+    if not test_mode():
+        raise SystemExit("Mock MCP 仅允许 TRIAGE_ENV=test")
     mcp.run(transport="streamable-http")

@@ -3,11 +3,12 @@
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
+
+from kube_triage.config import ConfigurationError, reader_url
 
 NAMESPACE = "kube-triage-demo"
 ALLOWED_TOOLS = frozenset({"pods_list_in_namespace", "pods_get", "events_list", "pods_log"})
@@ -15,12 +16,9 @@ POD_NAME = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
 MCP_TIMEOUT_SECONDS = 8
 MAX_RESULT_CHARS = 16 * 1024
 logger = logging.getLogger("kube_triage.audit")
-_client = MultiServerMCPClient({"kubernetes": {
-    "transport": "streamable_http",
-    "url": os.environ.get("MCP_SERVER_URL", "http://mock-mcp:8000/mcp"),
-}}, handle_tool_errors=False)
+_client = None
 _tools = None
-
+_tools_url = None
 
 def validate_call(name: str, arguments: dict) -> None:
     if not isinstance(arguments, dict):
@@ -51,11 +49,18 @@ def validate_call(name: str, arguments: dict) -> None:
 
 
 async def _allowed_tools() -> dict:
-    global _tools
+    global _client, _tools, _tools_url
+    url = reader_url()  # Validate even after discovering tools under a previous configuration.
+    if _tools_url != url:
+        _tools = None
+        _client = MultiServerMCPClient({"kubernetes": {
+            "transport": "streamable_http", "url": url,
+        }}, handle_tool_errors=False)
+        _tools_url = url
     if _tools is None:
         discovered = await _client.get_tools(server_name="kubernetes")
         names = {tool.name for tool in discovered}
-        if names != ALLOWED_TOOLS:
+        if names != ALLOWED_TOOLS or len(discovered) != 4:
             raise RuntimeError(f"MCP tools/list mismatch: expected four tools, got {len(names)}")
         _tools = {tool.name: tool for tool in discovered}
     return _tools
@@ -107,6 +112,9 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
         safe_args = {**arguments, "tail": arguments.get("tail", 20)} if name == "pods_log" else arguments
         result = await asyncio.wait_for(tools[name].ainvoke(safe_args), MCP_TIMEOUT_SECONDS)
         return {"ok": True, "result": _display_result(result)}
+    except ConfigurationError:
+        outcome, error_type = "failed", "configuration"
+        raise
     except (TypeError, ValueError) as exc:
         outcome, error_type = "rejected", "policy"
         return {"ok": False, "error": str(exc), "error_type": error_type}

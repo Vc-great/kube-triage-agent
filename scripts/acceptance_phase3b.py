@@ -21,6 +21,8 @@ def setting(name):
 
 
 BASE = os.environ.get("API_BASE", "http://127.0.0.1:12027").rstrip("/")
+if setting("TRIAGE_ENV") != "test" or setting("REPAIR_SIMULATED").lower() != "true":
+    raise SystemExit("BLOCKED: Gate A requires explicit test-only simulation")
 TOKEN = setting("DEMO_API_TOKEN")
 results = []
 
@@ -88,25 +90,11 @@ try:
         raise RuntimeError("API health timeout")
     record("A03 health and authenticated Aegra thread", True)
 
-    legacy_thread = new_thread()
-    stream(legacy_thread, {"input": {"messages": [{"role": "human", "content": "status"}]}})
-    record("A02 legacy echo", "Phase 1B" in json.dumps(snapshot(legacy_thread)["values"],
-                                                       ensure_ascii=False) or
-           "试试 pods" in json.dumps(snapshot(legacy_thread)["values"], ensure_ascii=False))
-    stream(legacy_thread, {"input": {"messages": [{"role": "human",
-        "content": "pods kube-triage-demo"}]}})
-    record("A02 four-tool Reader path", "pods_list_in_namespace" in
-           json.dumps(snapshot(legacy_thread)["values"], ensure_ascii=False))
-    stream(legacy_thread, {"input": {"messages": [{"role": "human",
-        "content": "/approve-demo"}]}})
-    record("A02 legacy mock interrupt", bool(snapshot(legacy_thread).get("next")))
-    stream(legacy_thread, {"command": {"resume": {"decision": "reject"}}})
-    record("A02 legacy mock resume", "approval rejected" in
-           json.dumps(snapshot(legacy_thread)["values"], ensure_ascii=False))
-
     reject_thread = new_thread()
     reject_sse = start(reject_thread)
     reject_proposal, reject_state = proposal(reject_thread)
+    if not reject_proposal or reject_proposal.get("simulated") is not True:
+        raise RuntimeError("Refuse resume: proposal is not simulated")
     record("A03 checkpointed interrupt and SSE", bool(reject_state.get("next")) and
            reject_proposal.get("simulated") is True and
            reject_proposal["proposal_id"] in reject_sse)
@@ -128,6 +116,8 @@ try:
     approve_thread = new_thread()
     start(approve_thread)
     approve_proposal, _ = proposal(approve_thread)
+    if not approve_proposal or approve_proposal.get("simulated") is not True:
+        raise RuntimeError("Refuse approve: proposal is not simulated")
     record("A03 stable proposal ID", approve_proposal["proposal_id"] ==
            snapshot(approve_thread)["values"]["repair_proposal"]["proposal_id"])
     stream(approve_thread, {"command": {"resume": {"decision": "approve",

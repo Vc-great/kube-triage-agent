@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only port preflight; never binds or modifies another service."""
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -18,7 +19,7 @@ try:
     output = subprocess.check_output(["./scripts/compose.sh", "ps", "--format", "json"], text=True, stderr=subprocess.DEVNULL)
     for line in output.splitlines():
         item = json.loads(line)
-        if item.get("Project") == "kube-triage-agent":
+        if item.get("Project") == os.environ.get("COMPOSE_PROJECT_NAME"):
             for binding in item.get("Publishers", []):
                 if binding.get("URL") == "127.0.0.1" and binding.get("PublishedPort"):
                     owned.add((item.get("Service"), binding["PublishedPort"]))
