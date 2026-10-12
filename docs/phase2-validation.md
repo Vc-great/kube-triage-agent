@@ -16,7 +16,7 @@
 | Real Model + Mock MCP | NOT RUN | 此会话环境没有提供 `LLM_MODEL` 或 `LLM_API_KEY`；没有可验证的实际模型或标准 Tool Calling 服务。未启动带 Key 的 API、未做浏览器 LLM 展示。 |
 | Real Model + Real MCP + Kubernetes | NOT RUN | 同上；没有用旧 Phase 1B 的 Real MCP 结果代替本轮真实模型验收。未查询或修改集群。 |
 | Phase 2 浏览器 LLM UI | NOT RUN | 无模型配置；Web 构建和独立容器健康只证明前端可启动，不证明模型调用、报告和浏览器交互。 |
-| GitHub CI 三个 Job | NOT RUN | 要在 Draft PR 创建后检查 `python`、`web`、`compose` 三项。 |
+| GitHub CI 三个 Job | PASS | [Draft PR #5 的 Actions run](https://github.com/Vc-great/kube-triage-agent/actions/runs/38186651638)：`python`、`web`、`compose` 三项均 pass。 |
 
 ## 一条已运行的 Fake 诊断轨迹
 
