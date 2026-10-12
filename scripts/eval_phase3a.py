@@ -273,8 +273,8 @@ def main():
     if not token:
         raise SystemExit("BLOCKED: DEMO_API_TOKEN missing from private env or process")
     model = env.get("LLM_MODEL")
-    if env.get("LLM_ENABLED", "").lower() != "true" or not model or not env.get("LLM_API_KEY"):
-        raise SystemExit("BLOCKED: LLM_ENABLED=true and existing model credentials required")
+    if env.get("TRIAGE_ENV") != "test" or not model or not env.get("LLM_API_KEY"):
+        raise SystemExit("BLOCKED: TRIAGE_ENV=test and existing model credentials required")
     os.umask(0o077)
     private_directory(args.out)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,

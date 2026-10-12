@@ -35,11 +35,12 @@ services:
     environment:
       AUTH_TYPE: custom
       DEMO_API_TOKEN: ${DEMO_API_TOKEN:?set DEMO_API_TOKEN}
-      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://mock-mcp:8000/mcp}
-      LLM_ENABLED: ${LLM_ENABLED:-false}
-      LLM_MODEL: ${LLM_MODEL:-}
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://k8s-mcp:8080/mcp}
+      TRIAGE_ENV: production
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      LLM_MODEL: ${LLM_MODEL:?set real LLM_MODEL}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_KEY: ${LLM_API_KEY:?set real LLM_API_KEY}
       REPAIR_ENABLED: ${REPAIR_ENABLED:-false}
       REPAIR_SIMULATED: ${REPAIR_SIMULATED:-false}
       REPAIR_MCP_SERVER_URL: ${REPAIR_MCP_SERVER_URL:-}
@@ -57,7 +58,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
-      mock-mcp: {condition: service_started}
+      k8s-mcp: {condition: service_started}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:2026/health', timeout=3)"]
       interval: 5s
@@ -66,20 +67,16 @@ services:
     restart: unless-stopped
     networks: [private]
 
-  mock-mcp:
-    build:
-      context: ../server
-    command: ["python", "-m", "kube_triage.mock_mcp"]
-    restart: unless-stopped
-    networks: [private]
-
   k8s-mcp:
-    profiles: ["real"]
     image: ghcr.io/containers/kubernetes-mcp-server:v0.0.67
     command: ["--config", "/etc/kube-triage/config.toml"]
     volumes:
       - ./k8s-mcp/config.toml:/etc/kube-triage/config.toml:ro
-      - ../.local/kubeconfig:/run/kube-triage/kubeconfig:ro
+      - type: bind
+        source: ../.local/kubeconfig
+        target: /run/kube-triage/kubeconfig
+        read_only: true
+        bind: {create_host_path: false}
     restart: unless-stopped
     networks: [private]
 
@@ -89,15 +86,11 @@ services:
     command: ["--config", "/etc/kube-triage/repair-config.toml"]
     volumes:
       - ./k8s-mcp/repair-config.toml:/etc/kube-triage/repair-config.toml:ro
-      - ../.local/repair-kubeconfig:/run/kube-triage/repair-kubeconfig:ro
-    restart: unless-stopped
-    networks: [private]
-
-  mock-repair-mcp:
-    profiles: ["repair-mock"]
-    build:
-      context: ../server
-    command: ["python", "-m", "kube_triage.mock_repair_mcp"]
+      - type: bind
+        source: ../.local/repair-kubeconfig
+        target: /run/kube-triage/repair-kubeconfig
+        read_only: true
+        bind: {create_host_path: false}
     restart: unless-stopped
     networks: [private]
 

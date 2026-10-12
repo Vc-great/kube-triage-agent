@@ -62,6 +62,7 @@ def test_repair_manifest_is_namespaced_and_minimal():
 
 
 def test_simulated_deployment_matches_real_policy(monkeypatch):
+    monkeypatch.setenv("TRIAGE_ENV", "test")
     monkeypatch.setenv("REPAIR_SIMULATED", "true")
 
     async def scale():
@@ -118,6 +119,8 @@ def test_pod_readiness_accepts_real_mcp_yaml_sequence(monkeypatch):
     ({"decision": "approve"}, 1),
 ])
 def test_checkpoint_approval_and_single_write(monkeypatch, decision, expected_writes):
+    monkeypatch.setenv("TRIAGE_ENV", "test")
+    monkeypatch.setenv("REPAIR_SIMULATED", "true")
     monkeypatch.setenv("REPAIR_ENABLED", "true")
     replicas = [0]
     writes = []
@@ -148,6 +151,7 @@ def test_checkpoint_approval_and_single_write(monkeypatch, decision, expected_wr
         first = await graph.ainvoke({"messages": [HumanMessage(content="/repair-demo")]}, config)
         proposal = first["repair_proposal"]
         assert first["repair_status"] == "pending" and proposal["proposal_id"]
+        assert proposal["simulated"] is True
         snapshot = await graph.aget_state(config)
         assert snapshot.next == ("repair_approval",)
         assert snapshot.values["repair_proposal"]["proposal_id"] == proposal["proposal_id"]
@@ -162,6 +166,7 @@ def test_checkpoint_approval_and_single_write(monkeypatch, decision, expected_wr
     final = asyncio.run(scenario())
     assert len(writes) == expected_writes
     if expected_writes:
+        assert final["repair_result"]["simulated"] is True
         assert final["repair_result"]["classification"] == "写操作已成功且可验证"
         assert writes == [repair._scale_args(1)]
     else:

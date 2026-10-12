@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from kube_triage.config import test_mode
 from kube_triage.mcp_client import NAMESPACE, _display_result, _error_type, call_tool
 
 NAME = "triage-repair-demo"
@@ -28,10 +29,12 @@ logger = logging.getLogger("kube_triage.audit")
 
 
 def repair_enabled() -> bool:
+    test_mode()
     return os.getenv("REPAIR_ENABLED", "false").lower() == "true"
 
 
 def simulated() -> bool:
+    test_mode()
     return os.getenv("REPAIR_SIMULATED", "false").lower() == "true"
 
 

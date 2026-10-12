@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from langchain_core.messages import HumanMessage
 
-from kube_triage.graph import _route, parse_demo_command
+from kube_triage.graph import _route
 from kube_triage.mcp_client import NAMESPACE, _display_result, validate_call
 from kube_triage.mock_mcp import (
     check_namespace,
@@ -16,17 +16,10 @@ from kube_triage.mock_mcp import (
 )
 
 
-def test_deterministic_routing():
-    assert parse_demo_command(f"pods {NAMESPACE}") == (
-        "pods_list_in_namespace", {"namespace": NAMESPACE})
-    assert parse_demo_command(f"pod {NAMESPACE} healthy-pod") == (
-        "pods_get", {"namespace": NAMESPACE, "name": "healthy-pod"})
-    assert parse_demo_command(f"events {NAMESPACE}") == (
-        "events_list", {"namespace": NAMESPACE})
-    assert parse_demo_command(f"logs {NAMESPACE} healthy-pod") == (
-        "pods_log", {"namespace": NAMESPACE, "name": "healthy-pod", "tail": 20})
-    assert _route({"messages": [HumanMessage(content="/approve-demo")]}) == "approval_prompt"
-    assert _route({"messages": [HumanMessage(content=f"pods {NAMESPACE}")]}) == "tool_request"
+@pytest.mark.parametrize("text", ["有哪些 Pod？", "pods kube-triage-demo", "/approve-demo", "status"])
+def test_diagnosis_always_routes_to_llm(monkeypatch, text):
+    monkeypatch.setenv("LLM_ENABLED", "false")
+    assert _route({"messages": [HumanMessage(content=text)]}) == "llm"
 
 
 @pytest.mark.parametrize("name,args", [

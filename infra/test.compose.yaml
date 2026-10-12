@@ -1,0 +1,113 @@
+# 仅供显式离线测试；不可与正式 compose.yaml 叠加。
+name: kube-triage-test
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [private]
+
+  redis:
+    image: redis:8.4.7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [private]
+
+  api:
+    build:
+      context: ../server
+    environment:
+      AUTH_TYPE: custom
+      DEMO_API_TOKEN: ${DEMO_API_TOKEN:?set DEMO_API_TOKEN}
+      MCP_SERVER_URL: http://mock-mcp:8000/mcp
+      TRIAGE_ENV: test
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      LLM_MODEL: ${LLM_MODEL:?set real LLM_MODEL}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:?set real LLM_API_KEY}
+      REPAIR_ENABLED: ${REPAIR_ENABLED:-false}
+      REPAIR_SIMULATED: "true"
+      REPAIR_MCP_SERVER_URL: http://mock-repair-mcp:8001/mcp
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      REDIS_BROKER_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      SERVER_URL: http://localhost:${API_PORT:-12026}
+      AEGRA_CONFIG: /app/aegra.json
+    ports:
+      - "127.0.0.1:${API_PORT:-12026}:2026"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      mock-mcp: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:2026/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+    networks: [private]
+
+  mock-mcp:
+    build:
+      context: ../server
+    command: ["python", "-m", "kube_triage.mock_mcp"]
+    environment:
+      TRIAGE_ENV: test
+    networks: [private]
+
+  mock-repair-mcp:
+    profiles: ["repair-mock"]
+    build:
+      context: ../server
+    command: ["python", "-m", "kube_triage.mock_repair_mcp"]
+    environment:
+      TRIAGE_ENV: test
+    networks: [private]
+
+  web:
+    build:
+      context: ../apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:12026}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:12026}
+      NEXT_PUBLIC_ASSISTANT_ID: agent
+    ports:
+      - "127.0.0.1:${WEB_PORT:-13000}:3000"
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+    networks: [private]
+
+networks:
+  private: {}
+
+volumes:
+  postgres_data: {}
+  redis_data: {}
