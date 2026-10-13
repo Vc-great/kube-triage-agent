@@ -13,7 +13,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen --python 3.13
         working-directory: server
-      - run: uv run --frozen ruff check src tests
+      - run: uv run --frozen ruff check src tests ../scripts/check_issue11_manifests.py
+        working-directory: server
+      - run: uv run --frozen python ../scripts/check_issue11_manifests.py
         working-directory: server
       - run: uv run --frozen pytest -q
         working-directory: server
