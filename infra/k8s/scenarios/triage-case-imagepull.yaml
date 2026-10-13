@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: triage-case-imagepull
+  namespace: kube-triage-demo
+  labels:
+    app.kubernetes.io/part-of: kube-triage-agent
+    app.kubernetes.io/component: scenario-imagepull
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Always
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: busybox:triage-issue11-tag-does-not-exist-20261013
+      imagePullPolicy: Always
+      command: [sh, -c, 'exec sleep 3600']
+      resources:
+        requests: {cpu: 5m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]

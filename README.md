@@ -50,6 +50,8 @@ python3 scripts/eval_phase3a.py --env-file .local/phase3a.env --out .local/eval-
 
 ## 当前验收与历史边界
 
+Issue #11 的未部署 Gate A 草案见 [三个真实故障 Scenario](docs/issue11-scenarios.md)与[只读预检/验收矩阵](docs/issue11-gatea-validation.md)。本轮没有 Kubernetes 写入授权；真实部署须另经 Gate B 批准。
+
 当前 A01–A15、实际失败/阻塞、文件清单和面试复盘见 [Real-by-default 验收](docs/real-by-default-review.md)。`docs/phase*` 是各阶段历史记录，其旧命令和默认架构不代表当前启动方式。Phase 3A 12 次原分母、人工 Grounding、Golden 与 [历史报告](docs/phase3a-report.md) 保留；[Phase 3B Gate B](docs/phase3b-gateb-real-e2e.md) 的 B06=FAIL 保留。旧模拟审批 Checkpoint 不转换为真实写入：只读查看历史，为新诊断新建 Thread。
 
 
