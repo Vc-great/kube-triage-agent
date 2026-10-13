@@ -50,6 +50,8 @@ python3 scripts/eval_phase3a.py --env-file .local/phase3a.env --out .local/eval-
 
 ## 当前验收与历史边界
 
+[Issue #11 Gate B2 只读收口补记](docs/issue11-gateb2-final-report.md)记录历史严格 Gate、当前证据及本轮停止条件。
+
 Issue #11 的未部署 Gate A 草案见 [三个真实故障 Scenario](docs/issue11-scenarios.md)与[只读预检/验收矩阵](docs/issue11-gatea-validation.md)；先前只读现状见 [Gate B1 预检](docs/issue11-gateb-real-e2e.md)。[Luna High M1/M2 实测记录](docs/issue11-m1-m2-real-e2e.md)说明本轮 M1 失败后的停止点与未创建的三个 Pod。
 
 当前 A01–A15、实际失败/阻塞、文件清单和面试复盘见 [Real-by-default 验收](docs/real-by-default-review.md)。`docs/phase*` 是各阶段历史记录，其旧命令和默认架构不代表当前启动方式。Phase 3A 12 次原分母、人工 Grounding、Golden 与 [历史报告](docs/phase3a-report.md) 保留；[Phase 3B Gate B](docs/phase3b-gateb-real-e2e.md) 的 B06=FAIL 保留。旧模拟审批 Checkpoint 不转换为真实写入：只读查看历史，为新诊断新建 Thread。
