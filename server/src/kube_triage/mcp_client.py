@@ -12,6 +12,18 @@ from kube_triage.config import ConfigurationError, reader_url
 
 NAMESPACE = "kube-triage-demo"
 ALLOWED_TOOLS = frozenset({"pods_list_in_namespace", "pods_get", "events_list", "pods_log"})
+TOOL_ARGUMENTS = {
+    "pods_list_in_namespace": (("namespace",), ()),
+    "pods_get": (("namespace", "name"), ()),
+    "events_list": (("namespace",), ()),
+    "pods_log": (("namespace", "name"), ("tail", "container")),
+}
+TOOL_DESCRIPTIONS = {
+    "pods_list_in_namespace": "列出目标 Namespace 中的 Pod。",
+    "pods_get": "读取目标 Namespace 中指定 Pod 的详情。",
+    "events_list": "列出目标 Namespace 中的 Event。",
+    "pods_log": "读取目标 Namespace 中指定 Pod 的容器日志。",
+}
 POD_NAME = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
 MCP_TIMEOUT_SECONDS = 8
 MAX_RESULT_CHARS = 16 * 1024
@@ -23,19 +35,18 @@ _tools_url = None
 def validate_call(name: str, arguments: dict) -> None:
     if not isinstance(arguments, dict):
         raise TypeError("Tool parameters must be an object")
-    required = {"namespace"}
     if name not in ALLOWED_TOOLS:
         raise ValueError("Tool denied: not on the read-only allowlist")
+    required_names, optional_names = TOOL_ARGUMENTS[name]
+    required = set(required_names)
     if arguments.get("namespace") != NAMESPACE:
         raise ValueError(f"Namespace denied: only {NAMESPACE} is allowed")
-    if name in {"pods_get", "pods_log"}:
-        required.add("name")
+    if "name" in required:
         pod = arguments.get("name")
         if not isinstance(pod, str) or len(pod) > 253 or not POD_NAME.fullmatch(pod):
             raise ValueError("name must be a Kubernetes-style Pod name")
-    allowed = required.copy()
+    allowed = required | set(optional_names)
     if name == "pods_log":
-        allowed.update({"tail", "container"})
         tail = arguments.get("tail", 20)
         if isinstance(tail, bool) or not isinstance(tail, int) or not 1 <= tail <= 100:
             raise ValueError("tail must be an integer from 1 to 100")
@@ -46,6 +57,31 @@ def validate_call(name: str, arguments: dict) -> None:
                 raise ValueError("container must be a Kubernetes-style name")
     if not required <= set(arguments) or not set(arguments) <= allowed:
         raise ValueError("Unexpected or missing tool parameters")
+
+
+def build_model_tool_schemas(native_tools: dict) -> list[dict]:
+    """Expose only the arguments accepted by validate_call; execution stays native MCP."""
+    if set(native_tools) != ALLOWED_TOOLS or len(native_tools) != len(ALLOWED_TOOLS):
+        raise RuntimeError("MCP tools/list mismatch: expected four tools")
+    fields = {
+        "namespace": {"type": "string", "enum": [NAMESPACE],
+                      "description": "固定目标 Namespace。"},
+        "name": {"type": "string", "pattern": POD_NAME.pattern, "maxLength": 253,
+                 "description": "Pod 名称。"},
+        "tail": {"type": "integer", "minimum": 1, "maximum": 100,
+                 "description": "返回的末尾日志行数；省略时默认 20。"},
+        "container": {"type": "string", "pattern": POD_NAME.pattern, "maxLength": 253,
+                      "description": "容器名称。"},
+    }
+    schemas = []
+    for name, (required, optional) in TOOL_ARGUMENTS.items():
+        schemas.append({"type": "function", "function": {
+            "name": name, "description": TOOL_DESCRIPTIONS[name],
+            "parameters": {"type": "object",
+                           "properties": {key: fields[key] for key in (*required, *optional)},
+                           "required": list(required), "additionalProperties": False},
+        }})
+    return schemas
 
 
 async def _allowed_tools() -> dict:

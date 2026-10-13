@@ -17,7 +17,12 @@ from langgraph.types import interrupt
 from kube_triage import repair
 from kube_triage.config import ConfigurationError
 from kube_triage.llm import chat_model
-from kube_triage.mcp_client import MCP_TIMEOUT_SECONDS, _allowed_tools, call_tool
+from kube_triage.mcp_client import (
+    MCP_TIMEOUT_SECONDS,
+    _allowed_tools,
+    build_model_tool_schemas,
+    call_tool,
+)
 from kube_triage.prompts import SYSTEM_PROMPT
 
 MAX_TOOL_CALLS = 6
@@ -93,8 +98,8 @@ async def _llm(state: MessagesState) -> dict:
             "若证据不足，不能断言根因。"))]}
     model = chat_model()  # Configuration errors fail the Run, never become a healthy answer.
     try:
-        tools = list((await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)).values())
-        model = model.bind_tools(tools)
+        native_tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
+        model = model.bind_tools(build_model_tool_schemas(native_tools))
         reply = await model.ainvoke([SystemMessage(content=SYSTEM_PROMPT),
                                       *state["messages"]])
         if not isinstance(reply, AIMessage):

@@ -31,7 +31,7 @@ class FakeModel:
         self.bound = []
 
     def bind_tools(self, tools):
-        self.bound = [tool.name for tool in tools]
+        self.bound = tools
         return self
 
     async def ainvoke(self, messages):
@@ -70,7 +70,7 @@ def test_natural_questions_choose_different_native_tools(llm):
         llm.setattr(agent, "chat_model", lambda model=model: model)
         messages = run([HumanMessage(content=question)])
         assert next(m for m in messages if isinstance(m, ToolMessage)).name == name
-        assert set(model.bound) == mcp_client.ALLOWED_TOOLS
+        assert {tool["function"]["name"] for tool in model.bound} == mcp_client.ALLOWED_TOOLS
         assert len(model.seen) == 2
 
 

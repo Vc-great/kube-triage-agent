@@ -50,3 +50,15 @@ Human Review = **NOT RUN**；真实三案诊断通过率不可计算，不能报
 1. 为什么 `Run success` 不等于诊断成功？因为 Graph 正常结束仍可能只有工具拒绝和预算提示，需要核对 `ok`、目标身份和最终结论证据。
 2. 如何修复本次参数冲突？让模型可见工具 schema 与执行层白名单一致，并用新 Run 验证标准 Tool Call、工具结果和二次模型回答。
 3. 为什么没有继续创建故障 Pod？M2 的明确前置条件是 M1 真实工具链通过；本轮四次调用全失败，继续写入无法得到可信评测。
+
+## 后续阶段：模型可见工具 Schema 契约修复
+
+本节记录 PR #20 的后续代码修复，不改判上文的历史 M1=FAIL，也不改变 Phase 3B B06=FAIL、PR #18 独立 Host Review=BLOCKED。原生 Reader MCP 的列表工具 Schema 包含 `fieldSelector`、`labelSelector`，而服务端 `validate_call()` 对列表工具只接受 `namespace`。模型基于其可见 Schema 生成了合法格式的 Tool Call，却被更窄的执行策略拒绝。
+
+修复让四个模型可见 function Schema 从执行层共用的字段白名单生成：`pods_list_in_namespace(namespace)`、`pods_get(namespace,name)`、`events_list(namespace)`、`pods_log(namespace,name,tail?,container?)`。所有参数 Schema 设置 `additionalProperties=false`；Namespace 以单值 enum 限定为 `kube-triage-demo`，`tail` 为 1–100 的整数且可省略。模型绑定的只是描述；Graph 继续把标准 Tool Call 交给 `call_tool()`，由 `validate_call()` 先校验，再调用原生 Reader MCP Tool。非法 selector 不会被丢弃或转成有效调用，Repair/Scale 未加入模型工具。
+
+离线回归使用含 selector 的受控 Native Tool 模拟历史冲突，并捕获 Graph 实际 `bind_tools()` 参数；合法列表调用可到达原生 `.ainvoke()` 并产生配对的成功 ToolMessage，非法 selector 得到 `policy` 且底层调用次数为零。另检查四个 Schema 的必填/可选字段、锁定 LangChain 的工具转换、执行层越界拒绝、工具发现与缓存、预算及 Luna development 配置。此类离线测试不能证明 Provider 接受 Schema，也不能证明新的真实 M1 已通过。
+
+本阶段离线检查：Ruff PASS；pytest 130 passed（原基线 109，新增参数化用例净增 21）；三份 Manifest 校验 PASS；`git diff --check` PASS。独立 Host `codex review --uncommitted` 被自动审批拒绝，理由是未提交代码会交给外部审查服务；**独立 Review=BLOCKED**，未绕过。已做本地静态自查：模型工具恰好四个，固定 Namespace 与执行层相同，`call_tool()` 仍先校验后调用原生只读 Reader；Graph 预算、Repair 隔离、日志脱敏未改变。
+
+`NEW_M1=BLOCKED / NOT RUN`：等待本轮代码、CI、开发 Runtime 身份和无付费预检完成后，另行取得本人对一次新 Thread/Run 的明确批准。即使随后获批，旧 M1 仍保留 FAIL。`M2=NOT RUN`；本阶段 Kubernetes 写入为 0，三个目标 Pod 未创建。
