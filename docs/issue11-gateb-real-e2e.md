@@ -52,7 +52,7 @@ Reader SA/Role/RoleBinding 的项目标签与绑定对象正确；Role 仅允许
 | B1-02 真 K8s 只读身份、名称、RBAC、每节点预算 | PASS | 本轮查询满足请求层条件；Metrics 实际利用率 UNKNOWN。 |
 | B1-03 Real 模型 + Real Reader 的独立运行态 | **BLOCKED** | 正式 Reader 可读，但独立 development API 未运行；模型服务和费用未验证。 |
 | B1-04 三案离线数据契约 | PASS | 中性提问、关联/人工核对规则已定义；真实案例没有执行。 |
-| B1-05 精确授权请求 | BLOCKED | 本页供审阅；必须由真人在本轮证据之后明确批准才可转 PASS。 |
+| B1-05 精确授权请求并停止 | PASS | 交付时向用户展示精确参数并等待真人决定；这不代表 B2 已获批准。 |
 | B2-01 用户明确批准 | **BLOCKED** | 本提示词和旧授权均不算本次批准。 |
 | B2-02 三 Pod 创建/UID/Event | NOT RUN | 没有 Kubernetes 写入。 |
 | B2-03 三条 Real LLM + Real MCP Run | NOT RUN | 无新 Thread/Run。 |
