@@ -61,4 +61,14 @@ Human Review = **NOT RUN**；真实三案诊断通过率不可计算，不能报
 
 本阶段离线检查：Ruff PASS；pytest 130 passed（原基线 109，新增参数化用例净增 21）；三份 Manifest 校验 PASS；`git diff --check` PASS。独立 Host `codex review --uncommitted` 被自动审批拒绝，理由是未提交代码会交给外部审查服务；**独立 Review=BLOCKED**，未绕过。已做本地静态自查：模型工具恰好四个，固定 Namespace 与执行层相同，`call_tool()` 仍先校验后调用原生只读 Reader；Graph 预算、Repair 隔离、日志脱敏未改变。
 
-`NEW_M1=BLOCKED / NOT RUN`：等待本轮代码、CI、开发 Runtime 身份和无付费预检完成后，另行取得本人对一次新 Thread/Run 的明确批准。即使随后获批，旧 M1 仍保留 FAIL。`M2=NOT RUN`；本阶段 Kubernetes 写入为 0，三个目标 Pod 未创建。
+截至 Schema 修复提交时，`NEW_M1=BLOCKED / NOT RUN`：等待本轮代码、CI、开发 Runtime 身份和无付费预检完成后，另行取得本人对一次新 Thread/Run 的明确批准。该时点 `M2=NOT RUN`、Kubernetes 写入为 0；后续获批结果记录如下，旧 M1 始终保留 FAIL。
+
+## 新 M1：另获授权后的一次真实只读验证
+
+用户在本次对话中明确批准**新建一个独立 development Thread，只执行一次 `gpt-6-luna` High 请求的付费 Real LLM + Real Reader Smoke**。执行前复核 PR 代码提交 `ed1553cb0b6e577451b6592c6d57c1adade7b362`、官方 development supervisor 为 full/ready、目标既有演示 Pod 为 Running/Ready，四个真实 Reader 工具名称准确；Repair 两开关仍关闭。模型问题只指定演示 Deployment 的当前 Pod 状态，未透露预期结论或标签。
+
+本次 Thread `918a71f6-86c1-44ba-8bba-418d35b1c60e`、Run `bdad7416-1b58-4214-a20e-15a7c5f8b2b2`。仅发起一次 Run，未自动重试。Provider 消息回显模型名 `gpt-6-luna`；Responses API 与 `reasoning.effort=high` 是代码发出的**请求配置**，服务端实际 effort 仍未知。SSE 有 `end`、无 `error`，Run status=`success`，State 关闭、History 存在；这些只是协议证据。
+
+模型进行了两次决策、一次标准 Tool Call：`pods_list_in_namespace({"namespace":"kube-triage-demo"})`，没有 selector。参数通过原有 `validate_call()`；唯一 ToolMessage 与 Call ID 精确配对、`ok=true`、无 `error_type`，由真实 Native Reader 返回。列表含目标 Pod 的 name/namespace/UID，UID 与本次独立 `pods_get` 预检一致；Pod phase=Running、Pod Ready=True、容器 Ready=True。最终中文回答引用列表工具和目标 Pod，确认其当前 Running/Ready，并明确仅凭现有工具不能证明完整 Deployment→ReplicaSet→Pod 控制器链或整体副本状态。**新 M1=PASS**：具备目标相关的真实 Reader 成功证据和有据回答；旧 M1=FAIL 不改判。
+
+原始 SSE、State、History、Provider 响应、Tool Call/ToolMessage 和真实资源内容仅保存在 Git 忽略的 `.local/issue11-real-e2e/new-m1-private.json`（目录 0700、文件 0600）。公开记录不包含原始 UID、日志、Provider URL 或凭据。本次没有创建三个故障 Pod，也没有任何 Kubernetes 写入；**M2=NOT RUN**，后续写入须重新核对实时资源并取得新的精确授权。
