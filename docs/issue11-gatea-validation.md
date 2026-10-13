@@ -10,7 +10,7 @@
 | Manifest 静态检查 | PASS | `server/.venv/bin/python scripts/check_issue11_manifests.py`：3 个单文档 Pod、固定 Namespace、唯一名称与标签、安全上下文、资源、触发条件；脚本只读取本地 YAML，没有 Kubernetes 客户端、子进程或写命令。`git diff --check` 通过。 |
 | 离线单测 | PASS | 在 `server` 运行 `.venv/bin/pytest -q`：97 passed；因 Worktree 的 sandbox 缓存写权限，pytest 报 1 条缓存警告，不影响测试断言。 |
 | Ruff | PASS | `RUFF_CACHE_DIR=/private/tmp/issue11-gatea-ruff .venv/bin/ruff check src tests ../scripts/check_issue11_manifests.py`：All checks passed。首次无该设置时只因 sandbox 无权建立 `.ruff_cache` 失败，改用临时缓存后通过。 |
-| 历史 Phase 3A/3B 与 CI | NOT RUN | 未重跑真实模型、旧 Golden 评分、Compose 或 CI；既有历史报告和 B06=FAIL 不改。新 PR 的 CI 另查。 |
+| 历史 Phase 3A/3B | NOT RUN | 未重跑真实模型、旧 Golden 评分或 Compose；既有历史报告和 B06=FAIL 不改。新 PR 的 CI 单列远端状态。 |
 
 `server/pyproject.toml` 要求 Python `>=3.12,<3.15`。Sandbox 的 `/usr/bin/python3` 为 3.9.6，不能用于本项目；Host 已有 Python 3.13.14 与 uv 0.11.21。`uv sync --frozen --offline --python 3.13` 仅用现有缓存建本 Worktree 的 `.venv`，未下载依赖、未启动 Compose 或拉镜像。
 
@@ -31,7 +31,7 @@ Reader SA `kube-triage-reader` 带项目标签且 `automountServiceAccountToken=
 | 集群只读核对 | BLOCKED | 身份、Namespace、名称、对象归属 PASS；节点实时余量未知，整体 Gate B 前置预检未完成。 |
 | Reader RBAC | PASS | Role/RoleBinding 与目标 SA `can-i` 允许/拒绝符合最小权限；本轮未测真实 Reader MCP 调用。 |
 | 独立 Review | PASS | `codex review --uncommitted` 独立检查全部变更并运行离线清单检查，未发现需修复的缺陷；这不替代真实集群验收。 |
-| Draft PR | NOT RUN | 待创建并核对 draft 状态、base/head 与 CI。 |
+| Draft PR | PASS | [#17](https://github.com/Vc-great/kube-triage-agent/pull/17) 已创建，`draft=true`，base `main`=`9e79cb9a75fd4c6b015e11f06cb5ff40a3753b55`；创建时 head=`61056cb6271af7cf038a28cd7035501a1a95a230`。CI #30 创建时为 in_progress，完成后单独核对。 |
 | 真实部署 Gate B | BLOCKED | 本轮无 Kubernetes 写入授权，且节点余量证据不足；不得 apply、自动 rollback 或 cleanup。 |
 | 真实模型 E2E | NOT RUN | 无三个真实故障 Pod；Phase 3A `mock=true/static-fixture` 和旧 smoke 不可顶替。 |
 
