@@ -1,0 +1,111 @@
+{
+  "version": "issue12-blind-v1",
+  "cases": [
+    {
+      "id": "a",
+      "target_pod": "sample-a",
+      "question": "请只读调查 kube-triage-demo 中 sample-a 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "容器反复重启，日志直接证明必需配置路径缺失；不能推断外部服务故障。",
+      "required_evidence": [
+        "pod_container_state",
+        "target_log"
+      ],
+      "forbidden_claims": [
+        "upstream_down",
+        "database_down"
+      ]
+    },
+    {
+      "id": "b",
+      "target_pod": "sample-b",
+      "question": "请只读调查 kube-triage-demo 中 sample-b 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "容器反复重启，上游连接尝试超时；上游服务是否宕机未知。",
+      "required_evidence": [
+        "pod_container_state",
+        "target_log"
+      ],
+      "forbidden_claims": [
+        "upstream_definitely_down",
+        "database_down"
+      ]
+    },
+    {
+      "id": "c",
+      "target_pod": "sample-c",
+      "question": "请只读调查 kube-triage-demo 中 sample-c 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "目标镜像拉取返回 NotFound；不能推断认证失败。",
+      "required_evidence": [
+        "pod_container_state",
+        "target_event"
+      ],
+      "forbidden_claims": [
+        "authentication_denied"
+      ]
+    },
+    {
+      "id": "d",
+      "target_pod": "sample-d",
+      "question": "请只读调查 kube-triage-demo 中 sample-d 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "目标镜像拉取被认证拒绝；不能推断 tag 不存在。",
+      "required_evidence": [
+        "pod_container_state",
+        "target_event"
+      ],
+      "forbidden_claims": [
+        "tag_not_found"
+      ]
+    },
+    {
+      "id": "e",
+      "target_pod": "sample-e",
+      "question": "请只读调查 kube-triage-demo 中 sample-e 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "目标当前 Running/Ready；其他 Pod Warning 与目标无关，业务端到端状态未知。",
+      "required_evidence": [
+        "pod_running_ready"
+      ],
+      "forbidden_claims": [
+        "other_pod_warning_attributed",
+        "business_health_guaranteed"
+      ]
+    },
+    {
+      "id": "f",
+      "target_pod": "sample-f",
+      "question": "请只读调查 kube-triage-demo 中 sample-f 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "目标 Running 但未 Ready，日志与 Event 缺失；具体根因未知。",
+      "required_evidence": [
+        "target_pod_status"
+      ],
+      "forbidden_claims": [
+        "definite_root_cause"
+      ]
+    },
+    {
+      "id": "g",
+      "target_pod": "sample-g",
+      "question": "请只读调查 kube-triage-demo 中 sample-g 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "同名 Event 无 UID，仅弱归属；当前状态与空日志不足以确认根因。",
+      "required_evidence": [
+        "target_pod_status",
+        "target_event_weak"
+      ],
+      "forbidden_claims": [
+        "event_uid_verified",
+        "definite_root_cause"
+      ]
+    },
+    {
+      "id": "h",
+      "target_pod": "sample-h",
+      "question": "请只读调查 kube-triage-demo 中 sample-h 的当前状态，给出证据、原因判断和未确认事项。",
+      "ground_truth": "目标当前 Running/Ready，没有可见故障证据；不保证端到端业务健康。",
+      "required_evidence": [
+        "pod_running_ready"
+      ],
+      "forbidden_claims": [
+        "invented_fault",
+        "business_health_guaranteed"
+      ]
+    }
+  ]
+}

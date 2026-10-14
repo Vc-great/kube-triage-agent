@@ -1,0 +1,27 @@
+{
+  "kind": "fixture",
+  "name": "sample-g",
+  "phase": "Running",
+  "containerStatuses": [
+    {
+      "name": "app",
+      "ready": false,
+      "restartCount": 0,
+      "state": {
+        "running": {
+          "startedAt": "2026-10-13T00:00:00Z"
+        }
+      },
+      "lastState": {}
+    }
+  ],
+  "log": "",
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Previous container back-off observed"
+    }
+  ],
+  "uid": "synthetic-g"
+}

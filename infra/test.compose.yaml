@@ -42,6 +42,8 @@ services:
       LLM_MODEL: ${LLM_MODEL:?set real LLM_MODEL}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:?set real LLM_API_KEY}
+      EVAL_PROMPT_VARIANT: ${EVAL_PROMPT_VARIANT:-A}
+      EVAL_LUNA_RESPONSES_HIGH: ${EVAL_LUNA_RESPONSES_HIGH:-false}
       REPAIR_ENABLED: ${REPAIR_ENABLED:-false}
       REPAIR_SIMULATED: "true"
       REPAIR_MCP_SERVER_URL: http://mock-repair-mcp:8001/mcp
@@ -74,6 +76,7 @@ services:
     command: ["python", "-m", "kube_triage.mock_mcp"]
     environment:
       TRIAGE_ENV: test
+      TRIAGE_MOCK_DATASET: ${TRIAGE_MOCK_DATASET:-phase3a}
     networks: [private]
 
   mock-repair-mcp:

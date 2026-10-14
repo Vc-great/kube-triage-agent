@@ -1,0 +1,28 @@
+{
+  "kind": "fixture",
+  "name": "sample-e",
+  "phase": "Running",
+  "containerStatuses": [
+    {
+      "name": "app",
+      "ready": true,
+      "restartCount": 0,
+      "state": {
+        "running": {
+          "startedAt": "2026-10-13T00:00:00Z"
+        }
+      },
+      "lastState": {}
+    }
+  ],
+  "log": "ready",
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "Started",
+      "message": "Container started",
+      "uid": "synthetic-e"
+    }
+  ],
+  "uid": "synthetic-e"
+}

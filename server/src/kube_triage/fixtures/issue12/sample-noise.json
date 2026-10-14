@@ -1,0 +1,28 @@
+{
+  "kind": "fixture",
+  "name": "sample-noise",
+  "phase": "Running",
+  "containerStatuses": [
+    {
+      "name": "app",
+      "ready": false,
+      "restartCount": 3,
+      "state": {
+        "waiting": {
+          "reason": "CrashLoopBackOff"
+        }
+      },
+      "lastState": {}
+    }
+  ],
+  "log": "unrelated pod failure",
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off unrelated pod",
+      "uid": "synthetic-noise"
+    }
+  ],
+  "uid": "synthetic-noise"
+}
