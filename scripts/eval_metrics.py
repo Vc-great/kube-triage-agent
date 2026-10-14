@@ -26,6 +26,10 @@ def metric(value, unit, denominator, provenance, reason=None, status="observed")
             "reason": reason if value is None else None}
 
 
+def value(item):
+    return item["value"]
+
+
 def number(data, aliases):
     for key in aliases:
         value = data.get(key)
@@ -183,12 +187,14 @@ def tool_metrics(messages):
 def latency(values):
     ordered = sorted(v for v in values if type(v) in (int, float) and math.isfinite(v) and v >= 0)
     n = len(ordered)
-    return {"n": n, "p50": metric(statistics.median(ordered) if n else None, "seconds", n,
+    return {"n": metric(n, "runs", len(values), "observed elapsed_seconds"),
+            "p50": metric(statistics.median(ordered) if n else None, "seconds", n,
                                    "runner.elapsed_seconds; statistics.median", "no_observations"),
             "p95": metric(ordered[math.ceil(.95 * n) - 1] if n else None, "seconds", n,
                            "runner.elapsed_seconds; nearest_rank", "no_observations"),
             "warning": "LOW_SAMPLE_WARNING" if n < 20 else None,
-            "missing_count": len(values) - n}
+            "missing_count": metric(len(values) - n, "runs", len(values),
+                                    "missing or invalid elapsed_seconds")}
 
 
 def estimated_cost(tokens, details, snapshot, row):
@@ -248,6 +254,9 @@ def normalize(row, evidence, dataset, snapshot=None):
         messages = []
         reasons.append("final_state_missing")
     models = model_messages(messages)
+    if "final_state_missing" in reasons:
+        models["observed_decisions"] = metric(None, "messages", None, "final state",
+                                              "final_state_missing")
     tools = tool_metrics(messages) if not reasons else None
     reasons.extend(models["missing_reasons"])
     if not models["complete"]:
@@ -318,16 +327,31 @@ def summarize(records):
                           "ratio", values[denominator], f"{numerator}/{denominator}",
                           "zero_denominator")
         durations = [r["run_latency"]["value"] for r in group]
-        groups[name] = {"run_count": len(group), "run_count_with_complete_usage": complete,
-                        "unknown_count": len(group) - complete,
-                        "known_token_sum": sum(v for v in token_values if v is not None),
+        groups[name] = {"run_count": metric(len(group), "runs", len(group), "source records"),
+                        "run_count_with_complete_usage": metric(complete, "runs", len(group),
+                                                                "complete final-state usage"),
+                        "unknown_count": metric(len(group) - complete, "runs", len(group),
+                                                "incomplete final-state usage"),
+                        "known_token_sum": metric(sum(v for v in token_values if v is not None),
+                                                   "tokens", sum(v is not None for v in token_values),
+                                                   "runs with known total_tokens"),
                         "estimated_or_partial": complete != len(group),
-                        "all_run_exact_total": sum(token_values) if complete == len(group) else None,
-                        "cache_read_known_runs": sum(v is not None for v in cache),
-                        "cache_read_known_sum": sum(v["value"] for v in cache if v),
-                        "reasoning_known_runs": sum(v is not None for v in reasoning),
-                        "reasoning_known_sum": sum(v["value"] for v in reasoning if v),
-                        "tool_counts": counts,
+                        "all_run_exact_total": metric(
+                            sum(token_values) if complete == len(group) else None,
+                            "tokens", len(group), "complete final-state usage", "partial_usage"),
+                        "cache_read_known_runs": metric(sum(v is not None for v in cache),
+                                                        "runs", len(group), "cache detail coverage"),
+                        "cache_read_known_sum": metric(sum(v["value"] for v in cache if v),
+                                                       "tokens", sum(v is not None for v in cache),
+                                                       "input_token_details.cache_read"),
+                        "reasoning_known_runs": metric(sum(v is not None for v in reasoning),
+                                                       "runs", len(group), "reasoning detail coverage"),
+                        "reasoning_known_sum": metric(sum(v["value"] for v in reasoning if v),
+                                                      "tokens", sum(v is not None for v in reasoning),
+                                                      "output_token_details.reasoning"),
+                        "tool_counts": {key: metric(count, "records", len(tools),
+                                                    f"sum of per-run {key}")
+                                        for key, count in counts.items()},
                         "rates": {"policy_rejected_per_request": rate("policy_rejected", "tool_requests"),
                                   "budget_skipped_per_request": rate("budget_skipped", "tool_requests"),
                                   "wrapper_error_per_matched_response": rate(
@@ -337,8 +361,9 @@ def summarize(records):
                                                         if r["run_status"] == "success"]),
                                     "failure": latency([r["run_latency"]["value"] for r in group
                                                         if r["run_status"] != "success"])},
-                        "cost_estimate_known_count": sum(r["estimated_cost"]["value"] is not None
-                                                         for r in group)}
+                        "cost_estimate_known_count": metric(
+                            sum(r["estimated_cost"]["value"] is not None for r in group),
+                            "runs", len(group), "estimated_cost coverage")}
     return groups
 
 
@@ -378,16 +403,21 @@ def report_text(groups, count):
              "成本仅为估算；无可核验报价或完整 usage 时 UNKNOWN。小样本分位数仅供描述，不是生产 SLO。", ""]
     for name, group in groups.items():
         all_latency = group["latency"]["all"]
-        lines += [f"## {name}", "", (f"Run：{group['run_count']}；完整 Token：{group['run_count_with_complete_usage']}；"
-                  f"未知：{group['unknown_count']}；已知 Token 和：{group['known_token_sum']}。"),
+        counts = {key: value(item) for key, item in group["tool_counts"].items()}
+        lines += [f"## {name}", "", (f"Run：{value(group['run_count'])}；"
+                  f"完整 Token：{value(group['run_count_with_complete_usage'])}；"
+                  f"未知：{value(group['unknown_count'])}；"
+                  f"已知 Token 和：{value(group['known_token_sum'])}。"),
                   (f"P50/P95 秒：{all_latency['p50']['value']} / {all_latency['p95']['value']} "
-                  f"(n={all_latency['n']}, {all_latency['warning'] or '描述性'})。"),
-                  f"工具计数：{json.dumps(group['tool_counts'], ensure_ascii=False, sort_keys=True)}",
-                  f"成本估算可得：{group['cost_estimate_known_count']}/{group['run_count']}；实际账单 UNKNOWN。", ""]
-        lines += [(f"缓存读取 Token：{group['cache_read_known_sum']}，覆盖 "
-                  f"{group['cache_read_known_runs']}/{group['run_count']} Run；"
-                  f"推理 Token 细分：{group['reasoning_known_sum']}，覆盖 "
-                  f"{group['reasoning_known_runs']}/{group['run_count']} Run。细分量不再加到总量。"), ""]
+                  f"(n={value(all_latency['n'])}, {all_latency['warning'] or '描述性'})。"),
+                  f"工具计数：{json.dumps(counts, ensure_ascii=False, sort_keys=True)}",
+                  (f"成本估算可得：{value(group['cost_estimate_known_count'])}/"
+                   f"{value(group['run_count'])}；实际账单 UNKNOWN。"), ""]
+        lines += [(f"缓存读取 Token：{value(group['cache_read_known_sum'])}，覆盖 "
+                  f"{value(group['cache_read_known_runs'])}/{value(group['run_count'])} Run；"
+                  f"推理 Token 细分：{value(group['reasoning_known_sum'])}，覆盖 "
+                  f"{value(group['reasoning_known_runs'])}/{value(group['run_count'])} Run。"
+                  "细分量不再加到总量。"), ""]
     lines += [("安全残余：Issue #13 G03 PARTIAL FAIL；L3 真实模型对抗 NOT RUN。"
               "包装成功、结构有效、诊断正确分别记录，不互相替代。"), ""]
     return "\n".join(lines)

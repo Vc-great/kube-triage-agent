@@ -11,7 +11,7 @@
 | Issue #12 Mock B | 24/24 | 24/24 | PASS：离线再分析 |
 | Real Kubernetes | 0 | 0 | NOT RUN / NO METRICS |
 
-Issue #12 来源是既有 `.local/worktrees/issue12-evaluation-blind-ab/.local/eval-runs/issue12-formal-20261014-1435/`；本期仅只读。最终派生私有目录 `issue14-20261014-03` 受 Git 忽略。其 `metrics.json` 含完整内部 ID，未提交。以下为脱敏聚合，不把 Phase 3A、Issue #12 与 Real Kubernetes 混为同条件趋势。
+Issue #12 来源是既有 `.local/worktrees/issue12-evaluation-blind-ab/.local/eval-runs/issue12-formal-20261014-1435/`；本期仅只读。最终派生私有目录 `issue14-20261014-04` 受 Git 忽略。其 `metrics.json` 含完整内部 ID，未提交。以下为脱敏聚合，不把 Phase 3A、Issue #12 与 Real Kubernetes 混为同条件趋势。
 
 | 指标 | A | B |
 | --- | ---: | ---: |

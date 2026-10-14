@@ -100,13 +100,15 @@ def test_latency_nearest_rank(n, p50, p95):
 
 
 def test_latency_missing_and_success_failure_groups():
-    assert metrics.latency([1, None, 3])["missing_count"] == 1
+    assert metrics.latency([1, None, 3])["missing_count"]["value"] == 1
     rows = [metrics.normalize({"case_id": "a", "repeat": i, "run_status": status,
                                "elapsed_seconds": elapsed}, {}, "phase3a-baseline")
             for i, status, elapsed in ((1, "success", 1), (2, "fail", 3))]
     group = metrics.summarize(rows)["phase3a_mock"]
     assert group["latency"]["success"]["p50"]["value"] == 1
     assert group["latency"]["failure"]["p50"]["value"] == 3
+    assert group["run_count"]["unit"] == "runs"
+    assert group["tool_counts"]["tool_requests"]["denominator"] == 0
     assert rows[0]["model_latency"]["value"] is None
     assert rows[0]["mcp_latency"]["value"] is None
 
@@ -157,6 +159,7 @@ def test_issue12_adapter_and_dry_run(tmp_path, monkeypatch, capsys):
     result = json.loads((out / "metrics.json").read_text())
     assert result["runs"][0]["source_measurement_present"] is False
     assert result["runs"][0]["llm"]["totals"]["total"]["value"] is None
+    assert result["runs"][0]["llm"]["observed_decisions"]["value"] is None
     assert (out.stat().st_mode & 0o777) == 0o700
     assert ((out / "metrics.json").stat().st_mode & 0o777) == 0o600
     with pytest.raises(ValueError):
