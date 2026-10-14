@@ -4,6 +4,7 @@
 import argparse
 import ast
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -12,6 +13,7 @@ import subprocess
 import time
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urlparse
 
 from eval_phase3a import (
     api,
@@ -26,9 +28,14 @@ from eval_phase3a import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASET = "issue12-blind-v1"
+FROZEN_DATASET_SHA = "f29ffaf75af106562202b92ec34cc25a0025cd49ef7a924cbed0e6cdbfe9abe9"
+FROZEN_FIXTURES_SHA = "ea5f08d05452bb1ca03a89da6ba7608efc1c7874cddc0c317dfe7e4fadd28494"
+FROZEN_PROMPT_SHA = {"A": "37cb77f6f971b9c932f067711ceee9d9a17f97e47b012d4cc2163208bc1e2cc7",
+                     "B": "3915b88e6c1f9643b2fcab5c8a1c8c6f62addeb6c0c9e1f4a49ee6b039031566"}
 EVIDENCE = {"pod_container_state", "target_log", "target_event", "target_event_weak",
             "pod_running_ready", "target_pod_status"}
-ERROR_MARKERS = ("决策上限", "调用预算已用尽", "本次诊断未完成", "模型未返回", "无法解析的 Tool Call")
+BUDGET_MARKERS = ("决策上限", "调用预算已用尽")
+MODEL_FAILURE_MARKERS = ("本次诊断未完成", "模型未返回", "无法解析的 Tool Call")
 
 
 def sha256(path):
@@ -52,6 +59,25 @@ def prompt_sha(arm):
                   "SYSTEM_PROMPT", "ISSUE12_CAUSAL_SUFFIX"}}
     actual = values["SYSTEM_PROMPT"] + (values["ISSUE12_CAUSAL_SUFFIX"] if arm == "B" else "")
     return hashlib.sha256(actual.encode()).hexdigest()
+
+
+def provider_transport(base_url):
+    """Return a non-sensitive endpoint class; reject cleartext off-host model traffic."""
+    if not base_url:
+        return "default_https"
+    parsed = urlparse(base_url)
+    hostname = (parsed.hostname or "").lower()
+    try:
+        address = ipaddress.ip_address(hostname)
+        scope = "loopback" if address.is_loopback else (
+            "private" if address.is_private else "public")
+    except ValueError:
+        scope = "loopback" if hostname == "localhost" else "unverified_host"
+    if parsed.scheme == "http" and scope == "loopback":
+        return "loopback_http"
+    if parsed.scheme == "https" and hostname:
+        return f"{scope}_https"
+    raise ValueError("Provider endpoint transport unverified: HTTPS or loopback required")
 
 
 def load_cases(path):
@@ -105,27 +131,39 @@ def inspect(messages, case):
     calls = [call for msg in messages if message_type(msg) in {"ai", "assistant"}
              for call in msg.get("tool_calls", [])]
     tools = [msg for msg in messages if message_type(msg) == "tool"]
-    call_ids = Counter(str(call.get("id", "")) for call in calls)
-    tool_ids = Counter(str(msg.get("tool_call_id", "")) for msg in tools)
-    paired = bool(calls) and call_ids == tool_ids and "" not in call_ids and all(
+    call_ids = Counter(value if isinstance(value, str) else ""
+                       for call in calls for value in [call.get("id")])
+    tool_ids = Counter(value if isinstance(value, str) else ""
+                       for msg in tools for value in [msg.get("tool_call_id")])
+    valid_ids = all(isinstance(value, str) and bool(value.strip())
+                    for value in [*call_ids, *tool_ids])
+    paired = bool(calls) and valid_ids and call_ids == tool_ids and all(
         count == 1 for count in call_ids.values())
     compliant = all(valid_call(call.get("name"), call.get("args")) for call in calls)
-    results = {msg.get("tool_call_id"): unpack_result(msg) for msg in tools}
-    success_ids = [call["id"] for call in calls if results.get(call.get("id")) is not None
-                   and call_ids[str(call.get("id"))] == 1 and
-                   tool_ids[str(call.get("id"))] == 1]
+    results = {msg["tool_call_id"]: unpack_result(msg) for msg in tools
+               if isinstance(msg.get("tool_call_id"), str)}
+    success_ids = [call["id"] for call in calls if isinstance(call.get("id"), str) and
+                   bool(call["id"].strip()) and results.get(call["id"]) is not None and
+                   call_ids[call["id"]] == 1 and tool_ids[call["id"]] == 1]
     evidence = set()
     evidence_ids = {}
     target = case["target_pod"]
-    target_uids = {result.get("metadata", {}).get("uid") for call in calls
-                   if call.get("name") == "pods_get" and
-                   call.get("id") in success_ids and
-                   valid_call(call.get("name"), call.get("args")) and
-                   call["args"].get("name") == target and
-                   (result := results.get(call.get("id"))) and result.get("name") == target}
-    target_uids.discard(None)
+    target_uids = set()
+    for call in calls:
+        if (call.get("name") != "pods_get" or call.get("id") not in success_ids or
+                not valid_call(call.get("name"), call.get("args")) or
+                call["args"].get("name") != target):
+            continue
+        result = results[call["id"]]
+        metadata = result.get("metadata")
+        uid = metadata.get("uid") if isinstance(metadata, dict) else None
+        if result.get("name") == target and isinstance(uid, str) and uid.strip() == uid and uid:
+            target_uids.add(uid)
     seen = Counter()
     unrelated = 0
+    event_uid_mismatch = 0
+    event_uid_unverified = 0
+    event_uid_invalid = 0
     for call in calls:
         name, args = call.get("name"), call.get("args")
         if not valid_call(name, args):
@@ -155,8 +193,19 @@ def inspect(messages, case):
                 obj = event.get("involvedObject", {})
                 if (obj.get("kind") == "Pod" and obj.get("namespace") == "kube-triage-demo"
                         and obj.get("name") == target and event.get("type") == "Warning"):
-                    keys.add("target_event" if obj.get("uid") in target_uids
-                             else "target_event_weak")
+                    uid = obj.get("uid")
+                    if uid is None or uid == "":
+                        keys.add("target_event_weak")
+                    elif not isinstance(uid, str) or uid.strip() != uid:
+                        event_uid_invalid += 1
+                    else:
+                        if target_uids and uid not in target_uids:
+                            event_uid_mismatch += 1
+                        elif len(target_uids) == 1:
+                            keys.add("target_event")
+                        else:
+                            event_uid_unverified += 1
+                            keys.add("target_event_weak")
         evidence.update(keys)
         for found in keys:
             evidence_ids.setdefault(found, []).append(call["id"])
@@ -164,18 +213,63 @@ def inspect(messages, case):
                   if message_type(msg) in {"ai", "assistant"} and not msg.get("tool_calls")), "")
     decisions = sum(message_type(msg) in {"ai", "assistant"} and
                     msg.get("name") == "triage_llm" for msg in messages)
-    return {"tool_call_count": len(calls), "model_decisions": decisions,
+    observed_models = sorted({name for msg in messages
+                              if message_type(msg) in {"ai", "assistant"}
+                              for metadata in [msg.get("response_metadata")]
+                              if isinstance(metadata, dict)
+                              for name in [metadata.get("model_name") or metadata.get("model")]
+                              if isinstance(name, str) and name})
+    return {"tool_call_count": len(calls), "tool_message_count": len(tools),
+            "model_decisions": decisions,
             "tool_message_match": paired, "tool_selection_compliant": compliant,
             "tool_success_count": len(success_ids), "tool_failure_count": len(tools) - len(success_ids),
             "duplicate_tool_calls": sum(n - 1 for n in seen.values() if n > 1),
-            "unrelated_tool_calls": unrelated, "evidence_keys": sorted(evidence),
+            "unrelated_tool_calls": unrelated, "event_uid_mismatch": event_uid_mismatch,
+            "event_uid_unverified": event_uid_unverified,
+            "event_uid_invalid": event_uid_invalid, "evidence_keys": sorted(evidence),
             "evidence_tool_call_ids": evidence_ids,
             "evidence_sufficient": set(case["required_evidence"]) <= evidence,
-            "budget_exhausted": decisions > 4 or len(calls) > 6 or any(
-                marker in str(final) for marker in ERROR_MARKERS),
+            "budget_limit_exceeded": decisions > 4 or len(calls) > 6,
+            "budget_exhausted": any(marker in str(final) for marker in BUDGET_MARKERS),
             "provider_incompatible": any(marker in str(final) for marker in (
                 "无法解析的 Tool Call", "模型未返回内容或标准 Tool Call")),
+            "model_execution_failure": any(marker in str(final) for marker in
+                                           MODEL_FAILURE_MARKERS),
+            "observed_model_names": observed_models or "UNKNOWN",
+            "model_id_mismatch": any(name != "gpt-6-luna" for name in observed_models),
             "final_answer_present": bool(final), "token_usage": usage(messages)}
+
+
+def run_outcome(details, protocol_status, sse_events, pending):
+    """Separate protocol stop conditions from ordinary diagnostic quality outcomes."""
+    if protocol_status != "success":
+        return "fail", True, "aegra_run_failure"
+    if any(event.get("event") == "error" for event in sse_events):
+        return "fail", True, "sse_error"
+    if not any(event.get("event") == "end" for event in sse_events):
+        return "fail", True, "sse_incomplete"
+    if pending:
+        return "fail", True, "checkpoint_pending"
+    if ((details["tool_call_count"] or details["tool_message_count"]) and
+            not details["tool_message_match"]):
+        return "fail", True, "tool_id_mismatch"
+    if not details["tool_selection_compliant"]:
+        return "fail", True, "tool_policy_violation"
+    if details["tool_failure_count"]:
+        return "fail", True, "tool_message_failure"
+    if details["provider_incompatible"]:
+        return "fail", True, "provider_incompatible"
+    if details["model_execution_failure"]:
+        return "fail", True, "model_or_mcp_failure"
+    if details["model_id_mismatch"]:
+        return "fail", True, "model_id_mismatch"
+    if not details["final_answer_present"]:
+        return "fail", True, "no_model_conclusion"
+    if details["budget_limit_exceeded"]:
+        return "fail", True, "budget_limit_violation"
+    if details["budget_exhausted"]:
+        return "fail", False, "budget_exhausted"
+    return "success", False, "none"
 
 
 def rubric(arm, case, repeat):
@@ -197,6 +291,7 @@ def summary(rows, arms, per_arm):
         tokens = [row["token_usage"]["total_tokens"] for row in group if isinstance(
             row.get("token_usage"), dict)]
         result[arm] = {"planned": per_arm, "recorded": len(group),
+                       "not_run": per_arm - len(group),
                        "success": sum(row["run_status"] == "success" for row in group),
                        "failed": sum(row["run_status"] == "fail" for row in group),
                        "blocked": sum(row["run_status"] == "blocked" for row in group),
@@ -212,6 +307,9 @@ def summary(rows, arms, per_arm):
     for row in rows:
         paired[(row["case_id"], row["repeat"])][row["arm"]] = row
     result["paired_recorded"] = sum(all(arm in pair for arm in arms) for pair in paired.values())
+    result["attempted_total"] = len(rows)
+    result["not_run_total"] = per_arm * len(arms) - len(rows)
+    result["early_stop_reason"] = rows[-1].get("stop_reason", "none") if rows else "none"
     result["quality"] = "PENDING: only rule metrics; no human quality conclusion"
     return result
 
@@ -254,6 +352,9 @@ def main():
         parser.error(str(exc))
     dataset_sha = sha256(cases_path)
     fixture_sha = fixtures_sha()
+    if (dataset_sha != FROZEN_DATASET_SHA or fixture_sha != FROZEN_FIXTURES_SHA or
+            any(prompt_sha(arm) != FROZEN_PROMPT_SHA[arm] for arm in arms)):
+        parser.error("Frozen dataset, fixtures or Prompt SHA changed; stop before any Run")
     if args.dry_run:
         print(json.dumps({"status": "DRY RUN; NOT RUN", "dataset_sha256": dataset_sha,
                           "fixture_bundle_sha256": fixture_sha,
@@ -284,6 +385,10 @@ def main():
              "TRIAGE_MOCK_DATASET")
     if len(envs) == 2 and any(envs[0].get(key) != envs[1].get(key) for key in fixed):
         parser.error("A/B model or dataset mismatch")
+    try:
+        transport = provider_transport(envs[0].get("LLM_BASE_URL", ""))
+    except ValueError as exc:
+        parser.error(str(exc))
     os.umask(0o077)
     out.mkdir(parents=True, mode=0o700, exist_ok=False)
     graph_sha = sha256(ROOT / "server/src/kube_triage/graph.py")
@@ -300,37 +405,54 @@ def main():
                "graph_sha": graph_sha,
                "prompt_sha": prompt_sha(arm),
                "git_sha": git_sha, "model_name": env["LLM_MODEL"],
+               "provider_transport": transport,
                "model_params": {"api": "Responses", "reasoning_effort_requested": "high",
                                 "max_retries": 1, "provider_effort_observed": "UNKNOWN"},
                "thread_id": "NOT RUN", "run_id": "UNKNOWN", "run_status": "blocked"}
         hard_stop = False
+        private = {"thread_id": "NOT RUN", "sse": "NOT RUN", "state": "NOT RUN",
+                   "history": "NOT RUN", "runs": "NOT RUN"}
         try:
             thread = api(base, env["DEMO_API_TOKEN"], "/threads", "POST", {})
             row["thread_id"] = thread["thread_id"]
+            private["thread_id"] = thread["thread_id"]
+            private["sse"] = "UNKNOWN"
             events = stream_run(base, env["DEMO_API_TOKEN"], thread["thread_id"],
                                 case["question"], args.timeout)
+            private["sse"] = events
             state = api(base, env["DEMO_API_TOKEN"], f"/threads/{thread['thread_id']}/state")
+            private["state"] = state
             history = api(base, env["DEMO_API_TOKEN"], f"/threads/{thread['thread_id']}/history")
+            private["history"] = history
             runs = api(base, env["DEMO_API_TOKEN"], f"/threads/{thread['thread_id']}/runs")
+            private["runs"] = runs
             last = runs[-1] if isinstance(runs, list) and runs else {}
             row["run_id"] = last.get("run_id", "UNKNOWN")
             row["aegra_run_status"] = last.get("status", "UNKNOWN")
             messages = state.get("values", {}).get("messages", [])
             row.update(inspect(messages, case))
-            row["run_status"] = ("success" if last.get("status") == "success" and
-                                 any(event["event"] == "end" for event in events) and
-                                 not any(event["event"] == "error" for event in events) and
-                                 not state.get("next") and row["final_answer_present"] and
-                                 not row["budget_exhausted"] else "fail")
-            hard_stop = (last.get("status") != "success" or
-                         any(event["event"] == "error" for event in events) or
-                         row["tool_failure_count"] > 0 or row["provider_incompatible"])
-            write_private(out / f"{arm}-{case['id']}-{repeat}-private.json", {
-                "sse": events, "state": state, "history": history, "runs": runs})
-        except (OSError, ValueError, KeyError, TimeoutError) as exc:
+            row["run_status"], hard_stop, row["stop_reason"] = run_outcome(
+                row, last.get("status"), events, state.get("next"))
+        except Exception as exc:  # noqa: BLE001 - unexpected provider/protocol failures must stop
             row["run_status"] = "blocked" if isinstance(exc, OSError) else "fail"
             row["error_type"] = type(exc).__name__
+            row["stop_reason"] = "transport_or_protocol_exception"
+            private["error_type"] = type(exc).__name__
             hard_stop = True
+            if row["thread_id"] != "NOT RUN":
+                for key in ("state", "history", "runs"):
+                    if private[key] != "NOT RUN":
+                        continue
+                    try:
+                        private[key] = api(base, env["DEMO_API_TOKEN"],
+                                           f"/threads/{row['thread_id']}/{key}")
+                    except Exception:  # noqa: BLE001 - evidence recovery must not issue another Run
+                        private[key] = "UNKNOWN"
+                recovered = private["runs"]
+                if isinstance(recovered, list) and recovered:
+                    row["run_id"] = recovered[-1].get("run_id", "UNKNOWN")
+                    row["aegra_run_status"] = recovered[-1].get("status", "UNKNOWN")
+        write_private(out / f"{arm}-{case['id']}-{repeat}-private.json", private)
         row["elapsed_seconds"] = round(time.monotonic() - started, 3)
         rows.append(row)
         reviews.append(rubric(arm, case, repeat))
