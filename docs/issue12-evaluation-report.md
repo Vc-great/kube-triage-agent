@@ -12,7 +12,7 @@
 | E03 单因素与隔离 | PASS | test-only A/B；Luna Responses High 请求配置；四 Reader 未改 |
 | E04 Runner / Rubric | PASS | 零请求 dry-run；私有输出路径防护；主观评分 PENDING |
 | E05 离线回归 | PASS | Ruff、143 pytest、Manifest、A/B Compose config、dry-run、`git diff --check` 通过 |
-| E06 Draft PR / 独立 Review | PENDING | 以远端实际状态补记 |
+| E06 Draft PR / 独立 Review | Draft PR PASS / Review BLOCKED | [PR #23](https://github.com/Vc-great/kube-triage-agent/pull/23) 已建；独立 Review 工具连接失败，GitHub 暂无 review |
 | E07 Provider Smoke | BLOCKED / NOT RUN | 等候模型数据发送与 1 Run 授权 |
 | E08 同分母 A/B | BLOCKED / NOT RUN | 等候 48 Run 授权 |
 | E09 人工质量评分 | BLOCKED / PENDING | 无模型结果；由用户本人逐案评分 |
@@ -28,7 +28,7 @@
 
 数据集 `blind-v1.json` SHA256：`f29ffaf75af106562202b92ec34cc25a0025cd49ef7a924cbed0e6cdbfe9abe9`。原 Phase 3A 12/12 和 50/50 仍只属于历史四例，不作为本实验对照分母。Issue #11 H/C/I 人工评分仍 PENDING；首次 Luna M1、B06 和 Review BLOCKED 的历史结论保持原样。
 
-Fixture 束（按文件名和原始字节排序拼接）SHA256：`ea5f08d05452bb1ca03a89da6ba7608efc1c7874cddc0c317dfe7e4fadd28494`。离线命令结果：Ruff PASS；`pytest -q` 143 passed；Manifest PASS；`docker compose -p kube-triage-issue12-a/b -f infra/test.compose.yaml config --quiet` 两臂 PASS；8×3×2 dry-run PASS；`git diff --check` PASS。PR #22 的既有 CI 第 47 次运行 `success`；本 PR 的 CI 尚未触发。候选端口 12128/12129/13128/13129 的监听检查无占用；正式启动前仍需重查。
+Fixture 束（按文件名和原始字节排序拼接）SHA256：`ea5f08d05452bb1ca03a89da6ba7608efc1c7874cddc0c317dfe7e4fadd28494`。离线命令结果：Ruff PASS；`pytest -q` 143 passed；Manifest PASS；`docker compose -p kube-triage-issue12-a/b -f infra/test.compose.yaml config --quiet` 两臂 PASS；8×3×2 dry-run PASS；`git diff --check` PASS。PR #22 的既有 CI 第 47 次运行 `success`；[PR #23 初始提交的 CI #49](https://github.com/Vc-great/kube-triage-agent/actions/runs/38515924721) 已 success；本页状态更新提交后的 CI 须另核。候选端口 12128/12129/13128/13129 的监听检查无占用；正式启动前仍需重查。
 
 独立私有 `.local/issue12-a.env` / `.local/issue12-b.env` 已准备为 0600，模型配置相同、DB/API 凭据不同，使用实际 env 的两臂 Compose config 均 PASS。Host Docker 对这两个 project label 的只读容器/卷查询为空；沙箱内 Docker socket 拒绝访问不能作为 Host 状态证据。未启动 Compose、未发模型请求、未创建 Thread/Run、未碰真实 Kubernetes 或其他项目资源、未清理卷与旧资源。真实 Provider 兼容、服务端 effort、因果改进和人工结论均 UNKNOWN/NOT RUN。
 
