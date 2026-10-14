@@ -1,0 +1,28 @@
+{
+  "kind": "fixture",
+  "name": "sample-a",
+  "phase": "Running",
+  "containerStatuses": [
+    {
+      "name": "app",
+      "ready": false,
+      "restartCount": 4,
+      "state": {
+        "waiting": {
+          "reason": "CrashLoopBackOff"
+        }
+      },
+      "lastState": {}
+    }
+  ],
+  "log": "startup failed: required APP_CONFIG_PATH is absent; exit 1",
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off restarting app",
+      "uid": "synthetic-a"
+    }
+  ],
+  "uid": "synthetic-a"
+}

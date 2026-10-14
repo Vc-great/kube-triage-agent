@@ -1,6 +1,7 @@
 """Four consistent synthetic Pods exposed through the native read-only MCP tools."""
 
 import json
+import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -10,8 +11,29 @@ from kube_triage.mcp_client import NAMESPACE
 mcp = FastMCP("kube-triage-mock", host="0.0.0.0", port=8000, stateless_http=True,
               json_response=True)
 FIXTURES = Path(__file__).parent / "fixtures"
-PODS = {item["name"]: item for path in FIXTURES.glob("*.json")
-        if (item := json.loads(path.read_text(encoding="utf-8")))}
+
+
+def load_pods() -> dict:
+    dataset = os.getenv("TRIAGE_MOCK_DATASET", "phase3a")
+    if dataset == "phase3a":
+        paths = sorted(FIXTURES.glob("*.json"))
+    elif dataset == "issue12-blind-v1" and os.getenv("TRIAGE_ENV") == "test":
+        paths = sorted((FIXTURES / "issue12").glob("*.json"))
+        expected = {f"sample-{letter}.json" for letter in "abcdefgh"} | {"sample-noise.json"}
+        if {path.name for path in paths} != expected:
+            raise ValueError("Issue #12 Mock fixtures missing")
+    else:
+        raise ValueError("Unknown or non-test Mock dataset")
+    pods = {}
+    for path in paths:
+        item = json.loads(path.read_text(encoding="utf-8"))
+        if item.get("name") in pods or not item.get("containerStatuses"):
+            raise ValueError("Duplicate or incomplete Mock Pod")
+        pods[item["name"]] = item
+    return pods
+
+
+PODS = load_pods()
 
 
 def check_namespace(namespace: str) -> None:
@@ -39,21 +61,32 @@ def pods_get(namespace: str, name: str) -> dict:
     check_pod(name)
     item = PODS[name]
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
-            "name": name, "status": {"phase": item["phase"],
-            "containerStatuses": item["containerStatuses"]}}
+            "name": name, **({"metadata": {"uid": item["uid"]}} if item.get("uid") else {}),
+            "status": {"phase": item["phase"], "containerStatuses": item["containerStatuses"]}}
 
 
 @mcp.tool()
 def events_list(namespace: str) -> dict:
     """Return static Events from the requested namespace."""
     check_namespace(namespace)
+    events = []
+    for item in PODS.values():
+        if "events" in item:
+            for event in item["events"]:
+                event = {**event, "involvedObject": {
+                    "kind": "Pod", "name": item["name"], "namespace": namespace,
+                    **({"uid": event["uid"]} if event.get("uid") else {})}}
+                event.pop("uid", None)
+                events.append(event)
+        else:
+            events.append({"involvedObject": {"kind": "Pod", "name": item["name"],
+                           "namespace": namespace},
+                           "type": "Normal" if item["name"] == "healthy-pod" else "Warning",
+                           "reason": "Failed" if item["name"] == "imagepull-pod" else
+                           "BackOff" if item["name"] != "healthy-pod" else "Started",
+                           "message": item["event"]})
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
-            "events": [{"involvedObject": {"kind": "Pod", "name": item["name"],
-                         "namespace": namespace},
-                        "type": "Normal" if item["name"] == "healthy-pod" else "Warning",
-                        "reason": "Failed" if item["name"] == "imagepull-pod" else
-                        "BackOff" if item["name"] != "healthy-pod" else "Started",
-                        "message": item["event"]} for item in PODS.values()]}
+            "events": events}
 
 
 @mcp.tool()

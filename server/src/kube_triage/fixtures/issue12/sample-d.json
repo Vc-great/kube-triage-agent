@@ -1,0 +1,28 @@
+{
+  "kind": "fixture",
+  "name": "sample-d",
+  "phase": "Pending",
+  "containerStatuses": [
+    {
+      "name": "app",
+      "ready": false,
+      "restartCount": 0,
+      "state": {
+        "waiting": {
+          "reason": "ImagePullBackOff"
+        }
+      },
+      "lastState": {}
+    }
+  ],
+  "log": null,
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "Failed",
+      "message": "Failed to pull image: unauthorized: authentication required",
+      "uid": "synthetic-d"
+    }
+  ],
+  "uid": "synthetic-d"
+}

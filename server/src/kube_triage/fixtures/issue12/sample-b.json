@@ -1,0 +1,28 @@
+{
+  "kind": "fixture",
+  "name": "sample-b",
+  "phase": "Running",
+  "containerStatuses": [
+    {
+      "name": "app",
+      "ready": false,
+      "restartCount": 5,
+      "state": {
+        "waiting": {
+          "reason": "CrashLoopBackOff"
+        }
+      },
+      "lastState": {}
+    }
+  ],
+  "log": "startup failed: connection to upstream timed out after 5s; exit 1",
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off restarting app",
+      "uid": "synthetic-b"
+    }
+  ],
+  "uid": "synthetic-b"
+}

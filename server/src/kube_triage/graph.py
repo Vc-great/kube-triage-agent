@@ -23,7 +23,7 @@ from kube_triage.mcp_client import (
     build_model_tool_schemas,
     call_tool,
 )
-from kube_triage.prompts import SYSTEM_PROMPT
+from kube_triage.prompts import system_prompt
 
 MAX_TOOL_CALLS = 6
 MAX_MODEL_DECISIONS = 4
@@ -100,7 +100,7 @@ async def _llm(state: MessagesState) -> dict:
     try:
         native_tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
         model = model.bind_tools(build_model_tool_schemas(native_tools))
-        reply = await model.ainvoke([SystemMessage(content=SYSTEM_PROMPT),
+        reply = await model.ainvoke([SystemMessage(content=system_prompt()),
                                       *state["messages"]])
         if not isinstance(reply, AIMessage):
             raise TypeError("LLM returned a non-AI message")
