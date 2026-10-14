@@ -41,7 +41,9 @@ Issue #12 来源是既有 `.local/worktrees/issue12-evaluation-blind-ab/.local/e
 | K05 Cost | PASS | 有效快照的虚构单测、严格 UNKNOWN 路径；本批无真实报价 |
 | K06 Offline analytics | BLOCKED（Phase 3A）/ PASS（Issue #12） | 12 份原始轨迹缺失；48 份可读且只读再分析 |
 | K07 Safety/compatibility | PASS | 旧 Runner/Graph 未改；无模型、Compose、Kubernetes 请求 |
-| K08 Quality/CI | 本地 PASS；CI/独立 Review 待核验 | Ruff、217 pytest、dry-run、Manifest、diff 检查；远端分开记录 |
-| K09 Deliverables | 待 Draft PR | 中文设计/验收、私有指标和 README 索引已准备 |
+| K08 Quality/CI | 本地与 CI PASS；独立 Review BLOCKED | 本地 Ruff、217 pytest、dry-run、Manifest、diff 检查 PASS；PR #25 的 CI #59 python/web/compose 均 PASS；该 CI Ruff 命令未包含新脚本，本地单独 Ruff 已覆盖。GitHub PR 无独立 Review，本轮不发起额外模型外发 |
+| K09 Deliverables | PASS（Draft） | 中文设计/验收、私有指标、README 索引与 Draft PR #25；未合并、未关闭 Issue |
 
 Issue #13 残余不可用本期 `wrapper_success` 或 `content_valid` 比率冲抵。未授权真实模型复测，因此真实 Kubernetes 的诊断质量与成本没有新结论。
+
+Draft PR：[Issue #14：离线 Agent Metrics v1](https://github.com/Vc-great/kube-triage-agent/pull/25)。CI #59：[GitHub Actions](https://github.com/Vc-great/kube-triage-agent/actions/runs/38584685302)。独立 Review：BLOCKED（截至本次核验，无提交的 Review；不以 CI PASS 替代）。
