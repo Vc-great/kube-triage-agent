@@ -1,6 +1,6 @@
-# Issue #12 评估报告（离线阶段与单次 Smoke）
+# Issue #12 评估报告（离线、Smoke 与正式 A/B）
 
-状态：**真实 Provider A 臂 Smoke 1/1 PASS；正式 A/B NOT RUN；质量结果 PENDING**。单次兼容性运行不能推断 B 优于 A。运行报告生成器保留每臂计划/成功/失败、有效轨迹分母、配对记录数、延迟和 Token 分布。
+状态：**真实 Provider A 臂 Smoke 1/1 PASS；正式 A/B 48/48 Run 完成、24 组配对完整；人工质量结果 PENDING**。Run 成功及规则证据齐全不等于诊断正确，当前不能推断 B 优于 A。
 
 ## E00–E09
 
@@ -14,8 +14,8 @@
 | E05 离线回归 | PASS | Ruff、143 pytest、Manifest、A/B Compose config、dry-run、`git diff --check` 通过 |
 | E06 Draft PR / 独立 Review | Draft PR PASS / Review BLOCKED | [PR #23](https://github.com/Vc-great/kube-triage-agent/pull/23) 已建；独立 Review 工具连接失败，GitHub 暂无 review |
 | E07 Provider Smoke | PASS | 获批后经验证 TLS 与 SSH 回环隧道执行 A 案例 a 的唯一 Run；详见文末实测记录 |
-| E08 同分母 A/B | BLOCKED / NOT RUN | 等候 48 Run 授权 |
-| E09 人工质量评分 | BLOCKED / PENDING | 只有 1 条 A Smoke，尚无正式配对结果；由用户本人逐案评分 |
+| E08 同分母 A/B | 运行完成 / 质量 PENDING | 获批后 A/B 各 24 Run，24 组配对完整；客观结果见文末 |
+| E09 人工质量评分 | PENDING | 48 条事实预填已保存私有文件；由用户本人逐案评分 |
 
 历史 SHA256：
 
@@ -46,7 +46,7 @@ Fixture 束（按文件名和原始字节排序拼接）SHA256：`ea5f08d05452bb
 | F05 单因素/模型配置 | PASS | A 原 Prompt、B 仅固定后缀；test-only；两臂模型、URL、Key、Responses High 请求与数据集一致。实际 Provider effort UNKNOWN。 |
 | F06 离线验证 | PASS | Ruff、155 pytest、Manifest、A/B Compose config、1+48 dry-run、`git diff --check` 均通过；未启动服务。 |
 | F07 PR CI / 独立 Review | CI PASS / Review BLOCKED | P1 修复 Head `6471482` 的 CI #51 Python/Web/Compose PASS；GitHub 暂无独立 review。 |
-| F08 Provider / A/B / 人工 | Smoke PASS / A/B NOT RUN / PENDING | 后续独立授权的 A 案例 a 单次 Smoke 已完成；48 Run 与真人评分均未执行。 |
+| F08 Provider / A/B / 人工 | Smoke PASS / A/B 已运行 / 人工 PENDING | 后续独立授权的 A 案例 a 单次 Smoke 与 48 Run 均已完成；真人评分未填写。 |
 
 冻结 Prompt SHA256：A=`37cb77f6f971b9c932f067711ceee9d9a17f97e47b012d4cc2163208bc1e2cc7`；B=`3915b88e6c1f9643b2fcab5c8a1c8c6f62addeb6c0c9e1f4a49ee6b039031566`。两次 dry-run 分别只规划 A Smoke 1 Run 与正式 A/B 各 24 Run，共 48 Run；均未读取私有 env、创建目录或访问 API。
 
@@ -65,3 +65,24 @@ Docker VM 曾因空间不足使本次 A 项目的 Redis/Postgres 无法初始化
 私有输出目录 `.local/eval-runs/issue12-smoke-a-20261014-1418/` 为 0700，四个证据文件均为 0600。A 案例 a、repeat 1：Aegra Run `success`，耗时 18.473 秒；模型元数据回显 `gpt-6-luna`，4 次决策、4 个 Tool Call 与 4 个成功 Mock ToolMessage 一一配对，工具选择合规且无无关调用，目标 Pod 状态、容器状态、目标 Event 和日志证据齐全。Token 使用量为 input 5792、output 610。Responses High 仅是请求配置，服务端实际 effort 为 `UNKNOWN`。主观诊断正确性与因果过度推断仍 `PENDING`，不以客观规则结果代替人工评分。
 
 已停止本次 A 项目容器和临时回环传输，保留其独立卷与镜像；B 项目未启动，正式 48 Run 未创建。未触碰真实 Kubernetes、既有 Compose 项目或旧卷；PR 保持 Draft，Issue 保持 Open。
+
+## 2026-10-14：另行获批的正式 48 Run
+
+用户在 Smoke 交付后另行批准下一轮。使用同一 Provider 后端、`gpt-6-luna`、经容器校验证书的临时 HTTPS/TLS 桥接与本机 SSH 隧道；A/B 两臂的模型、Key、Responses High 请求、Graph、四个只读 Tool Schema、Mock 数据集及问题文本一致，只有 test-only Prompt 变体不同。A=`kube-triage-issue12-a`、B=`kube-triage-issue12-b`，各自独立 Postgres/Redis 卷、API 凭据和 12128/12129 回环端口。两臂运行时环境、Graph/Prompt/Mock 代码 SHA 与私有配置核对通过，两个 Mock 镜像内的 Fixture 束 SHA 均等于冻结值；`REPAIR_ENABLED=false`，Reader 仅接 Mock。运行使用仓库现成 Python 3.14；Runner 在 git `1d4cae1` 上执行，冻结盲样、Fixture 束、Prompt A/B 和 Graph SHA 与本页既有记录一致。
+
+私有目录 `.local/eval-runs/issue12-formal-20261014-1435/` 为 0700，原始逐条轨迹、`runs.json`、`summary.json`、`reviews.json` 均为 0600。8 案 × 3 次 × A/B = **48/48 Run**，A/B 各 24/24，24 组 `(case, repeat)` 均配对；未执行数 0，提前停止原因为 `none`。48 个 Thread ID 与 48 个 Run ID 均唯一；Aegra Run、SSE、State/History 的 Runner 规则均判成功。48 条模型元数据均回显 `gpt-6-luna`，且 Tool Call/ToolMessage ID 配对、工具选择、Mock 成功回执、规则所需证据和最终答复均通过；工具失败、无关调用、预算超限、模型身份不符和 Provider 不兼容计数均为 0。High 仍仅是请求配置，服务端实际 effort 为 `UNKNOWN`。
+
+| 客观指标 | A | B |
+| --- | ---: | ---: |
+| 计划 / 成功 / 有效轨迹分母 | 24 / 24 / 24 | 24 / 24 / 24 |
+| 规则证据齐全 | 24/24 | 24/24 |
+| 延迟中位数（秒） | 16.8415 | 18.1595 |
+| 延迟最小–最大（秒） | 12.182–23.709 | 12.560–23.465 |
+| 总 Token 中位数 | 5970.5 | 6157 |
+| 总 Token 最小–最大 | 4725–8129 | 5565–8360 |
+| Tool Call 总数 / 失败数 | 88 / 0 | 87 / 0 |
+| 重复同参工具调用 | 1 | 0 |
+
+配对的 B−A 延迟差中位数为 +1.235 秒，总 Token 差中位数为 +414.5；24 组中 B 的延迟和 Token 分别有 18 组较高。这些是描述性运行指标，不是诊断质量改善的证据。唯一重复调用在 A 案例 a 的第 3 次 Run，重复了同参 `pods_log`；Runner 将其保留为质量观察，未触发协议硬停止。
+
+`reviews.json` 的 48 条主观字段仍全为 `PENDING`。私有 `human-review-facts.json` 另行预填了每条问题、模型答复、模型当时收到的 ToolMessage 内容与 ID、独立 Ground Truth 和规则证据，供用户本人逐案填写判断、理由、评分人与时间；Codex 未代评。正式运行后已停止 A/B 容器及临时回环传输，保留独立卷与镜像；未触碰真实 Kubernetes、既有 Compose 项目或旧卷。PR 继续保持 Draft，Issue 继续 Open。
