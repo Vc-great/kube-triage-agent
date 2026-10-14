@@ -86,3 +86,13 @@ Docker VM 曾因空间不足使本次 A 项目的 Redis/Postgres 无法初始化
 配对的 B−A 延迟差中位数为 +1.235 秒，总 Token 差中位数为 +414.5；24 组中 B 的延迟和 Token 分别有 18 组较高。这些是描述性运行指标，不是诊断质量改善的证据。唯一重复调用在 A 案例 a 的第 3 次 Run，重复了同参 `pods_log`；Runner 将其保留为质量观察，未触发协议硬停止。
 
 `reviews.json` 的 48 条主观字段仍全为 `PENDING`。私有 `human-review-facts.json` 另行预填了每条问题、模型答复、模型当时收到的 ToolMessage 内容与 ID、独立 Ground Truth 和规则证据，供用户本人逐案填写判断、理由、评分人与时间；Codex 未代评。正式运行后已停止 A/B 容器及临时回环传输，保留独立卷与镜像；未触碰真实 Kubernetes、既有 Compose 项目或旧卷。PR 继续保持 Draft，Issue 继续 Open。
+
+## 2026-10-14：48 条人工盲审材料准备（质量仍 PENDING）
+
+本次只读复核了原有 `runs.json`、`summary.json`、`reviews.json`、`human-review-facts.json` 与 48 份私有 State/Run 快照：A/B 各 24 条，24 个 `(case_id, repeat)` 配对完整，Thread/Run ID 各 48 个唯一；每条事实中的问题、完整回答、ToolMessage ID/内容与原始 State 一致，独立 Ground Truth 与冻结盲样一致。盲样、Fixture 束、Prompt A/B 的四组冻结 SHA 均未漂移；Graph SHA 为 `fe0c6503b03a09d6cff9034530750d726c3132be342a4c6ec4399d298ac4ffec`。运行记录统一指向执行时 Git `1d4cae1`、模型 `gpt-6-luna`；服务端实际 reasoning effort 仍为 `UNKNOWN`。
+
+从这些既有事实生成了私有的 `review/blind-review-forms.json`（48 条）和隔离的 `review/blind-id-map.json`，另有 `review/review-handoff.md` 与源文件 SHA 清单，均位于原正式运行目录下，目录权限 `0700`、文件权限 `0600`，受 `.gitignore` 排除。审阅表以不透明编号打乱，隐藏 A/B、case/repeat 到臂的映射和 Prompt；保留问题、完整回答、模型当时所见 ToolMessage 与独立 Ground Truth、禁止断言。此为**审阅者对 A/B 分组盲**，不是隐藏题目或 Ground Truth 的双盲实验。Event UID 相等、缺失、冲突分别按强证据、弱线索、非目标证据解释，独立查询不得冒充模型所见。
+
+48 条 `diagnosis_correct`、`grounding_score`、`false_positive`、`causal_overclaim`、`tool_error_handling` 及理由、审阅人、审阅时间仍全部 `PENDING`。状态为 `REVIEW_REQUIRED / HUMAN_REVIEW_REQUIRED`；只有用户本人逐条核对证据、填写并确认后，才可校验评分、解盲并计算描述性的 A/B 配对质量结果。现阶段 **QUALITY=PENDING**，不能断言 B 优于 A，也不自动采用 B Prompt。
+
+本次离线检查：Ruff PASS；`pytest -q server/tests` 155 passed；Manifest PASS；A/B Compose `config --quiet` PASS；正式 48 与 Smoke 1 的 `--dry-run` PASS；`git diff --check` PASS。Compose 首次未传私有 env 时因必填变量缺失而报错，补用既有受限 env 文件仅执行 `config --quiet` 后通过；没有启动容器。原 PR Head `cb8b72e` 的 CI #53 Python/Web/Compose 均通过，GitHub 无正式独立 Review。新增 Provider/Thread/Run、Kubernetes 写入、Docker 资源清理均为 0；PR 保持 Draft，Issue #12 保持 Open。
