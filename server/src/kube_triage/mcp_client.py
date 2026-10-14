@@ -143,7 +143,12 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
     start = time.monotonic()
     outcome, error_type = "success", None
     try:
-        validate_call(name, arguments)
+        try:
+            validate_call(name, arguments)
+        except (TypeError, ValueError):
+            outcome, error_type = "rejected", "policy"
+            return {"ok": False, "error": "工具名称或参数不符合只读策略。",
+                    "error_type": error_type}
         tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
         safe_args = {**arguments, "tail": arguments.get("tail", 20)} if name == "pods_log" else arguments
         result = await asyncio.wait_for(tools[name].ainvoke(safe_args), MCP_TIMEOUT_SECONDS)
@@ -151,9 +156,6 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
     except ConfigurationError:
         outcome, error_type = "failed", "configuration"
         raise
-    except (TypeError, ValueError) as exc:
-        outcome, error_type = "rejected", "policy"
-        return {"ok": False, "error": str(exc), "error_type": error_type}
     except Exception as exc:  # noqa: BLE001 - SDK raises transport and tool errors
         error_type, message = _error_type(exc)
         outcome = "failed"
