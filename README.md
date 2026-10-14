@@ -51,6 +51,7 @@ python3 scripts/eval_phase3a.py --env-file .local/phase3a.env --out .local/eval-
 ## 当前验收与历史边界
 
 [Issue #11 Gate B2 只读收口补记](docs/issue11-gateb2-final-report.md)记录历史严格 Gate、当前证据及本轮停止条件。
+[Issue #11 Gate B2 后续只读复核](docs/issue11-gateb2-completion.md)记录 Healthy 的有界快照、Node 重启证据、development Runtime 恢复与 ImagePull 授权门禁。
 
 Issue #11 的未部署 Gate A 草案见 [三个真实故障 Scenario](docs/issue11-scenarios.md)与[只读预检/验收矩阵](docs/issue11-gatea-validation.md)；先前只读现状见 [Gate B1 预检](docs/issue11-gateb-real-e2e.md)。[Luna High M1/M2 实测记录](docs/issue11-m1-m2-real-e2e.md)说明本轮 M1 失败后的停止点与未创建的三个 Pod。
 
