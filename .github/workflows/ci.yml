@@ -13,7 +13,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen --python 3.13
         working-directory: server
-      - run: uv run --frozen ruff check src tests ../scripts/eval_issue12.py ../scripts/eval_phase3a.py ../scripts/check_issue11_manifests.py
+      - run: uv run --frozen ruff check src tests ../scripts/eval_issue12.py ../scripts/prepare_issue12_blind_review.py ../scripts/summarize_issue12_human_review.py ../scripts/eval_phase3a.py ../scripts/check_issue11_manifests.py
         working-directory: server
       - run: uv run --frozen python ../scripts/check_issue11_manifests.py
         working-directory: server

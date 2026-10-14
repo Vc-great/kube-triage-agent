@@ -1,6 +1,6 @@
 # Issue #12 评估报告（离线、Smoke 与正式 A/B）
 
-状态：**真实 Provider A 臂 Smoke 1/1 PASS；正式 A/B 48/48 Run 完成、24 组配对完整；人工质量结果 PENDING**。Run 成功及规则证据齐全不等于诊断正确，当前不能推断 B 优于 A。
+当前状态（见文末最新附录）：**真实 Provider A 臂 Smoke 1/1 PASS；正式 A/B 48/48 Run 完成、24 组配对完整；用户已确认 48/48 条评分**。以下早期章节的 `PENDING` 保留为当时状态。Run 成功及规则证据齐全不等于诊断正确。
 
 ## E00–E09
 
@@ -96,3 +96,29 @@ Docker VM 曾因空间不足使本次 A 项目的 Redis/Postgres 无法初始化
 48 条 `diagnosis_correct`、`grounding_score`、`false_positive`、`causal_overclaim`、`tool_error_handling` 及理由、审阅人、审阅时间仍全部 `PENDING`。状态为 `REVIEW_REQUIRED / HUMAN_REVIEW_REQUIRED`；只有用户本人逐条核对证据、填写并确认后，才可校验评分、解盲并计算描述性的 A/B 配对质量结果。现阶段 **QUALITY=PENDING**，不能断言 B 优于 A，也不自动采用 B Prompt。
 
 本次离线检查：Ruff PASS；`pytest -q server/tests` 155 passed；Manifest PASS；A/B Compose `config --quiet` PASS；正式 48 与 Smoke 1 的 `--dry-run` PASS；`git diff --check` PASS。Compose 首次未传私有 env 时因必填变量缺失而报错，补用既有受限 env 文件仅执行 `config --quiet` 后通过；没有启动容器。原 PR Head `cb8b72e` 的 CI #53 Python/Web/Compose 均通过，GitHub 无正式独立 Review。新增 Provider/Thread/Run、Kubernetes 写入、Docker 资源清理均为 0；PR 保持 Draft，Issue #12 保持 Open。
+
+## 2026-10-14：用户确认评分后的离线配对汇总
+
+用户在本会话明确确认：已逐条核对回答与 ToolMessage，并确认全部 48 条评分和理由。评分文件最初由 ChatGPT 起草，其 `reviewer` 和 `reviewed_at` 原字段保持原样；另有私有 `human-review-attestation.json` 记录用户确认及时间，**不把 AI 草稿时间戳冒充真人评分时间**。评分副本 SHA256 为 `4f02fe3b9af20a67330ba434d5011ae0965c3bcd7d7d47f69c53f3f878035bb3`。离线校验确认 48 个不透明 ID 唯一、24 对完整、评分类型合法、理由均引用所属 Run 的 ToolMessage ID，题目、回答、模型所见证据与独立 Ground Truth 未被改动；原始证据 SHA 不变。原始逐条评分、解盲映射、确认记录及完整私有汇总仍只在 Git 忽略目录，未进入 PR。
+
+| 人工质量指标（每臂分母 24） | A | B |
+| --- | ---: | ---: |
+| 诊断正确 | 24/24 | 24/24 |
+| Grounding 分布（0 / 1 / 2） | 0 / 2 / 22 | 0 / 0 / 24 |
+| Grounding 均值（满分 2） | 1.917 | 2.000 |
+| 误报 | 0/24 | 0/24 |
+| 因果越界 | 0/24 | 0/24 |
+| 工具错误处理 | 24 条 `NA` | 24 条 `NA` |
+
+本批 48 个 Run 无工具失败，因此工具错误处理没有适用样本，`NA` 不计作通过。规则层分别为：A/B Run 成功、ToolMessage 配对、工具策略合规、规则证据齐全均各 24/24；工具调用 88/87，重复同参调用 1/0，预算超限 0/0。延迟中位数 16.8415/18.1595 秒，总 Token 中位数 5970.5/6157；B 的配对延迟和 Token 差中位数分别为 +1.235 秒和 +414.5。
+
+| 24 对固定 `(case_id, repeat)` 的 B−A | B 较好 | 相同 | B 较差 |
+| --- | ---: | ---: | ---: |
+| 诊断正确 | 0 | 24 | 0 |
+| Grounding | 2 | 22 | 0 |
+| 误报 | 0 | 24 | 0 |
+| 因果越界 | 0 | 24 | 0 |
+
+8 个基础场景各重复三次。场景 a–f、h 的 Grounding 三次配对均相同；场景 g（同名 Event 缺 UID、仅能作为弱归属线索）的 A 三次分数为 `1/2/1`，B 为 `2/2/2`。A 在 g 的第 1、3 次是本批仅有的两条 Grounding 低分记录；逐条理由及 ToolMessage ID 保留私有，未在报告中外发。诊断、误报、因果越界在每个场景的三次配对均无差异。
+
+**结论：未观察到明确的整体改善。** B 在同一合成场景 g 的两个重复样本上获得较高 Grounding 评分，但诊断正确率和其他人工指标没有差异，延迟及 Token 成本较高。24 对来自 8 个基础场景，不代表 24 个独立真实故障；评分由 AI 草稿经用户逐条确认，仍可能有评估者偏差。结果只适用于本批真实 LLM + Mock MCP 合成数据，不推断生产或真实 Kubernetes 准确率，不据此自动启用 B Prompt。独立 GitHub Review 仍未完成；PR 保持 Draft，Issue #12 保持 Open。
