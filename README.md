@@ -57,6 +57,8 @@ Issue #11 的未部署 Gate A 草案见 [三个真实故障 Scenario](docs/issue
 
 Issue #12 的独立 Mock 盲样、test-only Prompt A/B 和真实模型授权门禁见[实验设计](docs/issue12-design.md)与[评估报告](docs/issue12-evaluation-report.md)。未获模型数据发送授权前只运行 `python3 scripts/eval_issue12.py --out .local/eval-runs/issue12-dry-plan --dry-run`；人工评分模板见[Issue #12 Rubric](docs/issue12-human-rubric.md)。
 
+Issue #14 复用既有私有评测轨迹进行纯离线 Token、工具、Runner 耗时与成本可得性统计；口径见[指标设计](docs/issue14-metrics-design.md)，当前来源覆盖与门禁见[验收记录](docs/issue14-metrics-validation.md)。
+
 当前 A01–A15、实际失败/阻塞、文件清单和面试复盘见 [Real-by-default 验收](docs/real-by-default-review.md)。`docs/phase*` 是各阶段历史记录，其旧命令和默认架构不代表当前启动方式。Phase 3A 12 次原分母、人工 Grounding、Golden 与 [历史报告](docs/phase3a-report.md) 保留；[Phase 3B Gate B](docs/phase3b-gateb-real-e2e.md) 的 B06=FAIL 保留。旧模拟审批 Checkpoint 不转换为真实写入：只读查看历史，为新诊断新建 Thread。
 
 
