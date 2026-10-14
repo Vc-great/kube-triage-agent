@@ -51,6 +51,21 @@ def _counts(state: MessagesState) -> tuple[int, int]:
     return decisions, calls
 
 
+def _has_tool_evidence(state: MessagesState) -> bool:
+    """A successful, nonempty native result is the minimum for an evidence claim."""
+    for message in _current_turn(state):
+        if not isinstance(message, ToolMessage) or message.status != "success":
+            continue
+        try:
+            payload = json.loads(message.content)
+        except (TypeError, ValueError):
+            continue
+        if (isinstance(payload, dict) and payload.get("ok") is True and
+                isinstance(payload.get("result"), str) and payload["result"].strip()):
+            return True
+    return False
+
+
 def _last_user_text(state: MessagesState) -> str:
     for message in reversed(state["messages"]):
         if isinstance(message, HumanMessage):
@@ -110,6 +125,9 @@ async def _llm(state: MessagesState) -> dict:
         if not reply.tool_calls and not reply.content:
             return {"messages": [AIMessage(content=(
                 "模型未返回内容或标准 Tool Call；本次诊断未完成。"))]}
+        if not reply.tool_calls and not _has_tool_evidence(state):
+            return {"messages": [AIMessage(content=(
+                "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。"))]}
         reply.name = "triage_llm"
         return {"messages": [reply]}
     except ConfigurationError:

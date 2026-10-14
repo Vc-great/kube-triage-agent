@@ -181,7 +181,8 @@ def test_tool_failure_is_visible_to_model(llm, error_type):
     llm.setattr(agent, "chat_model", lambda: model)
     messages = run([HumanMessage(content="调查")])
     assert error_type in next(m for m in messages if isinstance(m, ToolMessage)).content
-    assert messages[-1].content == "查询失败，证据不足"
+    assert messages[-1].content == (
+        "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。")
 
 
 def test_prompt_injection_cannot_expand_execution_scope(llm):
