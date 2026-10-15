@@ -46,7 +46,13 @@
 | G31-11 | PASS | 全量 Python 回归 295 passed；Memory Resume→Repair 拒绝，原四 Reader、工具预算和 Gate A/B 测试通过。 |
 | G31-12 | PASS | `pnpm exec tsc --noEmit`、`pnpm lint`（0 error、18 条既有 warning）、Prettier check、`pnpm exec next build --webpack` 成功；SSE payload 键与卡组件类型匹配。默认 Turbopack build 因执行环境端口绑定限制失败，不能冒充其通过。 |
 | G31-13 | NOT RUN | 真人在浏览器点击 Approve/Reject/撤销须由用户本人完成；见 Demo 手册。 |
-| G31-14 | PASS（本地）/ CI 待确认 | `pytest`: 295 passed；`ruff check`: all passed；`git diff --check`: 通过。Draft PR 与 CI 在创建后补记；此前历史的 270 passed 不计入。 |
+| G31-14 | PASS | `pytest`: 295 passed；`ruff check`: all passed；`git diff --check`: 通过。Draft PR #32 的实现提交 CI run #79：compose、python、web 三个 job 全部 success。此前历史的 270 passed 不计入。 |
+
+## DELIVERABLES
+
+- 实现提交：`3d581dcc97d8b38147c1e46eb301d5685eb44e47`；Draft PR：[Vc-great/kube-triage-agent#32](https://github.com/Vc-great/kube-triage-agent/pull/32)。PR 保持 Draft，未合并或关闭 Issue。
+- GitHub Actions [CI run #79](https://github.com/Vc-great/kube-triage-agent/actions/runs/38690209940)：compose、python、web 全部 success，针对上述实现提交。此后仅有本报告的状态补记。
+- 真人 UI G31-13 仍为 **NOT RUN**；步骤见 `docs/phase3-memory-write-demo.md`。
 
 ## 残余风险与 Phase 3-2 Gate
 
