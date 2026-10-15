@@ -109,7 +109,8 @@ async def generate_summary(model: object, rounds: Sequence[Sequence[BaseMessage]
     request = source_messages(rounds)
     bounded = model.bind(max_tokens=SUMMARY_MAX_OUTPUT_TOKENS)
     reply = await asyncio.wait_for(bounded.ainvoke(request), SUMMARY_TIMEOUT_SECONDS)
-    if not isinstance(reply, AIMessage) or reply.tool_calls or reply.invalid_tool_calls:
+    if (not isinstance(reply, AIMessage) or reply.tool_calls or reply.invalid_tool_calls or
+            any(key in reply.additional_kwargs for key in ("tool_calls", "function_call"))):
         raise ValueError("invalid_summary_reply")
     usage = getattr(reply, "usage_metadata", None)
     counts = {key: (usage.get(key) if isinstance(usage, dict) and

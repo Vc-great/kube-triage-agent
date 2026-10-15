@@ -38,7 +38,7 @@ L0=纯函数/配置/静态检查；L1=FakeModel 与 Mock/工具 spy；L2=MemoryS
 
 ## 本地验证与历史约束
 
-- 新测试 `server/tests/test_context_gate_b.py`：22/22 PASS；全量 `server/tests`：262/262 PASS。`PYTHONDONTWRITEBYTECODE=1`，复用已有 Python 3.14 `.venv`，不安装包。全量测试中的既有 Issue #12 用例需在独立 Worktree 的 `.local` 写临时目录，因此在 Host 文件权限下执行；第一次 Sandbox 尝试因该目录写权限失败，不能当作代码失败。
+- 新测试 `server/tests/test_context_gate_b.py`：23/23 PASS；全量 `server/tests`：263/263 PASS。`PYTHONDONTWRITEBYTECODE=1`，复用已有 Python 3.14 `.venv`，不安装包。全量测试中的既有 Issue #12 用例需在独立 Worktree 的 `.local` 写临时目录，因此在 Host 文件权限下执行；第一次 Sandbox 尝试因该目录写权限失败，不能当作代码失败。
 - Ruff：`server/src`、`server/tests`、Gate B 脚本及原 CI 相关脚本全部 PASS。`scripts/check_issue11_manifests.py` PASS。独立 Compose 项目名 `kube-triage-issue28-gateb-real` / `kube-triage-issue28-gateb-test` 的 `config --quiet` PASS，仅解析，未启动容器或创建卷。`git diff --check` PASS。
 - 本轮真实 Provider Run 0，Kubernetes 写 0；`REPAIR_ENABLED=false`。不读取生产 Key/Token/日志，不改 Reader、Repair、RBAC、Namespace、数据库或旧 Checkpoint。
 - #11 严格 CrashLoop Gate FAIL / 人工 BLOCKED、#13 G03 PARTIAL FAIL / L3 NOT RUN、#15 B06 FAIL 保持原历史结论。

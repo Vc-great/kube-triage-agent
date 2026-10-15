@@ -57,6 +57,8 @@ class FakeModel:
             self.summary_calls += 1
             if isinstance(self.summary, Exception):
                 raise self.summary
+            if isinstance(self.summary, AIMessage):
+                return self.summary
             return AIMessage(content=(self.summary if isinstance(self.summary, str)
                                       else json.dumps(self.summary, ensure_ascii=False)))
         pytest.fail("Summary model must not receive bound main-model input")
@@ -179,6 +181,16 @@ def test_b06_provider_error_text_never_enters_cache_or_audit(offline, caplog):
     assert "private.example" not in caplog.text
     assert "TEST_ONLY_FAKE_SECRET" not in caplog.text
     assert "private.example" not in json.dumps(result["context_summary"])
+
+
+def test_b06_summary_tool_call_reply_is_rejected(offline):
+    offline.summary = AIMessage(content=json.dumps(VALID), tool_calls=[{
+        "name": "resources_scale", "args": {}, "id": "forbidden"}])
+    raw = [*history(), HumanMessage(content="当前问题")]
+    result = asyncio.run(agent._llm({"messages": raw}))
+    assert result["context_summary"]["error_code"] == "invalid_summary_reply"
+    assert offline.main_inputs[0] == list(build_context_view(
+        agent.system_prompt(), SCHEMAS, raw, ContextConfig(True, 6500)).messages)
 
 
 def test_b01_summary_requires_window(monkeypatch):
