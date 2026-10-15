@@ -9,13 +9,14 @@ import time
 from typing import Literal, NotRequired
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import interrupt
 
 from kube_triage import repair
 from kube_triage.config import ConfigurationError
+from kube_triage.context import build_context_view, load_context_config
 from kube_triage.llm import chat_model
 from kube_triage.mcp_client import (
     MCP_TIMEOUT_SECONDS,
@@ -114,9 +115,19 @@ async def _llm(state: MessagesState) -> dict:
     model = chat_model()  # Configuration errors fail the Run, never become a healthy answer.
     try:
         native_tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
-        model = model.bind_tools(build_model_tool_schemas(native_tools))
-        reply = await model.ainvoke([SystemMessage(content=system_prompt()),
-                                      *state["messages"]])
+        schemas = build_model_tool_schemas(native_tools)
+        plan = build_context_view(system_prompt(), schemas, state["messages"],
+                                  load_context_config())
+        audit.info(json.dumps({"event": "context_view", "status": plan.status,
+                               "estimated_tokens": plan.estimated_tokens,
+                               "omitted_rounds": plan.omitted_rounds,
+                               "error_code": plan.error_code}, ensure_ascii=False))
+        if not plan.ok:
+            return {"messages": [AIMessage(content=(
+                "估算上下文超预算或历史轮次无法安全裁剪；本次诊断未完成。"
+                "请使用新 Thread 或缩小输入。"))]}
+        model = model.bind_tools(schemas)
+        reply = await model.ainvoke(list(plan.messages))
         if not isinstance(reply, AIMessage):
             raise TypeError("LLM returned a non-AI message")
         if reply.invalid_tool_calls:
@@ -136,6 +147,11 @@ async def _llm(state: MessagesState) -> dict:
         name = type(exc).__name__.lower()
         if "ratelimit" in name or "429" in str(exc):
             detail = "模型请求被限流（429）"
+        elif ("contextlength" in name or "context_length" in name or
+              any(marker in str(exc).lower() for marker in (
+                  "context length", "context window", "context_length_exceeded",
+                  "maximum context", "too many tokens", "input is too long"))):
+            detail = "Provider 实际 Context Limit 超限"
         elif "timeout" in name:
             detail = "模型请求超时"
         elif "connect" in name or isinstance(exc, OSError):
