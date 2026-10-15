@@ -1,0 +1,4 @@
+{
+  "graphs": {"phase30": "./graph.py:graph"},
+  "auth": {"path": "./auth_guard.py:auth", "disable_studio_auth": true}
+}

@@ -1,0 +1,20 @@
+name: kube-triage-phase30-20261015
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    environment:
+      POSTGRES_USER: ${PHASE30_DB_USER:?}
+      POSTGRES_PASSWORD: ${PHASE30_DB_PASSWORD:?}
+      POSTGRES_DB: ${PHASE30_DB_NAME:?}
+    ports:
+      - "127.0.0.1:${PHASE30_DB_PORT:-15439}:5432"
+    volumes:
+      - phase30_pg_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  phase30_pg_data: {}
