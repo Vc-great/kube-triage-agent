@@ -72,13 +72,15 @@ def test_formal_compose_and_graph_have_no_demo_shortcuts():
     assert api["environment"]["TRIAGE_ENV"] == "production"
     assert api["environment"]["REPAIR_ENABLED"] == "${REPAIR_ENABLED:-false}"
     assert set(graph.builder.nodes) == {
-        "llm", "tools", "repair_prepare", "repair_approval", "repair_execute",
+        "llm", "tools", "memory_retrieve", "repair_prepare", "repair_approval",
+        "repair_execute",
         "memory_prepare", "memory_review", "memory_commit",
         "revoke_prepare", "revoke_review", "revoke_commit",
     }
     assert testing["services"]["api"]["environment"]["TRIAGE_ENV"] == "test"
     assert "k8s-mcp" not in testing["services"] and "repair-mcp" not in testing["services"]
     assert "kubeconfig" not in (ROOT / "infra/test.compose.yaml").read_text()
+    assert "from kube_triage.auth import auth" in (ROOT / "server/Dockerfile").read_text()
     reader = (ROOT / "infra/k8s-mcp/config.toml").read_text()
     assert "read_only = true" in reader
     assert all(name in reader for name in mcp_client.ALLOWED_TOOLS)

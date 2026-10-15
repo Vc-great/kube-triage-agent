@@ -12,13 +12,22 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_config
 from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from kube_triage import incident_memory as memory
 from kube_triage import incident_memory_flow as memory_flow
+from kube_triage import incident_memory_retrieval as memory_retrieval
 from kube_triage import repair
-from kube_triage.config import ConfigurationError, incident_memory_write_enabled
+from kube_triage.config import (
+    ConfigurationError,
+    incident_memory_http_write_blocked,
+    incident_memory_max_candidates,
+    incident_memory_max_hits,
+    incident_memory_read_enabled,
+)
 from kube_triage.context import (
     ContextPlan,
     _split_safe_rounds,
@@ -60,6 +69,9 @@ class AgentState(MessagesState):
     memory_status: NotRequired[str]
     revoke_request: NotRequired[dict | None]
     reader_attestations: NotRequired[list[dict]]
+    memory_references: NotRequired[list[dict]]
+    memory_retrieval_status: NotRequired[str]
+    memory_target: NotRequired[str | None]
 
 
 def _current_turn(state: MessagesState) -> list:
@@ -107,7 +119,8 @@ def _last_user_text(state: MessagesState) -> str:
     return ""
 
 
-def _route(state: MessagesState) -> Literal["llm", "repair_prepare", "memory_prepare", "revoke_prepare"]:
+def _route(state: MessagesState) -> Literal[
+        "llm", "memory_retrieve", "repair_prepare", "memory_prepare", "revoke_prepare"]:
     command = _last_user_text(state)
     if command.strip() == "/repair-demo":
         return "repair_prepare"
@@ -115,7 +128,21 @@ def _route(state: MessagesState) -> Literal["llm", "repair_prepare", "memory_pre
         return "memory_prepare"
     if re.fullmatch(r"/forget-incident [0-9a-f]{32}", command):
         return "revoke_prepare"
-    return "llm"
+    return "memory_retrieve" if incident_memory_read_enabled() else "llm"
+
+
+async def _memory_retrieve(state: AgentState, runtime: Runtime) -> dict:
+    """Once per ordinary turn; a new turn always replaces old checkpoint refs."""
+    try:
+        result = await memory_retrieval.retrieve_incidents(
+            runtime.store, memory.owner(), _last_user_text(state),
+            max_hits=incident_memory_max_hits(),
+            max_candidates=incident_memory_max_candidates())
+    except (PermissionError, ValueError):
+        result = {"references": [], "target": None, "status": "memory_unavailable"}
+    return {"memory_references": result["references"],
+            "memory_target": result["target"],
+            "memory_retrieval_status": result["status"]}
 
 
 async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
@@ -123,7 +150,7 @@ async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
     calls = ai_message.tool_calls
     thread_id = config.get("configurable", {}).get("thread_id")
     used = _counts(state)[1]
-    attest = incident_memory_write_enabled()
+    attest = incident_memory_http_write_blocked()
     attestations = [] if used == 0 else list(state.get("reader_attestations") or [])
     human = _current_turn(state)[0] if attest else None
     results = []
@@ -272,6 +299,28 @@ async def _llm(state: AgentState) -> dict:
         if summary_enabled and plan.status == "trimmed":
             view, summary_update = await _summary_view(
                 model, state, schemas, plan, context_config.total_budget)
+        injected_refs = []
+        if incident_memory_read_enabled() and state.get("memory_references"):
+            target = state.get("memory_target")
+            try:
+                thread_id = get_config().get("configurable", {}).get("thread_id")
+            except RuntimeError:
+                thread_id = None
+            if (isinstance(target, str) and isinstance(thread_id, str)
+                    and memory.SAFE_ID.fullmatch(thread_id)):
+                evidence = memory_retrieval.current_pod_evidence(
+                    state["messages"], state.get("reader_attestations"), thread_id, target)
+                compared = memory_retrieval.compare_references(
+                    state["memory_references"], evidence)
+                # Preserve all Gate A/B messages and tool pairs. The reference
+                # is a separate assistant data slot before the current Human.
+                budget = min(context_config.total_budget, 16384)
+                view, injected_refs = memory_retrieval.bounded_memory_view(
+                    view, schemas, compared, budget)
+                audit.info(json.dumps({"event": "incident_memory_context",
+                                       "injected": len(injected_refs),
+                                       "comparison": evidence[0],
+                                       "budget": budget}, ensure_ascii=False))
         model = model.bind_tools(schemas)
         reply = await model.ainvoke(view)
         if not isinstance(reply, AIMessage):
@@ -282,10 +331,16 @@ async def _llm(state: AgentState) -> dict:
         if not reply.tool_calls and not reply.content:
             return {**summary_update, "messages": [AIMessage(content=(
                 "模型未返回内容或标准 Tool Call；本次诊断未完成。"))]}
+        if not reply.tool_calls and injected_refs and evidence[0] != "verified":
+            return {**summary_update, "messages": [AIMessage(content=(
+                "本轮未取得可信的目标 Pod Reader 证据；当前状态和根因未核验。"
+                + memory_retrieval.display_references(injected_refs)))]}
         if not reply.tool_calls and not _has_tool_evidence(state):
             return {**summary_update, "messages": [AIMessage(content=(
                 "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。"))]}
         reply.name = "triage_llm"
+        if not reply.tool_calls and injected_refs:
+            reply.content = str(reply.content) + memory_retrieval.display_references(injected_refs)
         return {**summary_update, "messages": [reply]}
     except ConfigurationError:
         raise
@@ -442,6 +497,7 @@ async def _repair_execute(state: AgentState, config: RunnableConfig) -> dict:
 
 builder = StateGraph(AgentState)
 builder.add_node("llm", _llm)
+builder.add_node("memory_retrieve", _memory_retrieve)
 builder.add_node("tools", _execute_tool)
 builder.add_node("repair_prepare", _repair_prepare)
 builder.add_node("repair_approval", _repair_approval)
@@ -453,6 +509,7 @@ builder.add_node("revoke_prepare", memory_flow.revoke_prepare)
 builder.add_node("revoke_review", memory_flow.revoke_review)
 builder.add_node("revoke_commit", memory_flow.revoke_commit)
 builder.add_conditional_edges(START, _route)
+builder.add_edge("memory_retrieve", "llm")
 builder.add_conditional_edges("llm", _after_llm)
 builder.add_edge("tools", "llm")
 builder.add_conditional_edges("repair_prepare", _after_repair_prepare)
