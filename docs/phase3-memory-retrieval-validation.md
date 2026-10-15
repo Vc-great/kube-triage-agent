@@ -47,7 +47,7 @@
 | G32-11 | PASS | Real-isolated：正式 Graph + PostgreSQL、跨 Thread、Aegra 重启、SDK SSE/History、安全 HTTP 守卫；证据文件和上述命令。 |
 | G32-12 | PASS | Real-isolated：原 Remember/Forget/模拟 Repair HITL、错误 Resume 交叉负例；Unit/Fake：四 Reader schemas、6 Tool/4 Decision 与全量回归。 |
 | G32-13 | PASS | Web 使用既有 Markdown 回答视图；安全小节已由真实隔离 SDK 回答确认。`pnpm exec tsc --noEmit`、`pnpm lint`（0 error，18 既有 warning）、Host `pnpm exec next build --webpack` 通过。没有真人浏览器点击。 |
-| G32-14 | PASS（本地）；CI 待 PR | `PYTHONPATH=server/src .../pytest -q server/tests`：321 passed；`ruff check server/src server/tests scripts/spikes/phase3_memory/phase32_*.py` 与 `git diff --check` 通过。CI 结果须以 Draft PR 提交后最新 run 为准。 |
+| G32-14 | PASS | `PYTHONPATH=server/src .../pytest -q server/tests`：321 passed；`ruff check server/src server/tests scripts/spikes/phase3_memory/phase32_*.py` 与 `git diff --check` 通过。实现提交 `b3aff9f9fe850dda729df2768155371124bdbf70` 的 [CI run #82](https://github.com/Vc-great/kube-triage-agent/actions/runs/38703930848) 为 completed/success，web、python、compose 三个 job 全部 success。 |
 | G32-15 | NOT RUN | Phase 3-1 G31-13 用户本人 Web Approve/Reject/Revoke 尚未验收。 |
 | G32-16 | NOT RUN | 真实模型 A/B 和诊断收益属于 Phase 3-3；本阶段没有请求。 |
 
@@ -67,5 +67,5 @@
 ## DELIVERABLES / PHASE_3_3_GATE
 
 - 源码：`config.py`、`auth.py`、`incident_memory_retrieval.py`、`graph.py`、`prompts.py`、Compose 示例；测试：26 个新增参数化用例与旧回归；探针：`phase32_setup.py`、`phase32_live_probe.py`。
-- Commit SHA、Draft PR URL 与最新 CI：提交和创建 PR 后填入本节；PR 保持 Draft，不合并、不关闭 Issue。
+- 实现提交 `b3aff9f9fe850dda729df2768155371124bdbf70`；[Draft PR #33](https://github.com/Vc-great/kube-triage-agent/pull/33)；该实现提交的 [CI run #82](https://github.com/Vc-great/kube-triage-agent/actions/runs/38703930848) 为 completed/success。PR 保持 Draft，不合并、不关闭 Issue。文档补录提交的最新 CI 以 PR Checks 为准。
 - **CONDITIONAL_READY**：Phase 3-2 的代码与合成隔离验收可供审查；Phase 3 全链路仍需用户本人完成 G31-13，Phase 3-3 真实模型 A/B 需另行授权和确定上线边界。
