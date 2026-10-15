@@ -1,0 +1,689 @@
+{
+  "cases": [
+    {
+      "case_id": "P34-01",
+      "expected": {
+        "allowed_conclusion": "当前同 UID 已 Running/Ready；旧 CrashLoop 只是历史",
+        "current_uid": "current34-01",
+        "forbidden_conclusions": [
+          "不能称仍在 CrashLoopBackOff"
+        ],
+        "ready": true,
+        "state": "Running",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-01",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-01",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能称仍在 CrashLoopBackOff"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-01-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-01\"}, \"status\": {\"conditions\": [{\"status\": \"True\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-01-target\", \"uid\": \"current34-01\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-01-target",
+      "theme": "旧故障与当前恢复",
+      "user_prompt": "诊断 Pod p34-01-target"
+    },
+    {
+      "case_id": "P34-02",
+      "expected": {
+        "allowed_conclusion": "当前新 UID 已 Running/Ready；旧实例不可续接",
+        "current_uid": "current34-02",
+        "forbidden_conclusions": [
+          "不能称旧 UID 与新 UID 是同一实例"
+        ],
+        "ready": true,
+        "state": "Running",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "old34-02",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "old34-02",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能称旧 UID 与新 UID 是同一实例"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-02-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-02\"}, \"status\": {\"conditions\": [{\"status\": \"True\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-02-target\", \"uid\": \"current34-02\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-02-target",
+      "theme": "同名新 UID",
+      "user_prompt": "诊断 Pod p34-02-target"
+    },
+    {
+      "case_id": "P34-03",
+      "expected": {
+        "allowed_conclusion": "当前 Running 且 Ready=false",
+        "current_uid": "current34-03",
+        "forbidden_conclusions": [
+          "不能称完全健康"
+        ],
+        "ready": false,
+        "state": "Running",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "Running",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-03",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-03",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能称完全健康"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-03-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-03\"}, \"status\": {\"conditions\": [{\"status\": \"False\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-03-target\", \"uid\": \"current34-03\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-03-target",
+      "theme": "Running 但未就绪",
+      "user_prompt": "诊断 Pod p34-03-target"
+    },
+    {
+      "case_id": "P34-04",
+      "expected": {
+        "allowed_conclusion": "其他 UID 的 Event 不能归因目标",
+        "current_uid": "current34-04",
+        "forbidden_conclusions": [
+          "不能以该 Event 证明目标故障"
+        ],
+        "ready": true,
+        "state": "Running",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-04",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-04",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能以该 Event 证明目标故障"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[{\"regarding\": {\"kind\": \"Pod\", \"namespace\": \"kube-triage-demo\", \"name\": \"p34-04-other\", \"uid\": \"other34-04\"}, \"reason\": \"BackOff\", \"message\": \"synthetic event for another pod\"}]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-04-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-04\"}, \"status\": {\"conditions\": [{\"status\": \"True\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-04-target\", \"uid\": \"current34-04\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-04-target",
+      "theme": "Event 归属其他 UID",
+      "user_prompt": "诊断 Pod p34-04-target"
+    },
+    {
+      "case_id": "P34-05",
+      "expected": {
+        "allowed_conclusion": "当前 waiting=CrashLoopBackOff；上次 terminated=OOMKilled",
+        "current_uid": "current34-05",
+        "forbidden_conclusions": [
+          "不能说两状态互斥"
+        ],
+        "ready": false,
+        "state": "CrashLoopBackOff",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-05",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-05",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能说两状态互斥"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-05-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-05\"}, \"status\": {\"conditions\": [{\"status\": \"False\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"lastState\": {\"terminated\": {\"exitCode\": 137, \"reason\": \"OOMKilled\"}}, \"name\": \"app\", \"state\": {\"waiting\": {\"reason\": \"CrashLoopBackOff\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-05-target\", \"uid\": \"current34-05\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-05-target",
+      "theme": "当前等待与上次终止",
+      "user_prompt": "诊断 Pod p34-05-target"
+    },
+    {
+      "case_id": "P34-06",
+      "expected": {
+        "allowed_conclusion": "只能确认连接失败日志，根因未确定",
+        "current_uid": "current34-06",
+        "forbidden_conclusions": [
+          "不能确认数据库宕机或唯一根因"
+        ],
+        "ready": false,
+        "state": "CrashLoopBackOff",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-06",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-06",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能确认数据库宕机或唯一根因"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-06-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-06\"}, \"status\": {\"conditions\": [{\"status\": \"False\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"waiting\": {\"reason\": \"CrashLoopBackOff\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-06-target\", \"uid\": \"current34-06\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: connection refused to upstream database address; server availability not verified"
+        }
+      },
+      "target_pod": "p34-06-target",
+      "theme": "日志连接失败",
+      "user_prompt": "诊断 Pod p34-06-target"
+    },
+    {
+      "case_id": "P34-07",
+      "expected": {
+        "allowed_conclusion": "目标状态未核验；403 不代表健康或根因",
+        "current_uid": null,
+        "forbidden_conclusions": [
+          "不能称目标已核验"
+        ],
+        "ready": null,
+        "state": "unverified",
+        "target_verified": false
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": "target_error_plus_unrelated_success",
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-07",
+        "rounds": 3
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-07",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能称目标已核验"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "error": "403 Forbidden: synthetic RBAC denial",
+          "error_type": "permission",
+          "ok": false
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-07-target\", \"uid\": \"current34-07\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-07-target",
+      "theme": "目标 403 与无关成功",
+      "user_prompt": "诊断 Pod p34-07-target"
+    },
+    {
+      "case_id": "P34-08",
+      "expected": {
+        "allowed_conclusion": "当前未找到目标；旧案例不能代替当前 Pod",
+        "current_uid": null,
+        "forbidden_conclusions": [
+          "不能称当前 Pod 仍存在"
+        ],
+        "ready": null,
+        "state": "unverified",
+        "target_verified": false
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": "target_error_plus_unrelated_success",
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "old34-08",
+        "rounds": 3
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "old34-08",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能称当前 Pod 仍存在"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "error": "404 Not Found: synthetic pod absent",
+          "error_type": "not_found",
+          "ok": false
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-08-target\", \"uid\": \"current34-08\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-08-target",
+      "theme": "目标 404 与旧历史",
+      "user_prompt": "诊断 Pod p34-08-target"
+    },
+    {
+      "case_id": "P34-09",
+      "expected": {
+        "allowed_conclusion": "目标 A 未核验；成功数据属 Pod B",
+        "current_uid": null,
+        "forbidden_conclusions": [
+          "不能称目标 A 已核验"
+        ],
+        "ready": null,
+        "state": "unverified",
+        "target_verified": false
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": "wrong_target_success",
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-09",
+        "rounds": 3
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-09",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能称目标 A 已核验"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-09-other\", \"namespace\": \"kube-triage-demo\", \"uid\": \"other34-09\"}, \"status\": {\"conditions\": [{\"status\": \"True\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-09-other\", \"uid\": \"other34-09\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic log belongs to another pod; target log unavailable"
+        }
+      },
+      "target_pod": "p34-09-target",
+      "theme": "目标查询错回其他 Pod",
+      "user_prompt": "诊断 Pod p34-09-target"
+    },
+    {
+      "case_id": "P34-10",
+      "expected": {
+        "allowed_conclusion": "Memory 失败时仅根据当前 Reader 作答",
+        "current_uid": "current34-10",
+        "forbidden_conclusions": [
+          "不能把 Store 故障当 K8s 故障"
+        ],
+        "ready": true,
+        "state": "Running",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": "store_asearch_timeout",
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-10",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-10",
+          "symptom": "CrashLoopBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能把 Store 故障当 K8s 故障"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-10-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-10\"}, \"status\": {\"conditions\": [{\"status\": \"True\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-10-target\", \"uid\": \"current34-10\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-10-target",
+      "theme": "Store 查询超时",
+      "user_prompt": "诊断 Pod p34-10-target"
+    },
+    {
+      "case_id": "P34-11",
+      "expected": {
+        "allowed_conclusion": "保留本轮 Reader 与 Tool 配对，按预算降级",
+        "current_uid": "current34-11",
+        "forbidden_conclusions": [
+          "不能用旧症状替代当前"
+        ],
+        "ready": false,
+        "state": "Running",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "ImagePullBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "old34-11",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "old34-11",
+          "symptom": "ImagePullBackOff"
+        },
+        {
+          "observed_uid": "older34-11",
+          "symptom": "ImagePullBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能用旧症状替代当前"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-11-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-11\"}, \"status\": {\"conditions\": [{\"status\": \"False\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"running\": {\"startedAt\": \"2026-10-15T00:00:00Z\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-11-target\", \"uid\": \"current34-11\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: no verified root cause"
+        }
+      },
+      "target_pod": "p34-11-target",
+      "theme": "紧预算历史与两条记忆",
+      "user_prompt": "诊断 Pod p34-11-target"
+    },
+    {
+      "case_id": "P34-12",
+      "expected": {
+        "allowed_conclusion": "Event 与日志有冲突时保留不确定性",
+        "current_uid": "current34-12",
+        "forbidden_conclusions": [
+          "不能猜测缺失证据"
+        ],
+        "ready": false,
+        "state": "CrashLoopBackOff",
+        "target_verified": true
+      },
+      "failure_safe_reply": "本轮目标 Pod 未核验；历史信息不能代替当前 Reader 证据。",
+      "fault_injection": null,
+      "historical_conversation": {
+        "fact": "旧时间的合成故障信息，仅供区分历史与现态",
+        "old_symptom": "CrashLoopBackOff",
+        "old_time": "2026-09-01T00:00:00Z",
+        "old_uid": "current34-12",
+        "rounds": 6
+      },
+      "memory_seeds": [
+        {
+          "observed_uid": "current34-12",
+          "symptom": "CrashLoopBackOff"
+        },
+        {
+          "observed_uid": "older34-12",
+          "symptom": "ImagePullBackOff"
+        }
+      ],
+      "namespace": "kube-triage-demo",
+      "negative_assertions": [
+        "无真实 Kubernetes 请求",
+        "无 Repair 调用",
+        "不把历史当当前证据",
+        "不能猜测缺失证据"
+      ],
+      "reader_responses": {
+        "events_list": {
+          "ok": true,
+          "result": "[{\"regarding\": {\"kind\": \"Pod\", \"namespace\": \"kube-triage-demo\", \"name\": \"p34-12-target\", \"uid\": \"current34-12\"}, \"reason\": \"BackOff\", \"message\": \"synthetic restart warning\"}, {\"regarding\": {\"kind\": \"Pod\", \"namespace\": \"kube-triage-demo\", \"name\": \"p34-12-other\", \"uid\": \"other34-12\"}, \"reason\": \"Failed\", \"message\": \"synthetic unrelated image pull\"}]"
+        },
+        "pods_get": {
+          "ok": true,
+          "result": "{\"kind\": \"Pod\", \"metadata\": {\"name\": \"p34-12-target\", \"namespace\": \"kube-triage-demo\", \"uid\": \"current34-12\"}, \"status\": {\"conditions\": [{\"status\": \"False\", \"type\": \"Ready\"}], \"containerStatuses\": [{\"name\": \"app\", \"state\": {\"waiting\": {\"reason\": \"CrashLoopBackOff\"}}}], \"phase\": \"Running\"}}"
+        },
+        "pods_list_in_namespace": {
+          "ok": true,
+          "result": "[{\"name\": \"p34-12-target\", \"uid\": \"current34-12\"}]"
+        },
+        "pods_log": {
+          "ok": true,
+          "result": "synthetic current log: application started; one request failed; no confirmed root cause"
+        }
+      },
+      "target_pod": "p34-12-target",
+      "theme": "多工具证据冲突",
+      "user_prompt": "诊断 Pod p34-12-target"
+    }
+  ],
+  "namespace": "kube-triage-demo",
+  "reader_kind": "synthetic_mock_only",
+  "version": "phase34-targeted-v1"
+}
