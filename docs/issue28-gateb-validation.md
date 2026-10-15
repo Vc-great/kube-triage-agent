@@ -45,4 +45,4 @@ L0=纯函数/配置/静态检查；L1=FakeModel 与 Mock/工具 spy；L2=MemoryS
 
 ## 交付后续
 
-本次 Gate B Draft PR 的 CI、独立代码 Review 与真模型质量待核对。保持 Draft，禁止自动合并或关闭 Issue #28。真实模型 Smoke/A-B 需另行批准合成数据、Mock-only 拓扑、请求与费用预算、受保护传输；在此之前只能声称离线协议与安全边界已验证。
+本次 [Gate B Draft PR #30](https://github.com/Vc-great/kube-triage-agent/pull/30) 的 CI 最终结论待核对；正式独立 Review 当前提交数 0，记 `PENDING/NOT RUN`。保持 Draft，禁止自动合并或关闭 Issue #28。真实模型 Smoke/A-B 需另行批准合成数据、Mock-only 拓扑、请求与费用预算、受保护传输；在此之前只能声称离线协议与安全边界已验证。
