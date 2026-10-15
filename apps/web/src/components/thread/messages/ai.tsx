@@ -15,6 +15,12 @@ import { ThreadView } from "../agent-inbox";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
 import { RepairApprovalView } from "./repair-approval";
+import {
+  IncidentMemoryReviewView,
+  IncidentMemoryRevokeView,
+  type MemoryReview,
+  type RevokeReview,
+} from "./incident-memory-review";
 import { useArtifact } from "../artifact";
 
 function CustomComponent({
@@ -88,6 +94,17 @@ function Interrupt({
     !Array.isArray(fallbackValue) &&
     fallbackValue?.kind === "repair_approval" &&
     typeof fallbackValue?.proposal?.proposal_id === "string";
+  const isMemoryReview =
+    !Array.isArray(fallbackValue) &&
+    fallbackValue?.kind === "incident_memory_review" &&
+    typeof fallbackValue?.candidate_id === "string" &&
+    typeof fallbackValue?.candidate_hash === "string" &&
+    typeof fallbackValue?.preview?.resource_name === "string";
+  const isRevokeReview =
+    !Array.isArray(fallbackValue) &&
+    fallbackValue?.kind === "incident_memory_revoke_review" &&
+    typeof fallbackValue?.memory_id === "string" &&
+    typeof fallbackValue?.record_hash === "string";
 
   return (
     <>
@@ -100,6 +117,10 @@ function Interrupt({
       (isLastMessage || hasNoAIOrToolMessages) ? (
         isRepairApproval ? (
           <RepairApprovalView proposal={fallbackValue.proposal} />
+        ) : isMemoryReview ? (
+          <IncidentMemoryReviewView review={fallbackValue as MemoryReview} />
+        ) : isRevokeReview ? (
+          <IncidentMemoryRevokeView review={fallbackValue as RevokeReview} />
         ) : (
           <GenericInterruptView interrupt={fallbackValue} />
         )

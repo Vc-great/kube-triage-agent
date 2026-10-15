@@ -7,6 +7,26 @@ class ConfigurationError(ValueError):
     """Invalid configuration must fail startup or the diagnosis Run."""
 
 
+def incident_memory_write_enabled() -> bool:
+    """Two explicit opt-ins; malformed values fail startup and never grant writes."""
+    values = []
+    for name in ("INCIDENT_MEMORY_ENABLED", "INCIDENT_MEMORY_WRITE_ENABLED"):
+        value = os.getenv(name, "false")
+        if value not in {"true", "false"}:
+            raise ConfigurationError(f"{name} 必须为 true 或 false")
+        values.append(value == "true")
+    return all(values)
+
+
+def incident_memory_provenance_key() -> bytes:
+    """Separate server-only HMAC key; the public Demo API key must not sign evidence."""
+    value = os.getenv("INCIDENT_MEMORY_PROVENANCE_SECRET", "")
+    if (len(value) < 32 or len(value) > 256 or not value.isascii()
+            or value == os.getenv("DEMO_API_TOKEN", "")):
+        raise ConfigurationError("INCIDENT_MEMORY_PROVENANCE_SECRET 必须是 32–256 字符的服务端密钥")
+    return value.encode("ascii")
+
+
 def test_mode() -> bool:
     mode = os.getenv("TRIAGE_ENV", "production")
     if mode not in {"production", "development", "test"}:
@@ -42,6 +62,8 @@ def reader_url() -> str:
 
 
 def validate_service() -> None:
+    if incident_memory_write_enabled():
+        incident_memory_provenance_key()
     validate_llm()
     reader_url()
     from kube_triage.context import load_context_config, load_summary_enabled

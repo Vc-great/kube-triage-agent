@@ -1,0 +1,4 @@
+{
+  "graphs": {"agent": "./phase31_product_mock.py:graph"},
+  "auth": {"path": "../../../server/src/kube_triage/auth.py:auth", "disable_studio_auth": true}
+}

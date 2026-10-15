@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Literal, NotRequired
 from uuid import uuid4
@@ -14,8 +15,10 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import interrupt
 
+from kube_triage import incident_memory as memory
+from kube_triage import incident_memory_flow as memory_flow
 from kube_triage import repair
-from kube_triage.config import ConfigurationError
+from kube_triage.config import ConfigurationError, incident_memory_write_enabled
 from kube_triage.context import (
     ContextPlan,
     _split_safe_rounds,
@@ -51,6 +54,12 @@ class AgentState(MessagesState):
     repair_proposal: NotRequired[dict | None]
     repair_status: NotRequired[str]
     repair_result: NotRequired[dict | None]
+    memory_candidate: NotRequired[dict | None]
+    memory_hash: NotRequired[str | None]
+    memory_record: NotRequired[dict | None]
+    memory_status: NotRequired[str]
+    revoke_request: NotRequired[dict | None]
+    reader_attestations: NotRequired[list[dict]]
 
 
 def _current_turn(state: MessagesState) -> list:
@@ -98,14 +107,25 @@ def _last_user_text(state: MessagesState) -> str:
     return ""
 
 
-def _route(state: MessagesState) -> Literal["llm", "repair_prepare"]:
-    return "repair_prepare" if _last_user_text(state).strip() == "/repair-demo" else "llm"
+def _route(state: MessagesState) -> Literal["llm", "repair_prepare", "memory_prepare", "revoke_prepare"]:
+    command = _last_user_text(state)
+    if command.strip() == "/repair-demo":
+        return "repair_prepare"
+    if command == "/remember-incident":
+        return "memory_prepare"
+    if re.fullmatch(r"/forget-incident [0-9a-f]{32}", command):
+        return "revoke_prepare"
+    return "llm"
 
 
 async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
-    calls = state["messages"][-1].tool_calls
+    ai_message = state["messages"][-1]
+    calls = ai_message.tool_calls
     thread_id = config.get("configurable", {}).get("thread_id")
     used = _counts(state)[1]
+    attest = incident_memory_write_enabled()
+    attestations = [] if used == 0 else list(state.get("reader_attestations") or [])
+    human = _current_turn(state)[0] if attest else None
     results = []
     for call in calls:
         if used >= MAX_TOOL_CALLS:
@@ -114,11 +134,18 @@ async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
         else:
             response = await call_tool(call["name"], call["args"], thread_id)
             used += 1
-        results.append(ToolMessage(
+        tool_message = ToolMessage(
             content=json.dumps(response, ensure_ascii=False),
             name=call["name"], tool_call_id=call["id"],
             status="success" if response["ok"] else "error",
-        ))
+            **({"id": uuid4().hex} if attest else {}),
+        )
+        results.append(tool_message)
+        if attest and response["ok"] and call["name"] == "pods_get":
+            attestations.append(memory.make_attestation(
+                human, ai_message, call, tool_message, thread_id))
+    if attest:
+        return {"messages": results, "reader_attestations": attestations[-6:]}
     return {"messages": results}
 
 
@@ -419,10 +446,26 @@ builder.add_node("tools", _execute_tool)
 builder.add_node("repair_prepare", _repair_prepare)
 builder.add_node("repair_approval", _repair_approval)
 builder.add_node("repair_execute", _repair_execute)
+builder.add_node("memory_prepare", memory_flow.prepare)
+builder.add_node("memory_review", memory_flow.review)
+builder.add_node("memory_commit", memory_flow.commit)
+builder.add_node("revoke_prepare", memory_flow.revoke_prepare)
+builder.add_node("revoke_review", memory_flow.revoke_review)
+builder.add_node("revoke_commit", memory_flow.revoke_commit)
 builder.add_conditional_edges(START, _route)
 builder.add_conditional_edges("llm", _after_llm)
 builder.add_edge("tools", "llm")
 builder.add_conditional_edges("repair_prepare", _after_repair_prepare)
 builder.add_conditional_edges("repair_approval", _after_repair_approval)
 builder.add_edge("repair_execute", END)
+builder.add_conditional_edges("memory_prepare", lambda s: "memory_review" if
+                              s.get("memory_status") == "pending" else END)
+builder.add_conditional_edges("memory_review", lambda s: "memory_commit" if
+                              s.get("memory_status") == "approved" else END)
+builder.add_edge("memory_commit", END)
+builder.add_conditional_edges("revoke_prepare", lambda s: "revoke_review" if
+                              s.get("memory_status") == "revoke_pending" else END)
+builder.add_conditional_edges("revoke_review", lambda s: "revoke_commit" if
+                              s.get("memory_status") == "revoke_approved" else END)
+builder.add_edge("revoke_commit", END)
 graph = builder.compile()
