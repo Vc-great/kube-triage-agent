@@ -17,8 +17,8 @@
 | A08 | PASS | 历史正常/当前 CrashLoop 与相反场景，当前消息和 ID 完整，`_has_tool_evidence` 只用当前轮；L0。没有真实模型语义诊断。 |
 | A09 | PASS | 合成恶意 ToolResult、伪 `<system>`、虚拟 Secret 不进入 System 或审计；原 #13 离线执行边界回归通过；L0/L1。真实模型抗注入 NOT RUN。 |
 | A10 | PASS | MemorySaver 中完整 State/Checkpoint 保留；`/repair-demo` 绕过 Context Manager；既有模拟 Repair Approve/Reject/Resume 测试通过，真实写 0；L2。历史 B06 未重演。 |
-| A11 | PASS | Ruff、全量 pytest、Manifest、两套独立 Compose `config --quiet`、`git diff --check` 通过。远端 CI 在 Draft PR 创建前 NOT RUN。 |
-| A12 | NOT RUN | 本文件、设计与面试文档已编写；Draft PR、独立 Review 与 CI 状态待创建后记录。 |
+| A11 | PASS | Ruff、全量 pytest、Manifest、两套独立 Compose `config --quiet`、`git diff --check` 通过。远端 CI 已启动，最终结论待查。 |
+| A12 | PASS | 中文设计、验收、面试文档已编写；[Draft PR #29](https://github.com/Vc-great/kube-triage-agent/pull/29) 已创建并关联 Issue #28。独立 Review 提交数 0，状态 NOT RUN。 |
 
 ## 实际执行命令与分母
 
