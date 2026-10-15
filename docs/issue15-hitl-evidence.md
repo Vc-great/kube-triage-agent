@@ -126,5 +126,5 @@ flowchart TD
 | H04 | PASS | Approval、UID、回执、Desired/Ready、根因与 Replay 分层 |
 | H05 | PASS | [无写展示手册](issue15-hitl-readonly-demo.md)只用静态材料；不含集群写命令 |
 | H06 | PASS | 2026-10-15：相对文档链接检查 PASS、Mermaid 单图基础结构检查 PASS、`git diff --check` PASS；现有 Python 3.14 虚拟环境 `ruff check src tests` PASS，`test_phase3b.py` 23 passed，全量 pytest Host 重跑 217 passed。首次 sandbox 全量测试 216 passed/1 failed，仅因无法在托管 Worktree 创建忽略目录；Host 同命令通过。未下载依赖；Web/Compose/真实 K8s E2E 均 NOT RUN。 |
-| H07 | Draft PR 待创建；独立 Review BLOCKED | 本环境只有 PR/CI 状态读取能力，未获得独立 Reviewer 运行通道；PR HEAD CI 以新 PR 页面结果为准，不借用 PR #25 的 CI。保持 Draft，不自动合并。 |
+| H07 | PASS（Draft PR）；独立 Review BLOCKED | [PR #26](https://github.com/Vc-great/kube-triage-agent/pull/26) 已创建且保持 Draft；本环境只有 PR/CI 状态读取能力，未获得独立 Reviewer 运行通道。最终 HEAD 的 CI 以该 PR Checks 页面为准，不借用 PR #25 的 CI；不自动合并。 |
 | H08 | PASS | 本轮真实 K8s Write/Approve/Resume/LLM Run 均为 0；Compose 未启动；当前状态 NOT CHECKED |
