@@ -130,7 +130,7 @@ Store 注入没有关闭 PostgreSQL，Aegra Checkpointer 与正式 Run 均仍可
 | G34-11 | PASS | 批次审计：Phase 3-3 数字原样保留；`formal-v1` 102/144 标 INVALID；`pilot-v3` 8/8、`formal-v2` 144/144、`fault-v2` 32/32 分开。 |
 | G34-12 | PASS | 本地 334 项 pytest、Ruff、`git diff --check`；覆盖旧 Gate A/B、Memory 生命周期、Repair HITL 以及新增错目标回归。CI 结果另列 PR 状态。 |
 | G34-13 | NOT RUN | G31-13 用户本人 Web Approve/Reject/Revoke、Phase 3-3 与本次人工盲审，Codex 均未代填。 |
-| G34-14 | PARTIAL | 候选文件凭据扫描 0 命中；0700/0600 权限核对；Compose 项目标签下的容器、网络、卷已精确清理，端口释放，临时环境文件和可能含完整端点的服务日志已删除。Push、Draft PR 与 CI 状态在最终交付记录补齐。 |
+| G34-14 | PASS | 候选文件凭据扫描 0 命中；0700/0600 权限核对；Compose 项目标签下的容器、网络、卷已精确清理，端口释放，临时环境文件和可能含完整端点的服务日志已删除。分支已推送，Draft PR [#35](https://github.com/Vc-great/kube-triage-agent/pull/35) 已创建；首个 CI run `38747077383` 的 python/web/compose 均通过。最终提交的 CI 状态以 PR Checks 为准。 |
 
 **决策：继续默认关闭 Memory。** 本次没有清晰的配对质量收益，C/D 各出现 1 个不同失败，且 Memory 增加可观测输入量。摘要组已知含摘要 Token 下界与时延明显增加。可继续受限 Demo 研究，但真人审批与盲审缺口、真实 Kubernetes 准确率和生产安全性均未验收。
 
