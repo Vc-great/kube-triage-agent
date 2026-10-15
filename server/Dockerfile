@@ -7,4 +7,4 @@ RUN uv sync --frozen --no-dev --no-editable
 COPY aegra.json ./
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 AEGRA_CONFIG=/app/aegra.json
 EXPOSE 2026
-CMD ["sh", "-c", "python -m kube_triage.config && exec aegra serve --host 0.0.0.0 --port 2026"]
+CMD ["sh", "-c", "python -m kube_triage.config && python -c 'from kube_triage.auth import auth' && exec aegra serve --host 0.0.0.0 --port 2026"]

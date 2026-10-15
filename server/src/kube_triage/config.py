@@ -7,15 +7,47 @@ class ConfigurationError(ValueError):
     """Invalid configuration must fail startup or the diagnosis Run."""
 
 
+def _memory_flag(name: str) -> bool:
+    value = os.getenv(name, "false")
+    if value not in {"true", "false"}:
+        raise ConfigurationError(f"{name} 必须为 true 或 false")
+    return value == "true"
+
+
+def incident_memory_read_enabled() -> bool:
+    master = _memory_flag("INCIDENT_MEMORY_ENABLED")
+    read = _memory_flag("INCIDENT_MEMORY_READ_ENABLED")
+    _memory_flag("INCIDENT_MEMORY_WRITE_ENABLED")
+    if read and not master:
+        raise ConfigurationError("INCIDENT_MEMORY_READ_ENABLED=true 需要 INCIDENT_MEMORY_ENABLED=true")
+    return master and read
+
+
 def incident_memory_write_enabled() -> bool:
     """Two explicit opt-ins; malformed values fail startup and never grant writes."""
-    values = []
-    for name in ("INCIDENT_MEMORY_ENABLED", "INCIDENT_MEMORY_WRITE_ENABLED"):
-        value = os.getenv(name, "false")
-        if value not in {"true", "false"}:
-            raise ConfigurationError(f"{name} 必须为 true 或 false")
-        values.append(value == "true")
-    return all(values)
+    master = _memory_flag("INCIDENT_MEMORY_ENABLED")
+    write = _memory_flag("INCIDENT_MEMORY_WRITE_ENABLED")
+    _memory_flag("INCIDENT_MEMORY_READ_ENABLED")
+    return master and write
+
+
+def incident_memory_http_write_blocked() -> bool:
+    return incident_memory_read_enabled() or incident_memory_write_enabled()
+
+
+def incident_memory_max_hits() -> int:
+    return _memory_integer("INCIDENT_MEMORY_MAX_HITS", 2, 1, 3)
+
+
+def incident_memory_max_candidates() -> int:
+    return _memory_integer("INCIDENT_MEMORY_MAX_CANDIDATES", 20, 1, 100)
+
+
+def _memory_integer(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name, str(default))
+    if not raw.isdecimal() or not minimum <= int(raw) <= maximum:
+        raise ConfigurationError(f"{name} 必须为 {minimum}..{maximum} 的整数")
+    return int(raw)
 
 
 def incident_memory_provenance_key() -> bytes:
@@ -62,8 +94,10 @@ def reader_url() -> str:
 
 
 def validate_service() -> None:
-    if incident_memory_write_enabled():
+    if incident_memory_http_write_blocked():
         incident_memory_provenance_key()
+    incident_memory_max_hits()
+    incident_memory_max_candidates()
     validate_llm()
     reader_url()
     from kube_triage.context import load_context_config, load_summary_enabled
