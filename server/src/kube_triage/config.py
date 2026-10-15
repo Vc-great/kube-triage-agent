@@ -44,8 +44,9 @@ def reader_url() -> str:
 def validate_service() -> None:
     validate_llm()
     reader_url()
-    from kube_triage.context import load_context_config
-    load_context_config()
+    from kube_triage.context import load_context_config, load_summary_enabled
+    context_config = load_context_config()
+    load_summary_enabled(context_config.enabled)
 
 
 if __name__ == "__main__":

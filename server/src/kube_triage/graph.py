@@ -16,7 +16,22 @@ from langgraph.types import interrupt
 
 from kube_triage import repair
 from kube_triage.config import ConfigurationError
-from kube_triage.context import build_context_view, load_context_config
+from kube_triage.context import (
+    ContextPlan,
+    _split_safe_rounds,
+    build_context_view,
+    estimate_context,
+    load_context_config,
+    load_summary_enabled,
+)
+from kube_triage.context_summary import (
+    SUMMARY_VERSION,
+    generate_summary,
+    source_fingerprint,
+    source_messages,
+    summary_candidate,
+    validate_summary,
+)
 from kube_triage.llm import chat_model
 from kube_triage.mcp_client import (
     MCP_TIMEOUT_SECONDS,
@@ -32,6 +47,7 @@ audit = logging.getLogger("kube_triage.audit")
 
 
 class AgentState(MessagesState):
+    context_summary: NotRequired[dict]
     repair_proposal: NotRequired[dict | None]
     repair_status: NotRequired[str]
     repair_result: NotRequired[dict | None]
@@ -106,18 +122,117 @@ async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
     return {"messages": results}
 
 
-async def _llm(state: MessagesState) -> dict:
+async def _summary_view(model: object, state: AgentState, schemas: list[dict],
+                        plan: ContextPlan, total_budget: int) -> tuple[list, dict]:
+    """Try one bounded historical summary; otherwise retain Gate A's safe view."""
+    rounds = _split_safe_rounds(state["messages"])
+    if rounds is None or plan.omitted_rounds < 1:
+        return list(plan.messages), {}
+    # Keep the most recent completed round and current round intact. A Gate A
+    # view usually fills its budget, so a summary needs additional room.
+    covered = max(plan.omitted_rounds, len(rounds) - 2)
+    prefix = [message for turn in rounds[:covered] for message in turn]
+    source_hash = source_fingerprint(prefix)
+    turn_hash = source_fingerprint([rounds[-1][0]])
+    cache = state.get("context_summary")
+    failure_codes = {"empty_source", "unsafe_source", "source_over_budget", "invalid_json",
+                     "invalid_schema", "invalid_round_ref", "unsafe_summary",
+                     "summary_too_long", "invalid_summary_reply", "final_over_budget",
+                     "invalid_summary", "timeout", "rate_limit", "provider_error"}
+
+    def candidate(summary: dict, count: int) -> list | None:
+        retained = [message for turn in rounds[count:] for message in turn]
+        view = [plan.messages[0], summary_candidate(summary, count), *retained]
+        if estimate_context(view[0].content, schemas, view[1:]) <= total_budget:
+            return view
+        return None
+
+    if (isinstance(cache, dict) and type(cache.get("version")) is int and
+            cache.get("version") == SUMMARY_VERSION):
+        old_count = cache.get("covered_rounds")
+        if isinstance(old_count, int) and not isinstance(old_count, bool) and 0 < old_count < len(rounds):
+            old_prefix = [message for turn in rounds[:old_count] for message in turn]
+            if cache.get("source_sha256") == source_fingerprint(old_prefix):
+                if cache.get("status") == "ready" and set(cache) == {
+                        "version", "status", "covered_rounds", "source_sha256",
+                        "turn_sha256", "summary"}:
+                    try:
+                        source_messages(rounds[:old_count])
+                        summary = validate_summary(cache.get("summary"), old_count)
+                        view = candidate(summary, old_count)
+                        if view is not None:
+                            audit.info(json.dumps({"event": "context_summary", "status": "cache_hit",
+                                                   "cache_hit": True, "summary_calls": 0,
+                                                   "input_tokens": None, "output_tokens": None,
+                                                   "duration_ms": 0, "error_code": None}))
+                            return view, {}
+                    except ValueError:
+                        pass
+                if (cache.get("status") == "failed" and set(cache) == {
+                        "version", "status", "covered_rounds", "source_sha256",
+                        "turn_sha256", "error_code"} and old_count == covered and
+                        cache.get("turn_sha256") == turn_hash and
+                        isinstance(cache.get("error_code"), str) and
+                        cache.get("error_code") in failure_codes):
+                    audit.info(json.dumps({"event": "context_summary", "status": "skipped_failed",
+                                           "cache_hit": False, "summary_calls": 0,
+                                           "input_tokens": None, "output_tokens": None,
+                                           "duration_ms": 0, "error_code": cache["error_code"]}))
+                    return list(plan.messages), {}
+
+    start = time.monotonic()
+    status = "adopted"
+    error_code = None
+    called = False
+    usage = {"input_tokens": None, "output_tokens": None}
+    update = {"version": SUMMARY_VERSION, "status": "failed", "covered_rounds": covered,
+              "source_sha256": source_hash, "turn_sha256": turn_hash}
+    try:
+        # Generate only from complete, contiguous omitted rounds. No tool binding.
+        source_messages(rounds[:covered])
+        called = True
+        summary, usage = await generate_summary(model, rounds[:covered])
+        view = candidate(summary, covered)
+        if view is None:
+            raise ValueError("final_over_budget")
+        update.update({"status": "ready", "summary": summary})
+        return view, {"context_summary": update}
+    except ValueError as exc:
+        status = "fallback"
+        error_code = str(exc) if str(exc) in failure_codes else "invalid_summary"
+    except TimeoutError:
+        status, error_code = "fallback", "timeout"
+    except Exception as exc:  # noqa: BLE001 - provider errors never expose their text
+        name = type(exc).__name__.lower()
+        error_code = ("rate_limit" if "ratelimit" in name or "429" in str(exc)
+                      else "provider_error")
+        status = "fallback"
+    finally:
+        audit.info(json.dumps({"event": "context_summary", "status": status,
+                               "cache_hit": False, "summary_calls": int(called),
+                               "input_tokens": usage["input_tokens"],
+                               "output_tokens": usage["output_tokens"],
+                               "duration_ms": round((time.monotonic() - start) * 1000),
+                               "error_code": error_code}, ensure_ascii=False))
+    update["error_code"] = error_code
+    return list(plan.messages), {"context_summary": update}
+
+
+async def _llm(state: AgentState) -> dict:
     decisions, _used = _counts(state)
     if decisions >= MAX_MODEL_DECISIONS:
         return {"messages": [AIMessage(content=(
             "已达到本轮模型决策上限（4 轮）。请根据上方证据人工核查；"
             "若证据不足，不能断言根因。"))]}
     model = chat_model()  # Configuration errors fail the Run, never become a healthy answer.
+    summary_update: dict = {}
     try:
         native_tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
         schemas = build_model_tool_schemas(native_tools)
-        plan = build_context_view(system_prompt(), schemas, state["messages"],
-                                  load_context_config())
+        context_config = load_context_config()
+        summary_enabled = load_summary_enabled(context_config.enabled)
+        prompt = system_prompt()
+        plan = build_context_view(prompt, schemas, state["messages"], context_config)
         audit.info(json.dumps({"event": "context_view", "status": plan.status,
                                "estimated_tokens": plan.estimated_tokens,
                                "omitted_rounds": plan.omitted_rounds,
@@ -126,21 +241,25 @@ async def _llm(state: MessagesState) -> dict:
             return {"messages": [AIMessage(content=(
                 "估算上下文超预算或历史轮次无法安全裁剪；本次诊断未完成。"
                 "请使用新 Thread 或缩小输入。"))]}
+        view = list(plan.messages)
+        if summary_enabled and plan.status == "trimmed":
+            view, summary_update = await _summary_view(
+                model, state, schemas, plan, context_config.total_budget)
         model = model.bind_tools(schemas)
-        reply = await model.ainvoke(list(plan.messages))
+        reply = await model.ainvoke(view)
         if not isinstance(reply, AIMessage):
             raise TypeError("LLM returned a non-AI message")
         if reply.invalid_tool_calls:
-            return {"messages": [AIMessage(content=(
+            return {**summary_update, "messages": [AIMessage(content=(
                 "模型返回了无法解析的 Tool Call；请确认模型服务支持标准 Tool Calling。"))]}
         if not reply.tool_calls and not reply.content:
-            return {"messages": [AIMessage(content=(
+            return {**summary_update, "messages": [AIMessage(content=(
                 "模型未返回内容或标准 Tool Call；本次诊断未完成。"))]}
         if not reply.tool_calls and not _has_tool_evidence(state):
-            return {"messages": [AIMessage(content=(
+            return {**summary_update, "messages": [AIMessage(content=(
                 "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。"))]}
         reply.name = "triage_llm"
-        return {"messages": [reply]}
+        return {**summary_update, "messages": [reply]}
     except ConfigurationError:
         raise
     except Exception as exc:  # noqa: BLE001 - provider/MCP errors vary by SDK
@@ -158,7 +277,7 @@ async def _llm(state: MessagesState) -> dict:
             detail = "模型或 MCP 连接失败"
         else:
             detail = "模型调用或 MCP 工具发现失败"
-        return {"messages": [AIMessage(content=f"{detail}；本次诊断未完成。")]}
+        return {**summary_update, "messages": [AIMessage(content=f"{detail}；本次诊断未完成。")]}
 
 
 def _after_llm(state: MessagesState) -> Literal["tools", "__end__"]:

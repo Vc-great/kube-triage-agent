@@ -53,6 +53,15 @@ def load_context_config() -> ContextConfig:
     return ContextConfig(enabled == "true", int(raw_budget))
 
 
+def load_summary_enabled(window_enabled: bool) -> bool:
+    value = os.getenv("CONTEXT_SUMMARY_ENABLED", "false").lower()
+    if value not in {"true", "false"}:
+        raise ConfigurationError("CONTEXT_SUMMARY_ENABLED 必须为 true 或 false")
+    if value == "true" and not window_enabled:
+        raise ConfigurationError("CONTEXT_SUMMARY_ENABLED=true 需要 CONTEXT_WINDOW_ENABLED=true")
+    return value == "true"
+
+
 def _json_bytes(value: object) -> int:
     try:
         encoded = json.dumps(value, ensure_ascii=False, sort_keys=True,
