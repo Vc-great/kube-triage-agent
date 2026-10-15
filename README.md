@@ -50,6 +50,8 @@ python3 scripts/eval_phase3a.py --env-file .local/phase3a.env --out .local/eval-
 
 ## 当前验收与历史边界
 
+[Issue #16 Roadmap 总验收索引](docs/issue16-roadmap-closeout.md)汇总五项能力的证明等级、历史证据和未闭环 Gate。
+
 [Issue #11 Gate B2 只读收口补记](docs/issue11-gateb2-final-report.md)记录历史严格 Gate、当前证据及本轮停止条件。
 [Issue #11 Gate B2 后续只读复核](docs/issue11-gateb2-completion.md)记录 Healthy 的有界快照、Node 重启证据、development Runtime 恢复与 ImagePull 授权门禁。
 
