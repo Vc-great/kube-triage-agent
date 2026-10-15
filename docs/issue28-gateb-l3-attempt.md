@@ -26,3 +26,20 @@
 - Gate A/B 真实模型配对、人工事实评分、Aegra SSE/UI、真实 Kubernetes：**NOT RUN**。
 - Provider `actual_input_tokens`、`summary_input_tokens`、`summary_output_tokens`、实际费用：**UNKNOWN**。两次超时的观察等待约 20 秒和 60 秒，不是成功 Run 延迟；不能推断费用为零。
 - 停止后没有继续重试、切换到不受保护的 HTTP 端点或使用真实集群数据。Draft PR 保持 Draft。若继续，需要一个可完成生成的 HTTPS 端点或本机回环代理，并重新固定模型、请求上限及 A/B 样本；不把本轮失败包装成 L3 PASS。
+
+## 续测：按主工作树 `.env` 参数执行（同日）
+
+用户指出其本地测试通过，并明确同意在测试网络使用 `.env` 的私有 HTTP 地址传输合成数据及 API key。重新核对发现：此前 `gpt-6-luna` 测试配置与 `.env` 的**模型名、API key 相同**，但端点不同，且此前开启 `EVAL_LUNA_RESPONSES_HIGH=true`，`.env` 未设置该项。先前连接失败不能证明 `.env` 配置不可用。本次在 Host 验证该端点可达；它经普通网络接口、非回环，原端口不支持经证书验证的 TLS。这个明示授权只适用于本次测试网络续测，不改变仓库默认的传输约束或先前验收结论。端点、密钥和认证头均未写入证据。
+
+固定范围：`gpt-6-luna`，`.env` 中的模型名、地址、API key；`TRIAGE_ENV=test`、`EVAL_LUNA_RESPONSES_HIGH=false`、`REPAIR_ENABLED=false`。唯一 MCP 是本机 `127.0.0.1:8000` 的静态 `issue12-blind-v1` Mock，四个只读工具，无真实 Kubernetes 连接或写入。摘要最多 512 输出 Token、12 秒，诊断回答各最多 1024 输出 Token。用户批准最多 8 次真实模型请求、合计 80k 输入及 8k 输出 Token；实际执行 **7 次逻辑请求**，其中 6 次成功、1 次摘要超时。成功请求回执合计 **7247 输入、695 输出 Token**；超时请求的实际 Provider 用量及费用均 **UNKNOWN**，不能据此声称总费用为零或精确总用量。没有再发请求。
+
+Smoke：1 次标准工具绑定请求，约 2.94 秒，回执 660 输入 / 29 输出 Token；模型正确发出 `pods_get`，Mock 返回 `static-fixture`，**PASS**。
+
+| 配对场景 | Gate A Trim | Gate B Summary | 当前事实与边界 |
+| --- | --- | --- | --- |
+| 10 个合成历史轮次，同一当前 `sample-a` Mock 证据 | 裁剪 7 轮；诊断请求 1382 输入 / 81 输出 Token，4.4 秒 | 计划覆盖 9 轮；摘要在 12 秒超时、usage UNKNOWN，按 Gate A 安全回退；后续诊断 1382 输入 / 129 输出 Token，4.5 秒；整侧 16.5 秒 | 两侧均识别 `Running`、容器未就绪、`CrashLoopBackOff`、重启 4 次；旧 UID 哨兵未进入答案，未臆断崩溃原因。摘要质量 **BLOCKED**，回退 **PASS**。 |
+| 3 个较长合成历史轮次，同一当前 `sample-a` Mock 证据 | 裁剪 1 轮；诊断 1421 输入 / 79 输出 Token，4.8 秒 | 有效摘要覆盖 2 轮；摘要 969 输入 / 219 输出 Token，5.6 秒，诊断 1433 输入 / 158 输出 Token，5.8 秒；整侧 11.4 秒 | 两侧识别同样当前事实、不引用旧 UID 哨兵、不臆断根因；摘要结构被接受，**L3 路径 PASS**。 |
+
+三轮场景的 Gate B 单次诊断估算输入由 Gate A 的 6475 降至 6073（均含固定输出预留），但真实诊断输入由 1421 升到 1433；加上摘要，Gate B 成功回执共 2402 输入 / 377 输出 Token，高于 Gate A 的 1421 / 79。此样本没有净 Token 或费用收益。十轮场景的超时可能仍产生 Provider 侧费用，无法精算。两组只有各一次配对，当前事实核对只是有限人工检查，不能推广为模型质量或性能结论。Aegra SSE/UI、真实 Kubernetes 与独立正式 Review 仍 **NOT RUN**；Draft PR 保持 Draft。
+
+可重复的本地续测脚本及脱敏原始指标位于忽略目录 `.local/eval-runs/issue28-gateb-live-20261015/`，没有密钥。Mock 监听在续测后已停止。
