@@ -96,7 +96,7 @@ Judge 最终正确性与规则初筛无分歧。4 条过度归因标记是 `P33-
 | G33-08 | PARTIAL | 真实模型旧 UID、撤销、无命中、403、注入；Store 断开/畸形写入仅 Unit/Fake，真实 Timeout 未跑。 |
 | G33-09 | PARTIAL | 真实 5 轮 Gate A/B、4 决策上限；6 工具上限与旧 HITL 为既有 Unit/Fake/隔离回归，未作本阶段真实 Provider 全矩阵。 |
 | G33-10 | PASS（数据） | 180 个匿名盲审输入，179 个有效 Aux-Judge；`HUMAN_REVIEW_NOT_RUN`。 |
-| G33-11 | 待 CI | 全库 pytest 326 passed、Ruff、`git diff --check`；Web 未改动，PR/CI 状态在提交后补录。 |
+| G33-11 | PASS | 全库 pytest 326 passed、Ruff、`git diff --check`；Web 未改动。草稿 PR #34 的首轮 CI [#85](https://github.com/Vc-great/kube-triage-agent/actions/runs/38712468877) 成功，Python、Web、Compose 三个作业均通过。 |
 | G33-12 | NOT RUN | 用户本人 G31-13 Web Approve/Reject/Revoke 未执行。 |
 | G33-13 | PASS | 仅按 `kube-triage-phase33-20261015` 标签 `down -v`；容器/卷为空、15443/18043..18046 均无监听；本次 `env-*` 与含 DB 密码的临时 Compose 文件已删除。 |
 
