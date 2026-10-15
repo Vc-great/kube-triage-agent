@@ -1,0 +1,4 @@
+{
+  "graphs": {"agent": "./phase34_real_model_mock.py:graph"},
+  "auth": {"path": "../../../server/src/kube_triage/auth.py:auth", "disable_studio_auth": true}
+}

@@ -10,6 +10,7 @@ import time
 from typing import Literal, NotRequired
 from uuid import uuid4
 
+import yaml
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
@@ -47,6 +48,7 @@ from kube_triage.context_summary import (
 from kube_triage.llm import chat_model
 from kube_triage.mcp_client import (
     MCP_TIMEOUT_SECONDS,
+    NAMESPACE,
     _allowed_tools,
     build_model_tool_schemas,
     call_tool,
@@ -102,6 +104,66 @@ def _has_tool_evidence(state: MessagesState) -> bool:
                 isinstance(payload.get("result"), str) and payload["result"].strip()):
             return True
     return False
+
+
+def _has_verified_target_evidence(state: AgentState, target: str,
+                                  thread_id: str | None = None) -> bool:
+    """仅接受与本轮目标配对的 pods_get；启用 Memory 守卫时还需 HMAC。"""
+    if incident_memory_http_write_blocked():
+        return (isinstance(thread_id, str) and
+                memory_retrieval.current_pod_evidence(
+                    state["messages"], state.get("reader_attestations"),
+                    thread_id, target)[0] == "verified")
+    calls = {}
+    for message in _current_turn(state):
+        if isinstance(message, AIMessage):
+            for call in message.tool_calls:
+                if call.get("name") == "pods_get" and call.get("args") == {
+                        "namespace": NAMESPACE, "name": target}:
+                    calls[call.get("id")] = True
+        elif isinstance(message, ToolMessage) and message.tool_call_id in calls:
+            try:
+                if message.name != "pods_get" or message.status != "success":
+                    continue
+                envelope = json.loads(message.content)
+                if not isinstance(envelope, dict) or envelope.get("ok") is not True:
+                    continue
+                result = envelope.get("result")
+                if not isinstance(result, str) or not result or len(result) > 16384:
+                    continue
+                pod = yaml.safe_load(result)
+                meta = pod.get("metadata") if isinstance(pod, dict) else None
+                if (pod.get("kind") == "Pod" and isinstance(meta, dict)
+                        and meta.get("namespace") == NAMESPACE
+                        and meta.get("name") == target
+                        and isinstance(meta.get("uid"), str)
+                        and memory.SAFE_UID.fullmatch(meta["uid"])
+                        and isinstance(pod.get("status"), dict)):
+                    return True
+            except (ValueError, TypeError, yaml.YAMLError):
+                continue
+    return False
+
+
+def _target_reader_failure(state: AgentState, target: str) -> str:
+    """从配对目标调用的固定错误类型生成安全回执，不引用无关工具数据。"""
+    target_ids = {call.get("id") for message in _current_turn(state)
+                  if isinstance(message, AIMessage) for call in message.tool_calls
+                  if call.get("name") == "pods_get" and call.get("args") == {
+                      "namespace": NAMESPACE, "name": target}}
+    for message in reversed(_current_turn(state)):
+        if isinstance(message, ToolMessage) and message.tool_call_id in target_ids:
+            try:
+                payload = json.loads(message.content)
+            except (TypeError, ValueError):
+                break
+            if isinstance(payload, dict) and payload.get("ok") is False:
+                if payload.get("error_type") == "not_found":
+                    return "本轮 Reader 未找到目标 Pod（404）；当前状态与根因未核验。"
+                if payload.get("error_type") == "permission":
+                    return "本轮 Reader 读取目标 Pod 被拒绝（403）；当前状态与根因未核验。"
+            break
+    return "本轮没有取得可信的目标 Pod Reader 证据；当前状态与根因未核验。"
 
 
 def _last_user_text(state: MessagesState) -> str:
@@ -331,6 +393,18 @@ async def _llm(state: AgentState) -> dict:
         if not reply.tool_calls and not reply.content:
             return {**summary_update, "messages": [AIMessage(content=(
                 "模型未返回内容或标准 Tool Call；本次诊断未完成。"))]}
+        if not reply.tool_calls:
+            target = memory_retrieval.target_pod(_last_user_text(state))
+            if target:
+                try:
+                    thread_id = get_config().get("configurable", {}).get("thread_id")
+                except RuntimeError:
+                    thread_id = None
+                if not _has_verified_target_evidence(state, target, thread_id):
+                    safe = _target_reader_failure(state, target)
+                    if injected_refs:
+                        safe += memory_retrieval.display_references(injected_refs)
+                    return {**summary_update, "messages": [AIMessage(content=safe)]}
         if not reply.tool_calls and injected_refs and evidence[0] != "verified":
             return {**summary_update, "messages": [AIMessage(content=(
                 "本轮未取得可信的目标 Pod Reader 证据；当前状态和根因未核验。"
