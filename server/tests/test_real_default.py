@@ -71,8 +71,11 @@ def test_formal_compose_and_graph_have_no_demo_shortcuts():
     assert "mock" not in api["environment"]["MCP_SERVER_URL"]
     assert api["environment"]["TRIAGE_ENV"] == "production"
     assert api["environment"]["REPAIR_ENABLED"] == "${REPAIR_ENABLED:-false}"
-    assert set(graph.builder.nodes) == {"llm", "tools", "repair_prepare", "repair_approval",
-                                        "repair_execute"}
+    assert set(graph.builder.nodes) == {
+        "llm", "tools", "repair_prepare", "repair_approval", "repair_execute",
+        "memory_prepare", "memory_review", "memory_commit",
+        "revoke_prepare", "revoke_review", "revoke_commit",
+    }
     assert testing["services"]["api"]["environment"]["TRIAGE_ENV"] == "test"
     assert "k8s-mcp" not in testing["services"] and "repair-mcp" not in testing["services"]
     assert "kubeconfig" not in (ROOT / "infra/test.compose.yaml").read_text()
