@@ -145,7 +145,7 @@ async def _memory_retrieve(state: AgentState, runtime: Runtime) -> dict:
             "memory_retrieval_status": result["status"]}
 
 
-async def _execute_tool(state: MessagesState, config: RunnableConfig) -> dict:
+async def _execute_tool(state: AgentState, config: RunnableConfig) -> dict:
     ai_message = state["messages"][-1]
     calls = ai_message.tool_calls
     thread_id = config.get("configurable", {}).get("thread_id")
