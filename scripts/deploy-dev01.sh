@@ -11,4 +11,4 @@ rsync -az --exclude='.git/' --exclude='.local/' --exclude='.env' \
   --exclude='*.log' --exclude='output/' --exclude='.playwright-cli/' \
   -e 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes' \
   ./ dev01:/www/app/kube-triage-agent/
-echo '源码同步完成；私有配置和 Reader 凭据需单独传输。'
+echo '源码同步完成；私有配置、Reader 与 Repairer 凭据需单独准备。'

@@ -143,7 +143,8 @@ def _scale_args(scale: int | None = None) -> dict:
 
 async def _scale_tool():
     url = os.getenv("REPAIR_MCP_SERVER_URL", "").strip()
-    expected = ("http://mock-repair-mcp:8001/mcp" if simulated()
+    expected = ("http://mock-repair-mcp:8001/mcp" if simulated() else
+                "http://127.0.0.1:18081/mcp" if os.getenv("TRIAGE_ENV") == "development"
                 else "http://repair-mcp:8080/mcp")
     if url != expected:
         raise ValueError("Repair MCP URL is not the project-private endpoint")

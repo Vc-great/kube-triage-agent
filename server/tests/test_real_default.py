@@ -1,5 +1,6 @@
 """Formal fail-closed checks and explicit offline MCP protocol contracts."""
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -7,11 +8,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-from kube_triage import config, graph, mcp_client, repair
+from kube_triage import config, graph, incident_memory, mcp_client, repair
 
 ROOT = Path(__file__).parents[2]
 
@@ -110,6 +111,53 @@ def test_url_change_rebuilds_cached_tools_and_revalidates(formal):
     formal.setenv("TRIAGE_ENV", "production")
     with pytest.raises(config.ConfigurationError):
         asyncio.run(mcp_client._allowed_tools())
+
+
+def test_local_test_reader_accepts_only_exact_loopback(monkeypatch):
+    monkeypatch.setenv("TRIAGE_ENV", "test")
+    for url in ("http://mock-mcp:8000/mcp", "http://127.0.0.1:8000/mcp"):
+        monkeypatch.setenv("MCP_SERVER_URL", url)
+        assert config.reader_url() == url
+    for url in ("http://localhost:8000/mcp", "http://127.0.0.1:8000/other",
+                "http://127.0.0.1:18080/mcp"):
+        monkeypatch.setenv("MCP_SERVER_URL", url)
+        with pytest.raises(config.ConfigurationError):
+            config.reader_url()
+
+
+def test_memory_web_adapter_pod_is_memory_evidence(monkeypatch):
+    monkeypatch.setenv("TRIAGE_ENV", "test")
+    monkeypatch.setenv("TRIAGE_MOCK_DATASET", "memory-web")
+    monkeypatch.setenv("INCIDENT_MEMORY_PROVENANCE_SECRET", "synthetic-provenance-secret-32chars-31")
+
+    async def scenario():
+        client = MultiServerMCPClient({"offline": {
+            "transport": "stdio", "command": sys.executable,
+            "args": ["-c", "from kube_triage.mock_mcp import mcp; mcp.run(transport='stdio')"],
+            "env": {"TRIAGE_ENV": "test", "TRIAGE_MOCK_DATASET": "memory-web"},
+        }}, handle_tool_errors=False)
+        async with client.session("offline") as session:
+            tools = {tool.name: tool for tool in await load_mcp_tools(session)}
+            assert set(tools) == mcp_client.ALLOWED_TOOLS
+            result = mcp_client._display_result(await tools["pods_get"].ainvoke({
+                "namespace": mcp_client.NAMESPACE, "name": "imagepull-pod"}))
+        human = HumanMessage(content="诊断 imagepull-pod", id="human-1")
+        call = {"id": "call-1", "name": "pods_get", "args": {
+            "namespace": mcp_client.NAMESPACE, "name": "imagepull-pod"}}
+        ai = AIMessage(content="", name="triage_llm", id="ai-1", tool_calls=[call])
+        tool = ToolMessage(content=json.dumps({"ok": True, "result": result}),
+                           name="pods_get", tool_call_id="call-1", status="success", id="tool-1")
+        messages = [human, ai, tool,
+                    AIMessage(content="镜像拉取失败", name="triage_llm", id="final-1"),
+                    HumanMessage(content="/remember-incident", id="command-1")]
+        attest = [incident_memory.make_attestation(human, ai, call, tool, "thread-1")]
+        candidate = incident_memory.extract_candidate(messages, "thread-1", "demo-user",
+                                                      attestations=attest)
+        assert candidate["resource_name"] == "imagepull-pod"
+        assert candidate["symptom"] == "ImagePullBackOff"
+        assert candidate["observed_uid"] == "8f49e5b3-12c0-4acf-9e4b-03e5734a382a"
+
+    asyncio.run(scenario())
 
 
 def test_mock_mcp_protocol_offline_only(monkeypatch):

@@ -5,6 +5,8 @@ import json
 import logging
 import re
 import time
+import traceback
+from pathlib import Path
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -159,6 +161,13 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
     except Exception as exc:  # noqa: BLE001 - SDK raises transport and tool errors
         error_type, message = _error_type(exc)
         outcome = "failed"
+        frames = traceback.extract_tb(exc.__traceback__)[-4:]
+        logger.warning(json.dumps({"event": "mcp_tool_failure",
+            "exception_type": type(exc).__name__,
+            "nested_types": ([type(item).__name__ for item in exc.exceptions]
+                             if isinstance(exc, BaseExceptionGroup) else []),
+            "frames": [{"file": Path(frame.filename).name, "line": frame.lineno,
+                        "function": frame.name} for frame in frames]}, ensure_ascii=False))
         return {"ok": False, "error": message, "error_type": error_type}
     finally:
         logger.info(json.dumps({"event": "mcp_tool_call", "thread_id": thread_id,

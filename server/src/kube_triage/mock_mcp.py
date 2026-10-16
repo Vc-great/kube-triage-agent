@@ -8,7 +8,8 @@ from mcp.server.fastmcp import FastMCP
 
 from kube_triage.mcp_client import NAMESPACE
 
-mcp = FastMCP("kube-triage-mock", host="0.0.0.0", port=8000, stateless_http=True,
+mcp = FastMCP("kube-triage-mock", host=os.getenv("MOCK_MCP_HOST", "0.0.0.0"),
+              port=8000, stateless_http=True,
               json_response=True)
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -17,6 +18,11 @@ def load_pods() -> dict:
     dataset = os.getenv("TRIAGE_MOCK_DATASET", "phase3a")
     if dataset == "phase3a":
         paths = sorted(FIXTURES.glob("*.json"))
+    elif dataset == "memory-web" and os.getenv("TRIAGE_ENV") == "test":
+        paths = sorted((FIXTURES / "memory-web").glob("*.json"))
+        if {path.name for path in paths} != {
+                "crashloop.json", "healthy.json", "imagepull.json", "oomkilled.json"}:
+            raise ValueError("Memory Web Mock fixtures missing")
     elif dataset == "issue12-blind-v1" and os.getenv("TRIAGE_ENV") == "test":
         paths = sorted((FIXTURES / "issue12").glob("*.json"))
         expected = {f"sample-{letter}.json" for letter in "abcdefgh"} | {"sample-noise.json"}
@@ -27,7 +33,8 @@ def load_pods() -> dict:
     pods = {}
     for path in paths:
         item = json.loads(path.read_text(encoding="utf-8"))
-        if item.get("name") in pods or not item.get("containerStatuses"):
+        if (item.get("name") in pods or not item.get("containerStatuses")
+                or dataset == "memory-web" and not item.get("uid")):
             raise ValueError("Duplicate or incomplete Mock Pod")
         pods[item["name"]] = item
     return pods
@@ -60,8 +67,10 @@ def pods_get(namespace: str, name: str) -> dict:
     check_namespace(namespace)
     check_pod(name)
     item = PODS[name]
-    return {"mock": True, "source": "static-fixture", "namespace": namespace,
-            "name": name, **({"metadata": {"uid": item["uid"]}} if item.get("uid") else {}),
+    return {"mock": True, "source": "static-fixture", "kind": "Pod",
+            "namespace": namespace, "name": name,
+            "metadata": {"namespace": namespace, "name": name,
+                         **({"uid": item["uid"]} if item.get("uid") else {})},
             "status": {"phase": item["phase"], "containerStatuses": item["containerStatuses"]}}
 
 

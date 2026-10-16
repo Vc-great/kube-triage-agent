@@ -45,6 +45,7 @@ def main():
     deployment["DEMO_API_TOKEN"] = secrets.token_urlsafe(32)
     development["POSTGRES_PASSWORD"] = deployment["POSTGRES_DEV_PASSWORD"]
     development["DEMO_API_TOKEN"] = secrets.token_urlsafe(32)
+    development["INCIDENT_MEMORY_PROVENANCE_SECRET"] = secrets.token_urlsafe(48)
     # Validate before writing either file.
     for target in (deployment, development):
         if any(any(char in value for char in ("\n", "\r", "'", "\\"))

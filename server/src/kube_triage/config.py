@@ -85,10 +85,11 @@ def validate_llm() -> tuple[str, str]:
 def reader_url() -> str:
     testing = test_mode()
     url = os.getenv("MCP_SERVER_URL", "").strip()
-    expected = "http://mock-mcp:8000/mcp" if testing else "http://k8s-mcp:8080/mcp"
+    expected = ({"http://mock-mcp:8000/mcp", "http://127.0.0.1:8000/mcp"}
+                if testing else {"http://k8s-mcp:8080/mcp"})
     if os.getenv("TRIAGE_ENV") == "development":
-        expected = "http://127.0.0.1:18080/mcp"
-    if url != expected:
+        expected = {"http://127.0.0.1:18080/mcp"}
+    if url not in expected:
         raise ConfigurationError("Reader 配置错误：必须使用当前环境的项目内部 MCP endpoint")
     return url
 

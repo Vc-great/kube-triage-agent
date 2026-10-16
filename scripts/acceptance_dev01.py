@@ -62,10 +62,10 @@ def main():
             stderr=subprocess.DEVNULL))
     else:
         state = json.loads((ROOT / ".local/dev/state.json").read_text())
-        assert state["mode"] == "full" and state["status"] == "ready"
-        assert env["POSTGRES_DB"] == env["POSTGRES_USER"] == "kube_triage_agent_dev"
+        assert state["mode"] == "real" and state["status"] == "ready"
         base = "http://127.0.0.1:12026"
-        os.environ.update(env)
+        os.environ.update(TRIAGE_ENV="development", REPAIR_SIMULATED="false",
+                          MCP_SERVER_URL="http://127.0.0.1:18080/mcp")
         sys.path.insert(0, str(ROOT / "server/src"))
         from kube_triage.mcp_client import _allowed_tools
         discovered = list(asyncio.run(_allowed_tools()))

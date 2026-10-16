@@ -31,5 +31,11 @@ services:
     ports:
       - "127.0.0.1:18080:8080"
 
+  repair-mcp:
+    # Separate restricted identity; enable only with --profile repair.
+    user: "${READER_UID:?set Reader file owner UID}:${READER_GID:?set Reader file owner GID}"
+    ports:
+      - "127.0.0.1:18081:8080"
+
 volumes:
   redis_dev_data: {}

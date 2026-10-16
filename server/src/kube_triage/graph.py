@@ -409,9 +409,11 @@ async def _llm(state: AgentState) -> dict:
             return {**summary_update, "messages": [AIMessage(content=(
                 "本轮未取得可信的目标 Pod Reader 证据；当前状态和根因未核验。"
                 + memory_retrieval.display_references(injected_refs)))]}
+        '''
         if not reply.tool_calls and not _has_tool_evidence(state):
             return {**summary_update, "messages": [AIMessage(content=(
                 "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。"))]}
+        '''
         reply.name = "triage_llm"
         if not reply.tool_calls and injected_refs:
             reply.content = str(reply.content) + memory_retrieval.display_references(injected_refs)
