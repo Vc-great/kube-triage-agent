@@ -39,6 +39,7 @@ import {
 } from "../ui/tooltip";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
+import { AgentExecutionTimeline } from "./agent-execution-timeline";
 import {
   useArtifactOpen,
   ArtifactContent,
@@ -170,6 +171,7 @@ export function Thread() {
 
   const setThreadId = (id: string | null) => {
     _setThreadId(id);
+    stream.clearProgress();
 
     // close artifact and reset artifact context
     closeArtifact();
@@ -223,6 +225,7 @@ export function Thread() {
     if ((input.trim().length === 0 && contentBlocks.length === 0) || isLoading)
       return;
     setFirstTokenReceived(false);
+    stream.clearProgress();
 
     const newHumanMessage: Message = {
       id: uuidv4(),
@@ -241,7 +244,7 @@ export function Thread() {
     stream.submit(
       { messages: [...toolMessages, newHumanMessage], context },
       {
-        streamMode: ["values"],
+        streamMode: ["values", "custom"],
         streamSubgraphs: true,
         streamResumable: true,
         optimisticValues: (prev) => ({
@@ -266,9 +269,10 @@ export function Thread() {
     // Do this so the loading state is correct
     prevMessageLength.current = prevMessageLength.current - 1;
     setFirstTokenReceived(false);
+    stream.clearProgress();
     stream.submit(undefined, {
       checkpoint: parentCheckpoint,
-      streamMode: ["values"],
+      streamMode: ["values", "custom"],
       streamSubgraphs: true,
       streamResumable: true,
     });
@@ -452,6 +456,7 @@ export function Thread() {
                       handleRegenerate={handleRegenerate}
                     />
                   )}
+                  <AgentExecutionTimeline events={stream.progressEvents} running={isLoading} />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}

@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useCallback,
   useSyncExternalStore,
+  useRef,
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
@@ -26,6 +27,7 @@ import { ArrowRight } from "lucide-react";
 import { PasswordInput } from "@/components/ui/password-input";
 import { getApiKey, setApiKey as storeApiKey } from "@/lib/api-key";
 import { resolveApiUrl } from "@/lib/resolve-api-url";
+import { appendProgress, isAgentProgressEvent, type AgentProgressEvent } from "@/lib/agent-progress";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 
@@ -39,12 +41,14 @@ const useTypedStream = useStream<
       ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
       context?: Record<string, unknown>;
     };
-    CustomEventType: UIMessage | RemoveUIMessage;
+    CustomEventType: UIMessage | RemoveUIMessage | AgentProgressEvent;
   }
 >;
 
 type StreamContextType = ReturnType<typeof useTypedStream> & {
   apiUrl: string;
+  progressEvents: AgentProgressEvent[];
+  clearProgress: () => void;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -92,6 +96,21 @@ const StreamSession = ({
   onInvalidKey: () => void;
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
+  const [progressEvents, setProgressEvents] = useState<AgentProgressEvent[]>([]);
+  const [progressThreadId, setProgressThreadId] = useState<string | null>(null);
+  const currentRun = useRef<{ runId: string; threadId: string } | null>(null);
+  const lastThreadId = useRef(threadId);
+  const clearProgress = useCallback(() => {
+    currentRun.current = null;
+    setProgressThreadId(null);
+    setProgressEvents([]);
+  }, []);
+  useEffect(() => {
+    if (lastThreadId.current !== threadId) {
+      if (threadId !== currentRun.current?.threadId) clearProgress();
+      lastThreadId.current = threadId;
+    }
+  }, [threadId, clearProgress]);
   const { getThreads, setThreads } = useThreads();
   const streamValue = useTypedStream({
     apiUrl,
@@ -105,12 +124,23 @@ const StreamSession = ({
     threadId: threadId ?? null,
     fetchStateHistory: true,
     onCustomEvent: (event, options) => {
+      if (isAgentProgressEvent(event)) {
+        const run = currentRun.current;
+        if (!run) return;
+        setProgressEvents((previous) => appendProgress(previous, event, run.threadId));
+        return;
+      }
       if (isUIMessage(event) || isRemoveUIMessage(event)) {
         options.mutate((prev) => {
           const ui = uiMessageReducer(prev.ui ?? [], event);
           return { ...prev, ui };
         });
       }
+    },
+    onCreated: ({ run_id, thread_id }) => {
+      currentRun.current = { runId: run_id, threadId: thread_id };
+      setProgressThreadId(thread_id);
+      setProgressEvents([]);
     },
     onThreadId: (id) => {
       setThreadId(id);
@@ -140,7 +170,9 @@ const StreamSession = ({
   }, [apiKey, apiUrl, authScheme, onInvalidKey]);
 
   return (
-    <StreamContext.Provider value={{ ...streamValue, apiUrl }}>
+    <StreamContext.Provider value={{ ...streamValue, apiUrl,
+      progressEvents: threadId === progressThreadId ? progressEvents : [],
+      clearProgress }}>
       {children}
     </StreamContext.Provider>
   );

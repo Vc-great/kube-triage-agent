@@ -108,6 +108,8 @@ async def generate_summary(model: object, rounds: Sequence[Sequence[BaseMessage]
     """The passed model is unbound; this call has no tools and one hard timeout."""
     request = source_messages(rounds)
     bounded = model.bind(max_tokens=SUMMARY_MAX_OUTPUT_TOKENS)
+    if hasattr(bounded, "with_config"):
+        bounded = bounded.with_config({"tags": ["nostream"]})
     reply = await asyncio.wait_for(bounded.ainvoke(request), SUMMARY_TIMEOUT_SECONDS)
     if (not isinstance(reply, AIMessage) or reply.tool_calls or reply.invalid_tool_calls or
             any(key in reply.additional_kwargs for key in ("tool_calls", "function_call"))):
@@ -117,4 +119,4 @@ async def generate_summary(model: object, rounds: Sequence[Sequence[BaseMessage]
                     isinstance(usage.get(key), int) and not isinstance(usage.get(key), bool) and
                     usage[key] >= 0 else None)
               for key in ("input_tokens", "output_tokens")}
-    return validate_summary(reply.content, len(rounds)), counts
+    return validate_summary(str(reply.text), len(rounds)), counts

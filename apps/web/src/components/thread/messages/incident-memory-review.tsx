@@ -39,11 +39,12 @@ function useDecision() {
     if (pending.current || stream.isLoading) return;
     pending.current = true;
     try {
+      stream.clearProgress();
       stream.submit(
         {},
         {
           command: { resume },
-          streamMode: ["values"],
+          streamMode: ["values", "custom"],
           streamResumable: true,
         },
       );
