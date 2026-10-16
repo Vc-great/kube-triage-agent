@@ -74,6 +74,15 @@ def test_natural_questions_choose_different_native_tools(llm):
         assert len(model.seen) == 2
 
 
+def test_greeting_returns_model_reply_without_tool_evidence(llm):
+    model = FakeModel([AIMessage(content="你好！有什么可以帮你？")])
+    llm.setattr(agent, "chat_model", lambda: model)
+    messages = run([HumanMessage(content="你好")])
+    assert messages[-1].content == "你好！有什么可以帮你？"
+    assert len(model.seen) == 1
+    assert not any(isinstance(message, ToolMessage) for message in messages)
+
+
 def test_multi_round_and_multiple_tool_calls_pair_exactly(llm):
     model = FakeModel([
         AIMessage(content="", tool_calls=[call("pods_get", {
@@ -181,8 +190,8 @@ def test_tool_failure_is_visible_to_model(llm, error_type):
     llm.setattr(agent, "chat_model", lambda: model)
     messages = run([HumanMessage(content="调查")])
     assert error_type in next(m for m in messages if isinstance(m, ToolMessage)).content
-    assert messages[-1].content == (
-        "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。")
+    assert isinstance(model.seen[-1][-1], ToolMessage)
+    assert messages[-1].content == "查询失败，证据不足"
 
 
 def test_prompt_injection_cannot_expand_execution_scope(llm):
