@@ -15,11 +15,12 @@ type Proposal = {
 export function RepairApprovalView({ proposal }: { proposal: Proposal }) {
   const stream = useStreamContext();
   const decide = (decision: "approve" | "reject") => {
+    stream.clearProgress();
     stream.submit(
       {},
       {
         command: { resume: { decision, proposal_id: proposal.proposal_id } },
-        streamMode: ["values"],
+        streamMode: ["values", "custom"],
         streamResumable: true,
       },
     );

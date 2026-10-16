@@ -22,6 +22,7 @@ from kube_triage import incident_memory as memory
 from kube_triage import incident_memory_flow as memory_flow
 from kube_triage import incident_memory_retrieval as memory_retrieval
 from kube_triage import repair
+from kube_triage.agent_progress import emit_progress, reset_progress_budget
 from kube_triage.config import (
     ConfigurationError,
     incident_memory_http_write_blocked,
@@ -193,6 +194,7 @@ async def _memory_retrieve(state: AgentState, runtime: Runtime) -> dict:
 
 
 async def _execute_tool(state: AgentState, config: RunnableConfig) -> dict:
+    reset_progress_budget()
     ai_message = state["messages"][-1]
     calls = ai_message.tool_calls
     thread_id = config.get("configurable", {}).get("thread_id")
@@ -203,10 +205,18 @@ async def _execute_tool(state: AgentState, config: RunnableConfig) -> dict:
     results = []
     for call in calls:
         if used >= MAX_TOOL_CALLS:
+            emit_progress("tool", "skipped", tool_name=call["name"], tool_call_id=call["id"])
             response = {"ok": False, "error": "本轮工具调用预算已用尽（6 次）。",
                         "error_type": "budget"}
         else:
-            response = await call_tool(call["name"], call["args"], thread_id)
+            emit_progress("tool", "started", tool_name=call["name"], tool_call_id=call["id"])
+            try:
+                response = await call_tool(call["name"], call["args"], thread_id)
+            except Exception:
+                emit_progress("tool", "failed", tool_name=call["name"], tool_call_id=call["id"])
+                raise
+            emit_progress("tool", "completed" if response["ok"] else "failed",
+                          tool_name=call["name"], tool_call_id=call["id"])
             used += 1
         tool_message = ToolMessage(
             content=json.dumps(response, ensure_ascii=False),
@@ -262,6 +272,7 @@ async def _summary_view(model: object, state: AgentState, schemas: list[dict],
                         summary = validate_summary(cache.get("summary"), old_count)
                         view = candidate(summary, old_count)
                         if view is not None:
+                            emit_progress("context", "cache_hit", context_operation="summary")
                             audit.info(json.dumps({"event": "context_summary", "status": "cache_hit",
                                                    "cache_hit": True, "summary_calls": 0,
                                                    "input_tokens": None, "output_tokens": None,
@@ -279,6 +290,7 @@ async def _summary_view(model: object, state: AgentState, schemas: list[dict],
                                            "cache_hit": False, "summary_calls": 0,
                                            "input_tokens": None, "output_tokens": None,
                                            "duration_ms": 0, "error_code": cache["error_code"]}))
+                    emit_progress("context", "skipped", context_operation="summary")
                     return list(plan.messages), {}
 
     start = time.monotonic()
@@ -292,11 +304,13 @@ async def _summary_view(model: object, state: AgentState, schemas: list[dict],
         # Generate only from complete, contiguous omitted rounds. No tool binding.
         source_messages(rounds[:covered])
         called = True
+        emit_progress("context", "started", context_operation="summary")
         summary, usage = await generate_summary(model, rounds[:covered])
         view = candidate(summary, covered)
         if view is None:
             raise ValueError("final_over_budget")
         update.update({"status": "ready", "summary": summary})
+        emit_progress("context", "completed", context_operation="summary")
         return view, {"context_summary": update}
     except ValueError as exc:
         status = "fallback"
@@ -316,10 +330,12 @@ async def _summary_view(model: object, state: AgentState, schemas: list[dict],
                                "duration_ms": round((time.monotonic() - start) * 1000),
                                "error_code": error_code}, ensure_ascii=False))
     update["error_code"] = error_code
+    emit_progress("context", "fallback", context_operation="summary")
     return list(plan.messages), {"context_summary": update}
 
 
 async def _llm(state: AgentState) -> dict:
+    reset_progress_budget()
     decisions, _used = _counts(state)
     if decisions >= MAX_MODEL_DECISIONS:
         return {"messages": [AIMessage(content=(
@@ -339,10 +355,13 @@ async def _llm(state: AgentState) -> dict:
                                "omitted_rounds": plan.omitted_rounds,
                                "error_code": plan.error_code}, ensure_ascii=False))
         if not plan.ok:
+            emit_progress("context", "failed", context_operation="trim")
             return {"messages": [AIMessage(content=(
                 "估算上下文超预算或历史轮次无法安全裁剪；本次诊断未完成。"
                 "请使用新 Thread 或缩小输入。"))]}
         view = list(plan.messages)
+        if plan.status == "trimmed":
+            emit_progress("context", "completed", context_operation="trim")
         if summary_enabled and plan.status == "trimmed":
             view, summary_update = await _summary_view(
                 model, state, schemas, plan, context_config.total_budget)
@@ -369,6 +388,7 @@ async def _llm(state: AgentState) -> dict:
                                        "comparison": evidence[0],
                                        "budget": budget}, ensure_ascii=False))
         model = model.bind_tools(schemas)
+        emit_progress("model", "started")
         reply = await model.ainvoke(view)
         if not isinstance(reply, AIMessage):
             raise TypeError("LLM returned a non-AI message")
@@ -397,10 +417,14 @@ async def _llm(state: AgentState) -> dict:
         reply.name = "triage_llm"
         if not reply.tool_calls and injected_refs:
             reply.content = str(reply.content) + memory_retrieval.display_references(injected_refs)
+        emit_progress("model", "completed")
+        if not reply.tool_calls:
+            emit_progress("answer", "completed")
         return {**summary_update, "messages": [reply]}
     except ConfigurationError:
         raise
     except Exception as exc:  # noqa: BLE001 - provider/MCP errors vary by SDK
+        emit_progress("model", "failed")
         name = type(exc).__name__.lower()
         if "ratelimit" in name or "429" in str(exc):
             detail = "模型请求被限流（429）"
