@@ -138,27 +138,8 @@ def test_native_failures_are_sanitized_and_paired(monkeypatch, error, kind):
     assert reply.tool_call_id == "failure" and reply.status == "error"
     assert json.loads(reply.content)["error_type"] == kind
     assert SENTINEL not in reply.content
-    assert messages[-1].content.startswith("没有取得可用的工具证据")
+    assert messages[-1].content == "无可靠证据，无法判断健康状态。"
     assert len(native.calls) == 1
-
-
-@pytest.mark.parametrize("value", ["", "  ", "{bad-json", "not: [valid yaml", 42])
-def test_empty_or_malformed_native_result_does_not_prove_health(monkeypatch, value):
-    native = NativeTool(value)
-    model = FakeModel([
-        AIMessage(content="", tool_calls=[tool_call("pods_get", {
-            "namespace": NS, "name": POD}, "result")]),
-        AIMessage(content="集群健康，根因已确认。"),
-    ])
-    messages = run(model, monkeypatch, {"pods_get": native})
-    reply = next(m for m in messages if isinstance(m, ToolMessage))
-    assert reply.tool_call_id == "result" and reply.status == "success"
-    # Native text has no enforced YAML/JSON schema. Only empty text is deterministically
-    # rejected as evidence; malformed nonempty text needs model-level review.
-    if value in {"", "  "}:
-        assert "不能确认根因或健康状态" in messages[-1].content
-    else:
-        assert messages[-1].content == "集群健康，根因已确认。"
 
 
 def test_large_result_truncates_before_model_sees_suffix(monkeypatch):

@@ -25,7 +25,6 @@ def test_wrong_pod_success_is_not_verified_target(monkeypatch):
     tool = ToolMessage(content=json.dumps({"ok": True, "result": json.dumps(other)}),
                        name="pods_get", tool_call_id=call["id"], status="success")
     state = {"messages": [human, ai, tool]}
-    assert graph._has_tool_evidence(state) is True  # 原问题：任意成功回执被当作可用证据。
     assert graph._has_verified_target_evidence(state, "p34-09-target") is False
 
 
@@ -46,7 +45,6 @@ def test_unrelated_success_does_not_verify_failed_target(monkeypatch):
                             name="events_list", tool_call_id="unrelated-success",
                             status="success")
     state = {"messages": [human, ai, failed, unrelated]}
-    assert graph._has_tool_evidence(state) is True
     assert graph._has_verified_target_evidence(state, "p34-07-target") is False
 
 

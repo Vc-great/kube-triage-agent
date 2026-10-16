@@ -276,7 +276,6 @@ def test_b04_current_tool_pairs_and_counts_unchanged(offline):
     raw = [*history(), *current]
     asyncio.run(agent._llm({"messages": raw}))
     assert agent._counts({"messages": raw}) == (1, 2)
-    assert agent._has_tool_evidence({"messages": raw})
     seen = offline.main_inputs[0]
     assert seen[-len(current):] == current
 
@@ -294,8 +293,6 @@ def test_b05_old_health_and_uid_cannot_replace_current_evidence(offline):
     raw = [*old, *current]
     asyncio.run(agent._llm({"messages": raw}))
     assert offline.main_inputs[0][-len(current):] == current
-    assert agent._has_tool_evidence({"messages": raw})
-    assert not agent._has_tool_evidence({"messages": [*old, HumanMessage(content="新问题")]})
 
 
 def test_candidate_rejects_invalid_output():

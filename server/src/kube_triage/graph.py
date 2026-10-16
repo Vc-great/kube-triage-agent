@@ -91,21 +91,6 @@ def _counts(state: MessagesState) -> tuple[int, int]:
     return decisions, calls
 
 
-def _has_tool_evidence(state: MessagesState) -> bool:
-    """A successful, nonempty native result is the minimum for an evidence claim."""
-    for message in _current_turn(state):
-        if not isinstance(message, ToolMessage) or message.status != "success":
-            continue
-        try:
-            payload = json.loads(message.content)
-        except (TypeError, ValueError):
-            continue
-        if (isinstance(payload, dict) and payload.get("ok") is True and
-                isinstance(payload.get("result"), str) and payload["result"].strip()):
-            return True
-    return False
-
-
 def _has_verified_target_evidence(state: AgentState, target: str,
                                   thread_id: str | None = None) -> bool:
     """仅接受与本轮目标配对的 pods_get；启用 Memory 守卫时还需 HMAC。"""
@@ -409,11 +394,6 @@ async def _llm(state: AgentState) -> dict:
             return {**summary_update, "messages": [AIMessage(content=(
                 "本轮未取得可信的目标 Pod Reader 证据；当前状态和根因未核验。"
                 + memory_retrieval.display_references(injected_refs)))]}
-        '''
-        if not reply.tool_calls and not _has_tool_evidence(state):
-            return {**summary_update, "messages": [AIMessage(content=(
-                "没有取得可用的工具证据；本次诊断未完成，不能确认根因或健康状态。"))]}
-        '''
         reply.name = "triage_llm"
         if not reply.tool_calls and injected_refs:
             reply.content = str(reply.content) + memory_retrieval.display_references(injected_refs)

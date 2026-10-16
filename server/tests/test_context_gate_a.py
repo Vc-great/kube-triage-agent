@@ -201,17 +201,6 @@ def test_a07_provider_context_error_is_sanitized(offline):
     assert "private.example" not in result["messages"][0].content
 
 
-def test_a08_old_evidence_never_counts_as_current_evidence():
-    old = round_trip(0)
-    old[2] = ToolMessage(content='{"ok":true,"result":"CrashLoopBackOff"}',
-                         tool_call_id="call-0")
-    assert not agent._has_tool_evidence({"messages": [*old, HumanMessage(content="当前正常？")]})
-    current = round_trip(1)
-    current[2] = ToolMessage(content='{"ok":true,"result":"CrashLoopBackOff"}',
-                             tool_call_id="call-1")
-    assert agent._has_tool_evidence({"messages": [*old, *current]})
-
-
 @pytest.mark.parametrize("old_state,current_state", [
     ("Running/Ready", "CrashLoopBackOff"),
     ("CrashLoopBackOff", "Running/Ready"),
@@ -229,7 +218,6 @@ def test_a08_opposite_states_keep_current_evidence(old_state, current_state):
     plan = build_context_view("固定提示", SCHEMAS, full, ContextConfig(True, budget))
     assert plan.ok and plan.omitted_rounds == 1
     assert plan.messages[1:] == tuple(current)
-    assert agent._has_tool_evidence({"messages": full})
 
 
 def test_a09_malicious_tool_text_never_enters_system_or_audit(caplog):
