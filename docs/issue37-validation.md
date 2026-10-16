@@ -13,6 +13,8 @@
 
 ## T00–T17
 
+统计：15 PASS、3 NOT RUN、0 FAIL、0 BLOCKED。NOT RUN 为 T09、T13、T16。
+
 | ID | 状态 | 分层与证据 | 边界 |
 | --- | --- | --- | --- |
 | T00 | PASS | fetch、SHA/版本/端口/卷检查；隔离 Compose `config --quiet` 退出 0 | 未检查真实 K8s |
@@ -32,7 +34,7 @@
 | T14 | PASS | `REPAIR_SIMULATED=true` 的 Fake Repair 在浏览器出现原审批卡，拒绝 Resume 返回无写入正文；测试夹具禁止写函数；原 `test_phase3b.py` 随全量 pytest 通过 | 未批准、未真实写 K8s |
 | T15 | PASS | 浏览器刷新后正式 AI/Tool History 恢复，未持久化 Timeline 消失 | 本地 Aegra + UI |
 | T16 | NOT RUN | Hide Tool Calls 的原始 Tool 卡隐藏且 Timeline 保留已验；`UIMessage`/`RemoveUIMessage` 分支保持，但没有产生原 UIEvent 的端到端夹具 | 不把静态检查算作 UIEvent 验收 |
-| T17 | NOT RUN | 本地 pytest 337/337、Ruff 退出 0、Node 测试 2/2、lint 退出 0（18 个既有 warning）、`tsc --noEmit` 退出 0、build 退出 0；远端 CI 需 Draft PR 创建后查看 | CI 状态另在 PR 更新 |
+| T17 | PASS | 本地 pytest 337/337、Ruff 退出 0、Node 测试 2/2、lint 退出 0（18 个既有 warning）、`tsc --noEmit` 退出 0、build 退出 0；Draft PR #38 首次 CI 的 compose/python/web 均 pass | [CI run 38910975348](https://github.com/Vc-great/kube-triage-agent/actions/runs/38910975348) |
 
 ## 流量、性能与安全结论
 
