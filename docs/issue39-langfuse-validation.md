@@ -23,6 +23,6 @@
 
 离线：本轮复用 Host 已有 `server/.venv` 的 Aegra CLI/API 0.10.8 Runtime（没有下载或升级依赖）。代理配置修改后，Ruff、Bash 语法、`git diff --check` 均通过，全量 pytest：`367 passed`。Compose 配置解析确认仅 API 容器接收代理变量；Mac 使用 `host.docker.internal:7890`，dev01 启动入口使用 `192.168.31.110:7890`。新 Worktree 的 sandbox 无法写既有测试需要的忽略目录 `.local/eval-runs`；在 Host 权限下对同一 Worktree 重跑完整套件后通过。CI 的 Python、Web lint/build 与 Compose 结果以最新 HEAD 为准；本地 Web 浏览器回归 NOT RUN。
 
-dev01 只读网络测试：经 `dev01-t` 连接成功；7890 监听 `127.0.0.1`、`192.168.31.110` 和 `172.20.0.1`，Docker 默认 `host-gateway=172.17.0.1` 未监听；现有 API 容器位于项目私网 `172.19.0.0/16`。宿主机经代理访问 Langfuse 公共首页 HTTP 200；API 容器可对 LAN/172.20 地址建立 TCP，但无认证 HTTP CONNECT 被立即重置。故容器到 Cloud 和 OTLP Trace 仍为 NOT RUN/BLOCKED，需远端代理环境所有者核对 Docker 网段访问规则。未读 Key、未更改代理配置、未重建容器。
+dev01 只读网络测试：经 `dev01-t` 连接成功；7890 监听 `127.0.0.1`、`192.168.31.110` 和 `172.20.0.1`，Docker 默认 `host-gateway=172.17.0.1` 未监听；现有 API 容器源地址为 `172.19.0.4`。宿主机经代理访问 Langfuse 公共首页 HTTP 200，绑定项目网桥源地址 `172.19.0.1` 时也为 200；API 容器可对 LAN/172.20 地址建立 TCP，但无认证 HTTP CONNECT 被立即重置。故容器到 Cloud 和 OTLP Trace 仍为 NOT RUN/BLOCKED，需远端环境所有者核对容器来源的代理访问规则与 Docker 转发/防火墙策略。未读 Key、未更改代理配置、未重建容器。
 
 云端：先确认独立的本机 Mock API、端口、PostgreSQL/Redis、Compose 项目与卷，再按[设计与操作说明](issue39-langfuse-observability.md)用合成 Thread/Run 核验。记录以下脱敏字段：本地时间/UTC、场景、Thread ID、Run ID、Langfuse Trace ID/链接、Root/LLM/Tool/Summary 是否实际可见、父子关系、State/History 的 Tool Call ID、`context_summary` 审计状态、401/超时结果。不要记录 Prompt、输出、密钥或完整环境变量。未看到 Cloud Trace 时保持 `BLOCKED` 或 `FAIL`，不得将 exporter attached 视为 PASS。
