@@ -36,17 +36,21 @@ def test_valid_keys_auto_enable_every_local_profile_only_in_api(tmp_path, monkey
     assert children["api"]["OTEL_SERVICE_NAME"] == f"kube-triage-agent-{mode}"
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
     assert children["api"]["HTTPS_PROXY"] == "http://127.0.0.1:7890"
+    assert children["api"]["HTTP_PROXY"] == "http://127.0.0.1:7890"
+    assert "localhost" in children["api"]["NO_PROXY"]
     assert children["api"]["LANGFUSE_BASE_URL"] == "https://jp.cloud.langfuse.com"
     assert {key for key in children["api"] if key.startswith("LANGFUSE_")} == dev.LANGFUSE_KEYS
     preflight = dev.preflight_environment(children["api"])
     assert preflight["OTEL_TARGETS"] == ""
     assert not any(key.startswith("LANGFUSE_") for key in preflight)
+    assert not any(key.endswith("_PROXY") for key in preflight)
     for name, environment in children.items():
         if name == "api":
             continue
         assert not any(key.startswith("LANGFUSE_") for key in environment)
         assert "OTEL_TARGETS" not in environment
         assert "HTTPS_PROXY" not in environment
+        assert "HTTP_PROXY" not in environment
 
 
 def test_web_only_mode_delegates_to_remote_api_without_local_keys(monkeypatch, tmp_path):
@@ -57,14 +61,15 @@ def test_web_only_mode_delegates_to_remote_api_without_local_keys(monkeypatch, t
         assert "host-secret" not in child.values()
 
 
-@pytest.mark.parametrize("mode", ["mock", "real", "memory"])
+@pytest.mark.parametrize("mode", list(dev.PROFILES))
 def test_missing_keys_default_off_and_do_not_inherit_host_keys(monkeypatch, tmp_path, mode):
     monkeypatch.setattr(dev, "ENV_FILE", source_file(tmp_path, "OTHER_VALUE=ignored\n"))
     values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake"}
     children = dev.child_environments(mode, values, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == ""
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
-    assert "HTTPS_PROXY" not in children["api"]
+    assert children["api"]["HTTPS_PROXY"] == "http://127.0.0.1:7890"
+    assert children["api"]["HTTP_PROXY"] == "http://127.0.0.1:7890"
     assert not any(key.startswith("LANGFUSE_") for child in children.values() for key in child)
 
 
@@ -108,11 +113,18 @@ def test_legacy_switch_does_not_block_key_auto_enable(tmp_path, monkeypatch):
     assert children["api"]["OTEL_TARGETS"] == "LANGFUSE"
 
 
-def test_existing_host_https_proxy_is_preserved(tmp_path, monkeypatch):
+def test_host_proxy_cannot_override_fixed_api_proxy(tmp_path, monkeypatch):
     monkeypatch.setattr(dev, "ENV_FILE", source_file(tmp_path))
     children = dev.child_environments(
-        "mock", FAKE_VALUES, {**HOST_ENV, "HTTPS_PROXY": "http://127.0.0.1:7999"})
-    assert children["api"]["HTTPS_PROXY"] == "http://127.0.0.1:7999"
+        "mock", FAKE_VALUES, {**HOST_ENV, "HTTPS_PROXY": "http://127.0.0.1:7999",
+                              "https_proxy": "http://127.0.0.1:7999",
+                              "ALL_PROXY": "http://127.0.0.1:7999",
+                              "NO_PROXY": "api.deepseek.com,jp.cloud.langfuse.com"})
+    assert children["api"]["HTTPS_PROXY"] == "http://127.0.0.1:7890"
+    assert children["api"]["HTTP_PROXY"] == "http://127.0.0.1:7890"
+    assert "ALL_PROXY" not in children["api"]
+    assert "https_proxy" not in children["api"]
+    assert "api.deepseek.com" not in children["api"]["NO_PROXY"]
     assert "HTTPS_PROXY" not in children["web"]
 
 
@@ -131,16 +143,13 @@ def test_compose_auto_overlay_and_host_key_isolation(tmp_path, monkeypatch, stac
     monkeypatch.setattr(compose, "ENV_FILE", source)
     command, environment = compose.compose_invocation(
         stack, "isolated-project", ["config", "--quiet"],
-        {**HOST_ENV, "KTA_LANGFUSE_PROXY_URL": "http://untrusted:1"})
+        HOST_ENV)
     assert command.count("infra/langfuse.compose.yaml") == 1
     expected_file = "infra/test.compose.yaml" if stack == "test" else "infra/compose.yaml"
     assert expected_file in command
     assert environment["LANGFUSE_SECRET_KEY"] == "sk-fake"
     assert environment["LANGFUSE_PUBLIC_KEY"] == "pk-fake"
-    if stack == "dev01":
-        assert environment["KTA_LANGFUSE_PROXY_URL"] == "http://192.168.31.110:7890"
-    else:
-        assert "KTA_LANGFUSE_PROXY_URL" not in environment
+    assert "infra/langfuse.compose.yaml" in command
     source.write_text("OTHER_VALUE=ignored\n")
     command, environment = compose.compose_invocation(
         stack, "isolated-project", ["config", "--quiet"], HOST_ENV)

@@ -8,7 +8,3 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?set LANGFUSE_SECRET_KEY in private .env}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?set LANGFUSE_PUBLIC_KEY in private .env}
       LANGFUSE_BASE_URL: https://jp.cloud.langfuse.com
-      HTTPS_PROXY: ${KTA_LANGFUSE_PROXY_URL:-http://host.docker.internal:7890}
-      NO_PROXY: localhost,127.0.0.1,::1,postgres,redis,k8s-mcp,mock-mcp,repair-mcp
-    extra_hosts:
-      - host.docker.internal:host-gateway

@@ -4,25 +4,25 @@
 
 | 编号 | 状态 | 本轮证据与边界 |
 | --- | --- | --- |
-| A01 无 Key 关闭 | PASS（配置级） | 单测证明无 Key 时 API `OTEL_TARGETS=''`、`OTEL_CONSOLE_EXPORT=false`，主机 Langfuse 环境变量未继承；未启动进程核查云端。 |
-| A02 模式覆盖 | PASS（配置级） | 参数测试覆盖全部七种本机 API 模式：根目录 `.env` 有完整有效 Key 时均自动配置 API 导出；`dev-web` 只有前端，委托 dev01 API。正式、dev01、隔离测试 Compose 入口均自动选择覆盖层；配置验证见 CI。 |
+| A01 无 Key 关闭 | PASS（配置级） | 单测证明无 Key 时 API `OTEL_TARGETS=''`、`OTEL_CONSOLE_EXPORT=false`，但模型仍配置宿主机 7890 代理；主机 Langfuse 环境变量未继承。 |
+| A02 模式覆盖 | PASS（配置级） | 参数测试覆盖全部七种本机 API 模式：无论 Langfuse Key 是否存在，API 模型请求均使用宿主机 7890；有效 Key 自动配置导出。`dev-web` 只有前端，委托 dev01 API。正式、dev01、隔离测试 Compose 基础文件均固定给 API 配置代理。 |
 | A03 源文件安全 | PASS（单测） | 测试权限、属主、非普通文件、符号链接、缺失、重复、格式、URL、相对路径与异常不回显假密钥；未读取真实密钥。 |
-| A04 子进程隔离 | PASS（单测） | 全部七种本机 API 模式中，仅 API 环境有三个 Langfuse 字段；Web/Mock/Tunnel/Preflight 无字段。 |
-| A05 合成普通对话 | BLOCKED | 新 Worktree 缺独立的根目录 `.env` 与数据库/Redis 测试实例；未执行 Langfuse 页面核验，无 Trace ID/Run ID。 |
+| A04 子进程隔离 | PASS（单测） | 全部七种本机 API 模式中，仅 API 环境获得 7890 代理；有 Key 时也仅 API 获得三个 Langfuse 字段。Web/Mock/Tunnel/Preflight 无字段。 |
+| A05 合成普通对话 | PASS（Cloud API） | dev01 独立测试项目使用真实模型完成合成 Run，状态 `success` 且 SSE 正常结束；Langfuse Japan Public API 以 Session ID 查到 6 条 `CHAIN`/`GENERATION` observation 和一个 Trace。网页 UI 未登录，页面核验未完成。 |
 | A06 合成 Tool Calling | BLOCKED | 未执行云端 LLM → Tool → LLM 与 Tool Call ID 核验。 |
 | A07 Summary | BLOCKED | 未执行能触发摘要的多轮云端合成样例；最终采用/回退仍须结合审计。 |
-| A08 网络/Key 失效 | NOT RUN | 未对独立 API 做 401、超时、断网故障注入。 |
+| A08 网络/Key 失效 | PARTIAL | 隔离 API 的单次模型调用将代理改为关闭端口后报 `OpenAIConnectionError`，未发生直连回退；401、超时与断网场景未运行。 |
 | A09 关闭追踪 | NOT RUN | 无 Key 的配置级 OFF 已测；移除 Key 并重启后的新 Run 与 Batch 队列尚未实测。 |
-| A10 后端回归 | PASS（本地） | Ruff `scripts/dev.py scripts/compose_with_langfuse.py scripts/prepare-dev01.py server/src server/tests` 通过；全量 pytest `367/367` 通过；最新 HEAD CI 待核对。不更改 Golden 与历史 B06=FAIL。 |
+| A10 后端回归 | PASS（本地） | 更新后 Ruff、`git diff --check` 通过；全量 pytest `371/371` 通过。CI 须以本次提交后的最新 HEAD 为准。不更改 Golden 与历史 B06=FAIL。 |
 | A11 既有前端进度 | PASS（CI/静态） | 前端文件未改；CI Web lint/build 通过，没有进行浏览器联调。 |
-| A12 真实安全边界 | PASS（本轮操作） | 未连接真实 Kubernetes、未写入/改动 dev01 正式服务或稳定服务；`real`/Memory/Compose 开启后的云端数据范围尚未运行级核验。 |
+| A12 真实安全边界 | PASS（本轮操作） | 已仅重建 dev01 正式 API，并核对 Healthy、代理变量、`host.docker.internal=172.17.0.1` 和两个目标域名的 CONNECT 200；数据库、Redis、Web、Kubernetes MCP 未重建。未发起真实 Kubernetes Run，其内容在 Cloud 的运行级范围仍未核验。 |
 
-证据等级：源码/配置与单元测试只证明环境构造和失败边界；Mock 模型联调、Cloud Ingestion、Langfuse UI 中真实父子 Span 与 Run/Thread 映射目前没有证据。`UNKNOWN` 项不可按预期推断为成功。合成云端核验前先审查测试问题、Mock 数据、Run metadata 和截图，确保无真实用户内容、Pod/Event/Log、Secret、Header、kubeconfig、Memory 内容。`real`/Memory 模式若需运行级核验，须另确认真实数据向 Langfuse Cloud Japan 发送的授权范围。
+证据等级：配置/单测证明环境构造；隔离 Run 与 Langfuse Public API 证明这条合成链路已导出到云端。Cloud UI 页面因浏览器未登录而未核验，Tool Calling、Summary 的父子 Span 与真实 Kubernetes 数据范围仍无运行级证据。`UNKNOWN` 项不可按预期推断为成功。合成样例只使用 Mock Reader 与合成提问，没有保存 Prompt、输出、Secret、Header、kubeconfig 或 Memory 内容。
 
 ## 复现与填写
 
-离线：本轮复用 Host 已有 `server/.venv` 的 Aegra CLI/API 0.10.8 Runtime（没有下载或升级依赖）。代理配置修改后，Ruff、Bash 语法、`git diff --check` 均通过，全量 pytest：`367 passed`。Compose 配置解析确认仅 API 容器接收代理变量；Mac 使用 `host.docker.internal:7890`，dev01 启动入口使用 `192.168.31.110:7890`。新 Worktree 的 sandbox 无法写既有测试需要的忽略目录 `.local/eval-runs`；在 Host 权限下对同一 Worktree 重跑完整套件后通过。CI 的 Python、Web lint/build 与 Compose 结果以最新 HEAD 为准；本地 Web 浏览器回归 NOT RUN。
+离线：复用 Host 已有 `server/.venv` Runtime，没有下载或升级依赖。Ruff、`git diff --check` 通过，全量 pytest：`371 passed`。Compose 配置确认仅 API 容器接收 `HTTP_PROXY`、`HTTPS_PROXY` 与 `NO_PROXY`；全部 Compose 入口使用 `host.docker.internal:7890`，有无 Langfuse Key 均如此。Mac 本机经 `127.0.0.1:7890` 无凭据访问当前 HTTP 模型端点返回 401（证明请求已抵达端点），经同一代理访问 Langfuse 公共首页返回 200；Mac 原生 API 的完整 Run 尚未实测。CI 的 Python、Web lint/build 与 Compose 结果以最新 HEAD 为准；本地 Web 浏览器回归 NOT RUN。
 
-dev01 只读网络测试：经 `dev01-t` 连接成功；7890 监听 `127.0.0.1`、`192.168.31.110` 和 `172.20.0.1`，Docker 默认 `host-gateway=172.17.0.1` 未监听；现有 API 容器源地址为 `172.19.0.4`。宿主机经代理访问 Langfuse 公共首页 HTTP 200，绑定项目网桥源地址 `172.19.0.1` 时也为 200；API 容器可对 LAN/172.20 地址建立 TCP，但无认证 HTTP CONNECT 被立即重置。故容器到 Cloud 和 OTLP Trace 仍为 NOT RUN/BLOCKED，需远端环境所有者核对容器来源的代理访问规则与 Docker 转发/防火墙策略。未读 Key、未更改代理配置、未重建容器。
+dev01 实施与网络测试：mihomo 的 `allow-lan: true` 保留，移除 `lan-allowed-ips`，将 `bind-address` 设为 `"*"`；因现有 7890 上还有两个带专门策略的显式 listener，另外添加 Docker 网桥 `172.17.0.1` 和原 LAN 地址的 listener，保留原有 listener 不变。配置校验与服务重启通过；容器向 `api.deepseek.com:443`、`jp.cloud.langfuse.com:443` 的 HTTP CONNECT 均为 200。三项已验证的 Langfuse Key 写入 dev01 私有根目录 `.env`（0600），不输出值；正式 API 单独重建且 Healthy。隔离项目使用已有镜像及独立数据库/Redis 卷，真实模型调用和一轮合成 Run 成功；Session `f8cfd719-0fef-4d85-89e4-01ff0fa15c76` 对应 Trace `9c29ae75179cb043ae6d93fb48e5cd0a`，Langfuse Public API 查询返回 6 条 observation。隔离项目及独立卷随后清理。
 
 云端：先确认独立的本机 Mock API、端口、PostgreSQL/Redis、Compose 项目与卷，再按[设计与操作说明](issue39-langfuse-observability.md)用合成 Thread/Run 核验。记录以下脱敏字段：本地时间/UTC、场景、Thread ID、Run ID、Langfuse Trace ID/链接、Root/LLM/Tool/Summary 是否实际可见、父子关系、State/History 的 Tool Call ID、`context_summary` 审计状态、401/超时结果。不要记录 Prompt、输出、密钥或完整环境变量。未看到 Cloud Trace 时保持 `BLOCKED` 或 `FAIL`，不得将 exporter attached 视为 PASS。

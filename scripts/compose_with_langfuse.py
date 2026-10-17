@@ -21,10 +21,8 @@ def compose_invocation(stack, project, args, host_env=None):
     source = os.environ if host_env is None else host_env
     environment = {key: value for key, value in source.items()
                    if key not in {"LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY",
-                                  "LANGFUSE_BASE_URL", "KTA_LANGFUSE_PROXY_URL"}}
+                                  "LANGFUSE_BASE_URL"}}
     environment.update(credentials)
-    if credentials and stack == "dev01":
-        environment["KTA_LANGFUSE_PROXY_URL"] = "http://192.168.31.110:7890"
     command = ["docker", "compose", "-p", project, "--env-file", str(ENV_FILE)]
     for file in STACK_FILES[stack]:
         command.extend(("-f", file))

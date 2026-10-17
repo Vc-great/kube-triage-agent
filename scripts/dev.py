@@ -41,9 +41,7 @@ SHARED_FILE_KEYS = frozenset({"POSTGRES_USER", "POSTGRES_DB", "WEB_PORT", "API_P
 COMMON_HOST_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL",
                               "LANG", "XDG_CACHE_HOME", "UV_CACHE_DIR",
                               "UV_PYTHON_INSTALL_DIR", "PNPM_HOME", "COREPACK_HOME"})
-API_HOST_KEYS = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-                           "http_proxy", "https_proxy", "all_proxy", "no_proxy",
-                           "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"})
+API_HOST_KEYS = frozenset({"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"})
 PROFILES = {
     "real": {"mock": False, "read": True, "write": True,
              "window": True, "summary": True},
@@ -222,14 +220,15 @@ def child_environments(mode, values, host_env=None):
                "CONTEXT_WINDOW_ENABLED": str(profile["window"]).lower(),
                "CONTEXT_SUMMARY_ENABLED": str(profile["summary"]).lower(),
                "CONTEXT_ESTIMATED_TOTAL_BUDGET": "6500" if profile["window"] else "16384",
-               "OTEL_TARGETS": "", "OTEL_CONSOLE_EXPORT": "false"}
+               "OTEL_TARGETS": "", "OTEL_CONSOLE_EXPORT": "false",
+               "HTTP_PROXY": "http://127.0.0.1:7890",
+               "HTTPS_PROXY": "http://127.0.0.1:7890",
+               "NO_PROXY": "localhost,127.0.0.1,::1,postgres,redis,k8s-mcp,mock-mcp,"
+                           "mock-repair-mcp,repair-mcp,api,web"}
     langfuse = read_langfuse_env(ENV_FILE, optional=True)
     if langfuse:
         api_env.update(langfuse)
         api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME=f"kube-triage-agent-{mode}")
-        if not any(api_env.get(key) for key in (
-                "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")):
-            api_env["HTTPS_PROXY"] = "http://127.0.0.1:7890"
     if memory_on:
         api_env["INCIDENT_MEMORY_PROVENANCE_SECRET"] = values[
             "INCIDENT_MEMORY_PROVENANCE_SECRET"]
@@ -250,7 +249,8 @@ def child_environments(mode, values, host_env=None):
 def preflight_environment(api_env):
     """The startup check needs application settings but must not receive Cloud credentials."""
     result = {key: value for key, value in api_env.items()
-              if key not in LANGFUSE_KEYS and key != "OTEL_SERVICE_NAME"}
+              if key not in LANGFUSE_KEYS and key not in {
+                  "OTEL_SERVICE_NAME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"}}
     result["OTEL_TARGETS"] = ""
     return result
 
