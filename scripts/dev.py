@@ -29,7 +29,6 @@ PRIVATE_KEYS = frozenset({"POSTGRES_PASSWORD", "DEMO_API_TOKEN", "LLM_MODEL",
                           "DEV_REMOTE_API_URL", "LANGFUSE_TRACING_ENABLED"})
 LANGFUSE_KEYS = frozenset({"LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY",
                            "LANGFUSE_BASE_URL"})
-LANGFUSE_MOCK_MODES = frozenset({"mock", "mock-window", "mock-summary"})
 SHARED_FILE_KEYS = frozenset({"POSTGRES_USER", "POSTGRES_DB", "WEB_PORT", "API_PORT",
                               "NEXT_PUBLIC_API_URL", "MCP_SERVER_URL",
                               "CONTEXT_WINDOW_ENABLED", "CONTEXT_SUMMARY_ENABLED",
@@ -75,8 +74,8 @@ def read_env():
     for number, line in enumerate(ENV_FILE.read_text().splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        # Ignore Cloud credentials here even when malformed. Only an allowed
-        # Mock profile with the explicit switch parses them in read_langfuse_env().
+        # Ignore Cloud credentials here even when malformed. Only an explicitly
+        # enabled local API parses them in read_langfuse_env().
         if re.match(r"(?:export[ \t]+)?LANGFUSE_(?:SECRET_KEY|PUBLIC_KEY|BASE_URL)\b",
                     line.strip()):
             continue
@@ -106,13 +105,13 @@ def safe_host_env(host_env=None, *, api=False, ssh=False):
 
 
 def langfuse_status(mode, values):
-    """The private source is consulted only for an explicitly allowed Mock API."""
+    """Enable export for a local API; web-only mode delegates tracing to dev01."""
     switch = values.get("LANGFUSE_TRACING_ENABLED", "false")
     if switch not in {"true", "false"}:
         raise RuntimeError("LANGFUSE_SWITCH_INVALID：仅接受 true 或 false。")
     if switch == "false":
         return "off"
-    return "on" if mode in LANGFUSE_MOCK_MODES else "forced_off"
+    return "remote" if mode == "web" else "on"
 
 
 def read_langfuse_env(path):
@@ -236,7 +235,7 @@ def child_environments(mode, values, host_env=None):
                "OTEL_TARGETS": "", "OTEL_CONSOLE_EXPORT": "false"}
     if tracing == "on":
         api_env.update(read_langfuse_env(ENV_FILE))
-        api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME="kube-triage-agent-mock")
+        api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME=f"kube-triage-agent-{mode}")
     if memory_on:
         api_env["INCIDENT_MEMORY_PROVENANCE_SECRET"] = values[
             "INCIDENT_MEMORY_PROVENANCE_SECRET"]

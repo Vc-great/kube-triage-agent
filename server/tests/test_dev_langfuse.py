@@ -1,4 +1,4 @@
-"""Langfuse export may only be configured for an explicit local Mock API."""
+"""Langfuse export stays in the API process for every local profile."""
 
 import importlib.util
 import os
@@ -26,42 +26,43 @@ def source_file(tmp_path, content=None):
     return source
 
 
-@pytest.mark.parametrize("mode", ["mock", "mock-window", "mock-summary"])
-def test_explicit_mock_only_injects_api(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize("mode", list(dev.PROFILES))
+def test_explicit_local_profile_only_injects_api(tmp_path, monkeypatch, mode):
     source = source_file(tmp_path)
     monkeypatch.setattr(dev, "ENV_FILE", source)
-    values = {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true"}
+    values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake",
+              "LANGFUSE_TRACING_ENABLED": "true"}
     children = dev.child_environments(mode, values, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == "LANGFUSE"
-    assert children["api"]["OTEL_SERVICE_NAME"] == "kube-triage-agent-mock"
+    assert children["api"]["OTEL_SERVICE_NAME"] == f"kube-triage-agent-{mode}"
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
     assert children["api"]["LANGFUSE_BASE_URL"] == "https://jp.cloud.langfuse.com"
     assert {key for key in children["api"] if key.startswith("LANGFUSE_")} == dev.LANGFUSE_KEYS
     preflight = dev.preflight_environment(children["api"])
     assert preflight["OTEL_TARGETS"] == ""
     assert not any(key.startswith("LANGFUSE_") for key in preflight)
-    for name in ("web", "mock", "tunnel"):
-        assert not any(key.startswith("LANGFUSE_") for key in children[name])
-        assert "OTEL_TARGETS" not in children[name]
+    for name, environment in children.items():
+        if name == "api":
+            continue
+        assert not any(key.startswith("LANGFUSE_") for key in environment)
+        assert "OTEL_TARGETS" not in environment
 
 
-@pytest.mark.parametrize("mode", ["real", "memory", "memory-read", "memory-write", "web"])
-def test_disallowed_modes_force_off_without_reading_source(monkeypatch, tmp_path, mode):
+def test_web_only_mode_delegates_to_remote_api_without_local_keys(monkeypatch, tmp_path):
     monkeypatch.setattr(dev, "ENV_FILE", tmp_path / "absent.env")
-    values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake",
-              "LANGFUSE_TRACING_ENABLED": "true"}
-    children = dev.child_environments(mode, values, HOST_ENV)
-    assert dev.langfuse_status(mode, values) == "forced_off"
-    if mode != "web":
-        assert children["api"]["OTEL_TARGETS"] == ""
-        assert not any(key.startswith("LANGFUSE_") for key in children["api"])
+    values = {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true"}
+    children = dev.child_environments("web", values, HOST_ENV)
+    assert dev.langfuse_status("web", values) == "remote"
+    assert set(children) == {"web"}
     for child in children.values():
         assert "host-secret" not in child.values()
 
 
-def test_default_off_does_not_read_source_or_inherit_host_keys(monkeypatch, tmp_path):
+@pytest.mark.parametrize("mode", ["mock", "real", "memory"])
+def test_default_off_does_not_read_source_or_inherit_host_keys(monkeypatch, tmp_path, mode):
     monkeypatch.setattr(dev, "ENV_FILE", tmp_path / "absent.env")
-    children = dev.child_environments("mock", FAKE_VALUES, HOST_ENV)
+    values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake"}
+    children = dev.child_environments(mode, values, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == ""
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
     assert not any(key.startswith("LANGFUSE_") for child in children.values() for key in child)

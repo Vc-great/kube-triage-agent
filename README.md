@@ -2,7 +2,7 @@
 
 dev01 完整部署与 Mac 原生开发见 [部署与开发指南](docs/dev01-deployment.md)：`make dev-web` 只调前端并连接远端 API；`make dev` 使用真实 Reader、受控 Repair、Memory 与 Context；`make dev-mock`、`make dev-memory-*` 和 `make dev-mock-{window,summary}` 用于人工场景测试。切换前执行 `make dev-stop`。本机 Compose 与原生开发共用根目录私有 `.env`（0600）；场景由命令决定。
 
-本机合成 Mock 的可选 Langfuse Trace 见 [Issue #39 配置与隐私说明](docs/issue39-langfuse-observability.md)和[验收记录](docs/issue39-langfuse-validation.md)。默认关闭，正式与真实 Reader 场景强制关闭。
+本机 API 各模式的可选 Langfuse Trace 见 [Issue #39 配置与隐私说明](docs/issue39-langfuse-observability.md)和[验收记录](docs/issue39-langfuse-validation.md)。默认关闭；开启真实 Reader 模式会向云端发送可能包含 Kubernetes 数据的 Trace。
 
 单用户 AI 全栈学习与面试 Demo：Aegra Thread/Run/SSE/Checkpoint + LangGraph + 原生 Reader MCP。正式自然语言诊断恒走真实 OpenAI 兼容 LLM → 四个只读 MCP 工具 → Kubernetes API，Namespace 固定为 `kube-triage-demo`。缺配置、未批准 Reader URL 和生产模拟配置均 Fail Closed；无 Echo、固定命令或 Mock 回退。
 

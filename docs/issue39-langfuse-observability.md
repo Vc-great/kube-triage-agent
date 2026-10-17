@@ -1,20 +1,20 @@
-# Issue #39：本机 Mock 的 Langfuse Trace
+# Issue #39：本机 API 模式的 Langfuse Trace
 
-本期只使用 Aegra v0.10.8 自带的 OpenTelemetry/OpenInference。`scripts/dev.py` 在明确开启的 `mock`、`mock-window`、`mock-summary` 模式中，把三个 Langfuse 配置及 `OTEL_TARGETS=LANGFUSE` 交给本机 API 子进程。Aegra 把 Trace 通过 HTTPS 送到 Langfuse Cloud Japan。仓库不安装 Langfuse SDK、CallbackHandler 或 Collector，也不改变 Graph、SSE、工具和权限逻辑。
+本期只使用 Aegra v0.10.8 自带的 OpenTelemetry/OpenInference。`scripts/dev.py` 在显式开启追踪后，让每个本机 API 模式（`real`、`memory-*`、`mock*`）使用三个 Langfuse 配置及 `OTEL_TARGETS=LANGFUSE`。Aegra 把 Trace 通过 HTTPS 送到 Langfuse Cloud Japan。仓库不安装 Langfuse SDK、CallbackHandler 或 Collector，也不改变 Graph、SSE、工具和权限逻辑。`make dev-web` 只有前端，Trace 取决于其连接的 dev01 API 配置。
 
 ## 配置和启动
 
 1. 在**当前 Worktree 根目录** 的私有 `.env` 添加 `LANGFUSE_TRACING_ENABLED=true`。开关只接受小写 `true` 或 `false`；不配置时为 `false`。原生开发和本机 Compose 共用此文件，不再使用 `.local/dev.env`。
 2. 在同一 `.env` 中放 `LANGFUSE_SECRET_KEY`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com`。文件必须是当前用户拥有的普通文件、非符号链接、权限恰为 0600。新 Worktree 若没有自己的 `.env`，启动会失败；启动器不会从其他 Worktree 搜索、复制或修改凭据。
-3. 确认输入和 Mock MCP 数据均为合成、无敏感信息，然后运行 `make dev-mock`、`make dev-mock-window` 或 `make dev-mock-summary`。`make dev-status` 与启动输出只显示 `on`、`off`、`forced_off`，不会显示密钥。
+3. 在 `.env` 显式开启后，运行所需 `make dev-*` 模式。`make dev-status` 与启动输出只显示 `on`、`off` 或 `remote`，不会显示密钥。`real` 模式会访问真实 Reader/Repair 配置；云端 Trace 可能包含真实集群内容，先确认该数据可发送到 Langfuse Cloud Japan。
 
-`make dev`、`make dev-web`、所有 Memory 模式和正式 Compose 即使存在密钥或开关为 `true` 也强制关闭。正式 Compose 明确设置 `OTEL_TARGETS=''`。普通原生开发配置解析会忽略 `.env` 中的 Langfuse Key；仅允许的 Mock 模式显式开启后，才从同一文件安全提取这三个键。若缺文件、权限/属主不符、重复/缺失字段、格式错误或 URL 不合规，会以不含字段值的错误码拒绝启动。其他 Compose 字段不注入原生开发子进程，也不执行 shell 代码。`OTEL_SERVICE_NAME=kube-triage-agent-mock`、`OTEL_CONSOLE_EXPORT=false` 固定由启动器生成。不要把完整 OTLP 路径写入 `LANGFUSE_BASE_URL`。
+所有本机 API 模式默认关闭；显式开启后均从同一 `.env` 安全提取三个 Langfuse 字段，并以 `kube-triage-agent-<mode>` 区分服务名。`make dev-web` 不创建本机 API，因而不会把 Key 交给 Web；其状态显示 `remote`，须在 dev01 API 端单独配置导出。普通原生开发配置解析会忽略 `.env` 中的 Langfuse Key。开启时若缺文件、权限/属主不符、重复/缺失字段、格式错误或 URL 不合规，会以不含字段值的错误码拒绝启动。其他 Compose 字段不注入原生开发子进程，也不执行 shell 代码。`OTEL_CONSOLE_EXPORT=false` 固定由启动器生成。不要把完整 OTLP 路径写入 `LANGFUSE_BASE_URL`。
 
 关闭时将根目录 `.env` 中的开关改为 `false` 或删除，并在用户确认当前服务归属后重启**本 Worktree 自己的** Mock 开发进程。关闭后新 Run 不应导出；此前 Batch 队列仍可能上传，云端旧 Trace 不会自动删除。不要以服务退出时仍出现旧 Trace 推断开关失效。
 
 ## 隐私和可观察范围
 
-Cloud Trace 可能包含完整 Prompt、模型输出和 Mock ToolMessage。Mock Reader 并不能保证任意用户输入都安全：手动测试只能用全新合成 Thread、合成问题和合成数据，不得输入真实 Pod/Event/Log、历史会话、密钥、kubeconfig、原始 Header 或 Memory 内容。不要在 Run metadata 里放这些内容。密钥不进 Web、Mock MCP、SSH 隧道、日志、Trace metadata 或 Git。不得为了导出成功关闭 TLS/CA 校验。
+Cloud Trace 可能包含完整 Prompt、模型输出和 ToolMessage。Mock Reader 也不能保证任意用户输入都安全；验证阶段仍应使用全新合成 Thread、合成问题和合成数据。`real`/Memory 模式开启后可能发送真实 Pod/Event/Log、历史会话或 Memory 内容，使用前须按实际数据授权与保留政策审查。不要在 Run metadata 里放密钥、kubeconfig、原始 Header 或私人 URL 参数。密钥不进 Web、Mock MCP、SSH 隧道、日志、Trace metadata 或 Git。不得为了导出成功关闭 TLS/CA 校验。
 
 Aegra 的自动 Span 可用于核对 Graph/LLM/Tool 的时间线、异常和关联。Aegra v0.10.8 的 Trace context 会设置 `langfuse.session.id=thread_id`，并在 `langfuse.trace.metadata.run_id`、`thread_id`、`graph_id` 写运行标识。OTel Trace ID 与 Aegra Run ID 是不同的标识；以实际云端属性为准。自动埋点不保证能看到 Summary 最终采纳、fallback/cache_hit、同一 Tool Call ID 或浏览器显示的 SSE 内容。这些用现有 `context_summary` 审计/Progress、Aegra State/History 和浏览器网络记录核对；缺少时标 `UNKNOWN`。若模型异常被转换为普通 `AIMessage`，Span 可能显示成功，须结合结构化审计判断。Token/费用只在真实 Provider Usage 可得时记录，不按代理响应推算。
 
