@@ -30,9 +30,13 @@ make dev-stop
 
 服务在后台运行；日志位于 `.local/dev/{web,api,tunnel,supervisor}.log`，权限为 0600。停止前校验 supervisor 路径和随机身份，只清理自己启动的进程，不按端口盲目杀进程。遇到其他程序占用端口会报错；隧道退出时停止本次开发进程并报告错误，不切到 Mock。远端应用不受开发入口启停影响。
 
-使用命令打印的新 URL，避免沿用旧 `apiUrl` 查询参数。`NEXT_PUBLIC_API_URL` 优先于查询参数。网页 API Token 根据目标 API 地址隔离：远端 Token 私下查看 `.local/dev01.env`，开发 Token 私下查看 `.local/dev.env` 的 `DEMO_API_TOKEN`，再在网页输入。不要把 Token 放进 URL、截图或 Git。
+使用命令打印的新 URL，避免沿用旧 `apiUrl` 查询参数。`NEXT_PUBLIC_API_URL` 优先于查询参数。网页 API Token 根据目标 API 地址隔离：远端 Token 私下查看 `.local/dev01.env`，开发 Token 私下查看根目录 `.env` 的 `DEMO_API_TOKEN`，再在网页输入。不要把 Token 放进 URL、截图或 Git。
 
-`.local/dev.env` 按 `.env.development.example` 配置，权限必须为 0600。只保存 `POSTGRES_PASSWORD`、`DEMO_API_TOKEN`、`LLM_MODEL`、`LLM_BASE_URL`、`LLM_API_KEY`、独立的 `INCIDENT_MEMORY_PROVENANCE_SECRET`；可选 `DEV_SSH_HOST` 和 `DEV_REMOTE_API_URL`。不要在此设置 `TRIAGE_ENV`、Reader URL、Memory/Context/Repair 开关、数据库身份或端口。重复键和其他键会被拒绝。开发入口固定 `kube_triage_agent_dev` 账号/数据库与开发 Redis；前端进程不接收数据库密码或模型 Key。`dev-web` 创建的会话属于正式应用，其余本地 API 场景共用开发库。
+Mac 原生开发与本机 Compose 共用根目录 `.env`，按 `.env.example` 配置，权限必须为 0600。`make dev-*` 只提取其中的开发凭据、可选 `DEV_SSH_HOST`/`DEV_REMOTE_API_URL`；Compose 专用端口和服务开关不进入普通开发子进程。不要设置 `TRIAGE_ENV` 或 `TRIAGE_MOCK_DATASET`，场景由启动命令决定；普通开发字段重复或未知键会被拒绝。开发入口固定 `kube_triage_agent_dev` 账号/数据库与开发 Redis；前端进程不接收数据库密码或模型 Key。`dev-web` 创建的会话属于正式应用，其余本地 API 场景共用开发库。根目录 `.env` 中有完整有效的 Langfuse 三项配置时，任一本机 API 模式自动导出，Key 仅交给 API 子进程；重复、缺失或错误格式会安全拒绝。`dev-web` 只有前端，是否导出取决于远端 API。详见 [Issue #39](issue39-langfuse-observability.md)。
+
+`make dev-web` 所连的 dev01 API 会在其私有根目录 `.env` 具备完整有效 Langfuse Key 时，由 `./scripts/dev01-compose.sh` 自动加入覆盖层；本机 Web 不接收 Key。真实 Reader/会话数据可能进入 Cloud Japan，配置 Key 前按 [Issue #39 隐私说明](issue39-langfuse-observability.md)审查。仅更新源码不会自动重建现有 dev01 API；须由环境所有者在维护窗口部署。
+
+所有 API 的模型请求都使用宿主机 7890 代理；有完整有效 Langfuse Key 时，Trace 导出也使用同一代理。本机原生 API 使用 `http://127.0.0.1:7890`，Mac 与 dev01 的 Compose API 均使用 `http://host.docker.internal:7890`。dev01 的 mihomo 已移除 `lan-allowed-ips` 来源限制，并为现有显式 listener 之外添加 Docker 网桥 `172.17.0.1:7890` listener；只改 `bind-address` 不足以让该机器的现有配置在网桥上监听。部署后从 API 容器分别验证模型与 Langfuse 域名的 HTTP CONNECT；详见 [Issue #39 代理说明](issue39-langfuse-observability.md#7890-代理)。
 
 首次准备 Runtime 时先检查 Host 已有工具和缓存，再在项目内执行：
 
@@ -46,7 +50,7 @@ cd ../..
 
 ## Mac 本地人工场景验收
 
-所有 Mock 命令使用本机回环 Mock MCP（`127.0.0.1:8000/mcp`）与同一套 `memory-web` 合成 Pod 数据。SSH 只转发开发数据库和 Redis，不连接真实 Reader。`make dev` 还转发真实 Reader `18080` 与受限 Repair MCP `18081`，开启 Memory 读写、Window、Summary（估算预算 6500）及真实 Repair。所有模式共用端口与 supervisor，切换前先 `make dev-stop`；仓库根目录 `.env` 不被此启动入口读取。
+所有 Mock 命令使用本机回环 Mock MCP（`127.0.0.1:8000/mcp`）与同一套 `memory-web` 合成 Pod 数据。SSH 只转发开发数据库和 Redis，不连接真实 Reader。`make dev` 还转发真实 Reader `18080` 与受限 Repair MCP `18081`，开启 Memory 读写、Window、Summary（估算预算 6500）及真实 Repair。所有模式共用端口与 supervisor，切换前先 `make dev-stop`；原生开发从根目录 `.env` 读取凭据，场景开关由命令固定。
 
 Memory HMAC 密钥由准备脚本生成；既有私有文件需自行保留一份独立的 32–256 字符 ASCII 密钥，不能与 `DEMO_API_TOKEN` 相同。启动命令设置全部 Memory 开关，不需要修改私有文件。Window 与 Summary 模式使用相同的 6500 估算预算；短对话未必触发摘要，需在同一 Thread 连续多轮提问并核对 State/日志。Mock 与真实 Reader 共用现有开发库，历史合成案例会留在该库；使用新 Thread 记录人工测试结果。
 
@@ -65,7 +69,7 @@ cd /www/app/kube-triage-agent
 `make dev` 启动预检会读取真实 Pod 列表、验证 Reader 四个只读工具，检查本机 Repairer 凭据与 RBAC，再通过 Repair MCP 只读查询固定 Deployment/Scale。任一项失败则终止启动，具体失败组件见私有 `.local/dev/preflight.log`；不切换到 Mock 或关闭 Repair 继续运行。
 
 ```bash
-chmod 600 .local/dev.env
+chmod 600 .env
 make dev-stop
 make dev-mock
 make dev-status
@@ -76,7 +80,7 @@ lsof -nP -iTCP:8000 -iTCP:12026 -iTCP:13000 -sTCP:LISTEN
 
 浏览器打开 `http://localhost:13000`。Web 默认 API 是 `http://localhost:12026`；
 `NEXT_PUBLIC_API_URL` 优先于 URL 中的 `apiUrl` 参数。Web 按 API 地址分别存储
-Demo Key，请使用 `.local/dev.env` 对应的 Key。Memory 场景先诊断 `kube-triage-demo` 中的
+Demo Key，请使用 `.env` 对应的 Key。Memory 场景先诊断 `kube-triage-demo` 中的
 `imagepull-pod`，确认有成功的 `pods_get`，紧接着在同一会话发送精确命令
 `/remember-incident`。审批卡中的 UID 来自独立合成 fixture。批准、拒绝和撤销
 必须由你在浏览器中亲自操作；撤销命令是 `/forget-incident <memory_id>`。
@@ -92,7 +96,7 @@ python3 scripts/prepare-dev01.py --source-env /path/to/approved/model.env
 ./scripts/deploy-dev01.sh
 ```
 
-准备脚本生成 `.local/dev01.env`、`.local/dev.env`（0600），随机生成独立密码、Token 和本机 Memory HMAC 密钥，只复用源配置中的模型设置，不覆盖已有文件。同步脚本排除私密文件、依赖和缓存，不删除远端文件。首次需单独通过 SSH 将 `.local/dev01.env` 放为远端 `.env`，将已授权且有效的 Reader kubeconfig 放为远端 `.local/kubeconfig`；文件 0600、目录 0700。拒绝覆盖既有私有配置，不发送管理员 kubeconfig，不自动签发凭据。
+准备脚本生成 `.local/dev01.env` 与本机 `.env`（0600），随机生成独立密码、Token 和本机 Memory HMAC 密钥，只复用源配置中的模型设置，不覆盖已有文件。本机 `.env` 的密码与远端开发数据库账号一致，远端正式数据库密码和 API Token 仍独立。同步脚本排除私密文件、依赖和缓存，不删除远端文件。首次需单独通过 SSH 将 `.local/dev01.env` 放为远端 `.env`，将已授权且有效的 Reader kubeconfig 放为远端 `.local/kubeconfig`；文件 0600、目录 0700。拒绝覆盖既有私有配置，不发送管理员 kubeconfig，不自动签发凭据。
 
 在 dev01 执行：
 
@@ -120,7 +124,7 @@ Linux Reader 和 Repair MCP 容器使用 `.env` 中的 `READER_UID/READER_GID`�
 本地联调就绪后：
 
 ```bash
-server/.venv/bin/python scripts/acceptance_dev01.py --target development --env-file .local/dev.env
+server/.venv/bin/python scripts/acceptance_dev01.py --target development --env-file .env
 ```
 
 验收会创建真实只读诊断会话，检查认证、CORS、四工具发现、中文诊断、SSE、State/History 和 Tool Call ID 配对，不执行 Repair。脱敏证据保存在 `.local/{production,development}-smoke.json`，不输出 Pod 日志和密钥。

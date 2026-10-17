@@ -15,23 +15,33 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 DIRECTORY = ROOT / ".local" / "dev"
 STATE = DIRECTORY / "state.json"
-ENV_FILE = ROOT / ".local" / "dev.env"
+ENV_FILE = ROOT / ".env"
 SCRIPT = Path(__file__).resolve()
 STOP_REQUESTED = False
 PRIVATE_KEYS = frozenset({"POSTGRES_PASSWORD", "DEMO_API_TOKEN", "LLM_MODEL",
                           "LLM_BASE_URL", "LLM_API_KEY",
                           "INCIDENT_MEMORY_PROVENANCE_SECRET", "DEV_SSH_HOST",
-                          "DEV_REMOTE_API_URL"})
+                          "DEV_REMOTE_API_URL", "LANGFUSE_TRACING_ENABLED"})
+LANGFUSE_KEYS = frozenset({"LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY",
+                           "LANGFUSE_BASE_URL"})
+SHARED_FILE_KEYS = frozenset({"POSTGRES_USER", "POSTGRES_DB", "WEB_PORT", "API_PORT",
+                              "NEXT_PUBLIC_API_URL", "MCP_SERVER_URL",
+                              "CONTEXT_WINDOW_ENABLED", "CONTEXT_SUMMARY_ENABLED",
+                              "CONTEXT_ESTIMATED_TOTAL_BUDGET",
+                              "INCIDENT_MEMORY_ENABLED", "INCIDENT_MEMORY_READ_ENABLED",
+                              "INCIDENT_MEMORY_WRITE_ENABLED", "INCIDENT_MEMORY_MAX_HITS",
+                              "INCIDENT_MEMORY_MAX_CANDIDATES", "REPAIR_ENABLED",
+                              "REPAIR_MCP_SERVER_URL", "SERVER_URL",
+                              "API_BIND_HOST", "WEB_BIND_HOST"})
 COMMON_HOST_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL",
                               "LANG", "XDG_CACHE_HOME", "UV_CACHE_DIR",
                               "UV_PYTHON_INSTALL_DIR", "PNPM_HOME", "COREPACK_HOME"})
-API_HOST_KEYS = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-                           "http_proxy", "https_proxy", "all_proxy", "no_proxy",
-                           "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"})
+API_HOST_KEYS = frozenset({"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"})
 PROFILES = {
     "real": {"mock": False, "read": True, "write": True,
              "window": True, "summary": True},
@@ -52,22 +62,33 @@ PROFILES = {
 
 def read_env():
     if ENV_FILE.is_symlink() or not ENV_FILE.is_file():
-        raise RuntimeError("缺少 .local/dev.env；按 .env.development.example 配置。")
+        raise RuntimeError("缺少 .env；按 .env.example 配置。")
+    if ENV_FILE.stat().st_uid != os.getuid():
+        raise RuntimeError(".env 必须由当前用户持有。")
     if stat.S_IMODE(ENV_FILE.stat().st_mode) != 0o600:
-        raise RuntimeError("请先 chmod 600 .local/dev.env。")
+        raise RuntimeError("请先 chmod 600 .env。")
     values = {}
+    seen = set()
     for number, line in enumerate(ENV_FILE.read_text().splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+        # Cloud credentials are validated separately and only passed to an API.
+        if re.match(r"(?:export[ \t]+)?LANGFUSE_(?:SECRET_KEY|PUBLIC_KEY|BASE_URL)\b",
+                    line.strip()):
+            continue
         if "=" not in line:
-            raise RuntimeError(f".local/dev.env 第 {number} 行格式错误。")
+            raise RuntimeError(f".env 第 {number} 行格式错误。")
         key, value = line.split("=", 1)
         key = key.strip()
-        if key not in PRIVATE_KEYS:
-            raise RuntimeError(f".local/dev.env 不允许配置 {key}；场景参数由启动命令决定。")
-        if key in values:
-            raise RuntimeError(f".local/dev.env 中 {key} 重复。")
-        values[key] = value.strip().strip("\"'")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+            raise RuntimeError(f".env 第 {number} 行字段名格式错误。")
+        if key not in PRIVATE_KEYS | SHARED_FILE_KEYS:
+            raise RuntimeError(f".env 不允许配置 {key}；场景参数由启动命令决定。")
+        if key in seen:
+            raise RuntimeError(f".env 中 {key} 重复。")
+        seen.add(key)
+        if key in PRIVATE_KEYS:
+            values[key] = value.strip().strip("\"'")
     return values
 
 
@@ -78,6 +99,69 @@ def safe_host_env(host_env=None, *, api=False, ssh=False):
         allowed |= {"SSH_AUTH_SOCK"}
     return {key: value for key, value in source.items()
             if key in allowed or key.startswith("LC_")}
+
+
+def read_langfuse_env(path, *, optional=False):
+    """Read only three allowlisted keys from a regular, owner-only dotenv file."""
+    if not path.is_absolute():
+        raise RuntimeError("LANGFUSE_SOURCE_PATH_INVALID：须使用绝对路径。")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "r", encoding="utf-8") as source:
+            details = os.fstat(source.fileno())
+            if not stat.S_ISREG(details.st_mode) or details.st_uid != os.getuid():
+                raise RuntimeError("LANGFUSE_SOURCE_OWNER_INVALID：须为当前用户的普通文件。")
+            if stat.S_IMODE(details.st_mode) != 0o600:
+                raise RuntimeError("LANGFUSE_SOURCE_MODE_INVALID：请对源文件执行 chmod 600。")
+            if details.st_size > 65536:
+                raise RuntimeError("LANGFUSE_SOURCE_SIZE_INVALID：源文件过大。")
+            content = source.read(65537)
+            if len(content) > 65536:
+                raise RuntimeError("LANGFUSE_SOURCE_SIZE_INVALID：源文件过大。")
+    except (OSError, UnicodeError):
+        raise RuntimeError("LANGFUSE_SOURCE_UNAVAILABLE：源文件无法安全读取。") from None
+    values = {}
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        assignment = re.fullmatch(
+            r"(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(.*)",
+            stripped,
+        )
+        if not assignment:
+            if re.match(r"(?:export[ \t]+)?LANGFUSE_(?:SECRET_KEY|PUBLIC_KEY|BASE_URL)\b",
+                        stripped):
+                raise RuntimeError("LANGFUSE_SOURCE_FORMAT_INVALID：目标字段格式错误。")
+            continue
+        key, raw = assignment.groups()
+        if key not in LANGFUSE_KEYS:
+            continue
+        if key in values:
+            raise RuntimeError("LANGFUSE_SOURCE_DUPLICATE：目标字段重复。")
+        if raw.startswith(("'", '"')):
+            if len(raw) < 2 or raw[-1] != raw[0]:
+                raise RuntimeError("LANGFUSE_SOURCE_FORMAT_INVALID：目标字段格式错误。")
+            value = raw[1:-1]
+        else:
+            value = raw
+        if (not value or value != value.strip() or
+                any(char.isspace() or ord(char) < 32 or char in "'\"`" for char in value)):
+            raise RuntimeError("LANGFUSE_SOURCE_FORMAT_INVALID：目标字段格式错误。")
+        values[key] = value
+    if optional and not values:
+        return {}
+    if set(values) != LANGFUSE_KEYS:
+        raise RuntimeError("LANGFUSE_SOURCE_KEYS_MISSING：缺少必要字段。")
+    try:
+        address = urlsplit(values["LANGFUSE_BASE_URL"])
+    except ValueError:
+        raise RuntimeError("LANGFUSE_URL_INVALID：仅允许 Langfuse Cloud Japan。") from None
+    if (address.scheme != "https" or address.netloc != "jp.cloud.langfuse.com" or
+            address.path not in {"", "/"} or address.query or address.fragment):
+        raise RuntimeError("LANGFUSE_URL_INVALID：仅允许 Langfuse Cloud Japan。")
+    values["LANGFUSE_BASE_URL"] = "https://jp.cloud.langfuse.com"
+    return values
 
 
 def profile_summary(mode):
@@ -135,7 +219,16 @@ def child_environments(mode, values, host_env=None):
                "INCIDENT_MEMORY_WRITE_ENABLED": str(profile["write"]).lower(),
                "CONTEXT_WINDOW_ENABLED": str(profile["window"]).lower(),
                "CONTEXT_SUMMARY_ENABLED": str(profile["summary"]).lower(),
-               "CONTEXT_ESTIMATED_TOTAL_BUDGET": "6500" if profile["window"] else "16384"}
+               "CONTEXT_ESTIMATED_TOTAL_BUDGET": "6500" if profile["window"] else "16384",
+               "OTEL_TARGETS": "", "OTEL_CONSOLE_EXPORT": "false",
+               "HTTP_PROXY": "http://127.0.0.1:7890",
+               "HTTPS_PROXY": "http://127.0.0.1:7890",
+               "NO_PROXY": "localhost,127.0.0.1,::1,postgres,redis,k8s-mcp,mock-mcp,"
+                           "mock-repair-mcp,repair-mcp,api,web"}
+    langfuse = read_langfuse_env(ENV_FILE, optional=True)
+    if langfuse:
+        api_env.update(langfuse)
+        api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME=f"kube-triage-agent-{mode}")
     if memory_on:
         api_env["INCIDENT_MEMORY_PROVENANCE_SECRET"] = values[
             "INCIDENT_MEMORY_PROVENANCE_SECRET"]
@@ -150,6 +243,15 @@ def child_environments(mode, values, host_env=None):
                                                  else "false"))
         result["mock"] = {**common, "TRIAGE_ENV": "test",
                           "TRIAGE_MOCK_DATASET": "memory-web", "MOCK_MCP_HOST": "127.0.0.1"}
+    return result
+
+
+def preflight_environment(api_env):
+    """The startup check needs application settings but must not receive Cloud credentials."""
+    result = {key: value for key, value in api_env.items()
+              if key not in LANGFUSE_KEYS and key not in {
+                  "OTEL_SERVICE_NAME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"}}
+    result["OTEL_TARGETS"] = ""
     return result
 
 
@@ -242,6 +344,10 @@ def supervise(mode, token):
             published = True
             env = read_env()
             processes = child_environments(mode, env)
+            state["langfuse_tracing"] = (
+                "remote" if mode == "web" else
+                "on" if processes["api"]["OTEL_TARGETS"] == "LANGFUSE" else "off")
+            state_write(state)
             mock = mode != "web" and PROFILES[mode]["mock"]
             busy = [str(port) for port in required_ports(mode) if occupied(port)]
             if busy:
@@ -270,7 +376,7 @@ def supervise(mode, token):
                 with open(DIRECTORY / "preflight.log", "w") as log:
                     subprocess.run(["uv", "run", "--frozen", "--offline", "--no-sync", "python",
                                     str(ROOT / "scripts" / "dev_preflight.py"), mode],
-                                   cwd=ROOT / "server", env=api_env,
+                                   cwd=ROOT / "server", env=preflight_environment(api_env),
                                    check=True, stdout=log, stderr=log)
                 launch("api", ["uv", "run", "--frozen", "--offline", "--no-sync", "aegra",
                        "serve", "--host", "127.0.0.1", "--port", "12026"], ROOT / "server", api_env)
@@ -334,6 +440,7 @@ def main():
                               profile_summary(state["mode"]) if state and state.get("mode") in
                               (*PROFILES, "web") else None),
                           "status": (state or {}).get("status"),
+                          "langfuse_tracing": (state or {}).get("langfuse_tracing"),
                           "api_url": (state or {}).get("api_url")}, ensure_ascii=False))
     elif args.action == "stop":
         if alive(state):
@@ -361,6 +468,7 @@ def main():
                     print(f"Web: http://localhost:13000/?apiUrl={state['api_url']}")
                     print(f"API: {state['api_url']}；场景: {args.mode} "
                           f"{json.dumps(state['scenario'], ensure_ascii=False)}；"
+                          f"Langfuse: {state.get('langfuse_tracing', 'off')}；"
                           "日志: .local/dev/；停止: make dev-stop")
                     return
                 if state["status"] == "failed":

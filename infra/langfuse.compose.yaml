@@ -1,0 +1,10 @@
+# Explicit opt-in overlay. Use only after reviewing what the selected API may trace.
+services:
+  api:
+    environment:
+      OTEL_TARGETS: LANGFUSE
+      OTEL_CONSOLE_EXPORT: "false"
+      OTEL_SERVICE_NAME: kube-triage-agent-compose
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?set LANGFUSE_SECRET_KEY in private .env}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?set LANGFUSE_PUBLIC_KEY in private .env}
+      LANGFUSE_BASE_URL: https://jp.cloud.langfuse.com
