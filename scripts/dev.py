@@ -74,8 +74,7 @@ def read_env():
     for number, line in enumerate(ENV_FILE.read_text().splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        # Ignore Cloud credentials here even when malformed. Only an explicitly
-        # enabled local API parses them in read_langfuse_env().
+        # Cloud credentials are validated separately and only passed to an API.
         if re.match(r"(?:export[ \t]+)?LANGFUSE_(?:SECRET_KEY|PUBLIC_KEY|BASE_URL)\b",
                     line.strip()):
             continue
@@ -104,17 +103,7 @@ def safe_host_env(host_env=None, *, api=False, ssh=False):
             if key in allowed or key.startswith("LC_")}
 
 
-def langfuse_status(mode, values):
-    """Enable export for a local API; web-only mode delegates tracing to dev01."""
-    switch = values.get("LANGFUSE_TRACING_ENABLED", "false")
-    if switch not in {"true", "false"}:
-        raise RuntimeError("LANGFUSE_SWITCH_INVALID：仅接受 true 或 false。")
-    if switch == "false":
-        return "off"
-    return "remote" if mode == "web" else "on"
-
-
-def read_langfuse_env(path):
+def read_langfuse_env(path, *, optional=False):
     """Read only three allowlisted keys from a regular, owner-only dotenv file."""
     if not path.is_absolute():
         raise RuntimeError("LANGFUSE_SOURCE_PATH_INVALID：须使用绝对路径。")
@@ -162,6 +151,8 @@ def read_langfuse_env(path):
                 any(char.isspace() or ord(char) < 32 or char in "'\"`" for char in value)):
             raise RuntimeError("LANGFUSE_SOURCE_FORMAT_INVALID：目标字段格式错误。")
         values[key] = value
+    if optional and not values:
+        return {}
     if set(values) != LANGFUSE_KEYS:
         raise RuntimeError("LANGFUSE_SOURCE_KEYS_MISSING：缺少必要字段。")
     try:
@@ -198,7 +189,6 @@ def required_ports(mode):
 
 def child_environments(mode, values, host_env=None):
     """Build isolated process environments; the private file cannot choose a profile."""
-    tracing = langfuse_status(mode, values)
     common = safe_host_env(host_env)
     web_target = (values.get("DEV_REMOTE_API_URL") or "http://192.168.31.110:12026")
     if mode != "web":
@@ -233,8 +223,9 @@ def child_environments(mode, values, host_env=None):
                "CONTEXT_SUMMARY_ENABLED": str(profile["summary"]).lower(),
                "CONTEXT_ESTIMATED_TOTAL_BUDGET": "6500" if profile["window"] else "16384",
                "OTEL_TARGETS": "", "OTEL_CONSOLE_EXPORT": "false"}
-    if tracing == "on":
-        api_env.update(read_langfuse_env(ENV_FILE))
+    langfuse = read_langfuse_env(ENV_FILE, optional=True)
+    if langfuse:
+        api_env.update(langfuse)
         api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME=f"kube-triage-agent-{mode}")
     if memory_on:
         api_env["INCIDENT_MEMORY_PROVENANCE_SECRET"] = values[
@@ -350,7 +341,9 @@ def supervise(mode, token):
             published = True
             env = read_env()
             processes = child_environments(mode, env)
-            state["langfuse_tracing"] = langfuse_status(mode, env)
+            state["langfuse_tracing"] = (
+                "remote" if mode == "web" else
+                "on" if processes["api"]["OTEL_TARGETS"] == "LANGFUSE" else "off")
             state_write(state)
             mock = mode != "web" and PROFILES[mode]["mock"]
             busy = [str(port) for port in required_ports(mode) if occupied(port)]

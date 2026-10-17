@@ -1,22 +1,21 @@
 # Issue #39：本机 API 模式的 Langfuse Trace
 
-本期只使用 Aegra v0.10.8 自带的 OpenTelemetry/OpenInference。`scripts/dev.py` 在显式开启追踪后，让每个本机 API 模式（`real`、`memory-*`、`mock*`）使用三个 Langfuse 配置及 `OTEL_TARGETS=LANGFUSE`。Compose 可通过独立的 `infra/langfuse.compose.yaml` 覆盖层启用正式 API。Aegra 把 Trace 通过 HTTPS 送到 Langfuse Cloud Japan。仓库不安装 Langfuse SDK、CallbackHandler 或 Collector，也不改变 Graph、SSE、工具和权限逻辑。`make dev-web` 只有前端，Trace 取决于其连接的 dev01 API 配置。
+本期只使用 Aegra v0.10.8 自带的 OpenTelemetry/OpenInference。当前机器项目根目录 `.env` 中有完整有效的三项 Langfuse 配置时，每个本机 API 模式（`real`、`memory-*`、`mock*`）自动设置 `OTEL_TARGETS=LANGFUSE`；正式、dev01 与隔离测试 Compose 入口也自动叠加 `infra/langfuse.compose.yaml`。Aegra 把 Trace 通过 HTTPS 送到 Langfuse Cloud Japan。仓库不安装 Langfuse SDK、CallbackHandler 或 Collector，也不改变 Graph、SSE、工具和权限逻辑。`make dev-web` 只有前端，Trace 取决于其连接的 dev01 API 配置。
 
 ## 配置和启动
 
-1. 在**当前 Worktree 根目录** 的私有 `.env` 添加 `LANGFUSE_TRACING_ENABLED=true`。开关只接受小写 `true` 或 `false`；不配置时为 `false`。原生开发和本机 Compose 共用此文件，不再使用 `.local/dev.env`。
-2. 在同一 `.env` 中放 `LANGFUSE_SECRET_KEY`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com`。文件必须是当前用户拥有的普通文件、非符号链接、权限恰为 0600。新 Worktree 若没有自己的 `.env`，启动会失败；启动器不会从其他 Worktree 搜索、复制或修改凭据。
-3. 在 `.env` 显式开启后，运行所需 `make dev-*` 模式。`make dev-status` 与启动输出只显示 `on`、`off` 或 `remote`，不会显示密钥。`real` 模式会访问真实 Reader/Repair 配置；云端 Trace 可能包含真实集群内容，先确认该数据可发送到 Langfuse Cloud Japan。
+1. 在**当前 Worktree 根目录** 的私有 `.env` 放 `LANGFUSE_SECRET_KEY`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com`。文件必须是当前用户拥有的普通文件、非符号链接、权限恰为 0600。新 Worktree 若没有自己的 `.env`，启动会失败；启动器不会从其他 Worktree 搜索、复制或修改凭据。
+2. 运行所需 `make dev-*` 模式；完整有效的 Key 自动开启该 API 的导出，无须额外开关。`make dev-status` 与启动输出只显示 `on`、`off` 或 `remote`，不会显示密钥。`real` 模式会访问真实 Reader/Repair 配置；云端 Trace 可能包含真实集群内容，先确认该数据可发送到 Langfuse Cloud Japan。
 
-所有本机 API 模式默认关闭；显式开启后均从同一 `.env` 安全提取三个 Langfuse 字段，并以 `kube-triage-agent-<mode>` 区分服务名。`make dev-web` 不创建本机 API，因而不会把 Key 交给 Web；其状态显示 `remote`，须在 dev01 API 端单独启用 Compose 覆盖层。普通原生开发配置解析会忽略 `.env` 中的 Langfuse Key。开启时若缺文件、权限/属主不符、重复/缺失字段、格式错误或 URL 不合规，会以不含字段值的错误码拒绝启动。其他 Compose 字段不注入原生开发子进程，也不执行 shell 代码。`OTEL_CONSOLE_EXPORT=false` 固定由启动器生成。不要把完整 OTLP 路径写入 `LANGFUSE_BASE_URL`。
+所有本机 API 模式在没有 Key 时关闭导出；三项配置完整有效时自动开启，并以 `kube-triage-agent-<mode>` 区分服务名。`make dev-web` 不创建本机 API，因而不会把 Key 交给 Web；其状态显示 `remote`，须在 dev01 API 端配置 Key 并重建服务。普通原生开发配置解析会忽略 `.env` 中的 Langfuse Key，API 环境构造时才单独校验；若权限/属主不符、重复/缺失字段、格式错误或 URL 不合规，会以不含字段值的错误码拒绝启动。其他 Compose 字段不注入原生开发子进程，也不执行 shell 代码。`OTEL_CONSOLE_EXPORT=false` 固定由启动器生成。不要把完整 OTLP 路径写入 `LANGFUSE_BASE_URL`。旧字段 `LANGFUSE_TRACING_ENABLED` 不再控制导出；如需关闭，请移除三项 Key 并重启对应 API。
 
 ## Compose 与 dev-web
 
-正式 Compose 基础文件始终 `OTEL_TARGETS=''` 且不映射 Langfuse Key。需要导出时，在对应机器的私有 `.env` 中设置公钥和私钥，并显式加入覆盖层：本机独立正式 Compose 项目用 `./scripts/compose.sh --langfuse config --quiet` 核对后再操作该项目的 API；dev01 用 `./scripts/dev01-compose.sh --langfuse config --quiet` 核对，再由环境所有者在维护窗口部署。隔离测试 Compose 也可单独叠加 `infra/langfuse.compose.yaml`，例如 `docker compose -p <独立项目名> --env-file .env -f infra/test.compose.yaml -f infra/langfuse.compose.yaml config --quiet`；测试文件不可与正式基础文件叠加。两个脚本的 `--langfuse` 只改变本次 Compose 命令的配置；后续管理同一 API 时须保持一致的文件组合。覆盖层仅把 Key 给 API，固定 Japan BASE_URL、`OTEL_TARGETS=LANGFUSE` 和禁用控制台导出。`make dev-web` 连到的 dev01 API 只有按此方式启用后才会产生 Trace。仅向 `.env` 写入 Key 不会启动 Compose 导出。
+正式 Compose 基础文件始终 `OTEL_TARGETS=''` 且不映射 Langfuse Key。对应机器的私有根目录 `.env` 中三项配置完整有效时，`./scripts/compose.sh config --quiet` 和 `./scripts/dev01-compose.sh config --quiet` 会自动加入覆盖层；隔离测试使用 `python3 scripts/compose_with_langfuse.py test <独立项目名> config --quiet`。测试文件不会与正式基础文件叠加。入口会清除 Host 环境中的 Langfuse 字段，只使用通过 `.env` 校验的值；覆盖层仅把 Key 给 API，固定 Japan BASE_URL、`OTEL_TARGETS=LANGFUSE` 和禁用控制台导出。`make dev-web` 连到的 dev01 API 在其根目录 `.env` 具备 Key 且重建 API 后才会产生 Trace。修改 `.env` 不会改变已经运行的容器；dev01 须由环境所有者在维护窗口部署。
 
-Compose 覆盖层不会验证 Key 是否属于预期项目，也不会替你审查真实数据。先核对目标 API、项目/卷归属、数据范围和访问控制；不要把 `docker compose config` 的完整输出贴到日志或 PR，因为其中可能含 Key。运行时不改变 Reader/Repair 权限，但正式 API 的输入、输出和工具结果可能被导出，故不在此任务中自动部署远端或对真实集群运行云端 Smoke。
+Compose 覆盖层无法通过格式校验证明 Key 属于预期项目，也不会替你审查真实数据。先核对目标 API、项目/卷归属、数据范围和访问控制；不要把 `docker compose config` 的完整输出贴到日志或 PR，因为其中可能含 Key。运行时不改变 Reader/Repair 权限，但正式 API 的输入、输出和工具结果可能被导出，故不在此任务中自动部署远端或对真实集群运行云端 Smoke。
 
-关闭本机原生追踪时，将根目录 `.env` 中的开关改为 `false` 或删除，并在确认服务归属后重启**本 Worktree 自己的** API 开发进程。关闭 Compose 追踪时，以不含覆盖层的文件组合重建其 API；先核对目标项目和服务归属。关闭后新 Run 不应导出；此前 Batch 队列仍可能上传，云端旧 Trace 不会自动删除。不要以服务退出时仍出现旧 Trace 推断开关失效。
+关闭追踪时，移除对应机器根目录 `.env` 的三项 Langfuse Key，并在确认服务归属后重启**本 Worktree 自己的** API 开发进程，或通过相同 Compose 入口重建对应 API。关闭后新 Run 不应导出；此前 Batch 队列仍可能上传，云端旧 Trace 不会自动删除。不要以服务退出时仍出现旧 Trace 推断开关失效。
 
 ## 隐私和可观察范围
 

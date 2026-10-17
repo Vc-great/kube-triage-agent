@@ -4,16 +4,16 @@
 
 | 编号 | 状态 | 本轮证据与边界 |
 | --- | --- | --- |
-| A01 默认关闭 | PASS（配置级） | 单测证明默认 API `OTEL_TARGETS=''`、`OTEL_CONSOLE_EXPORT=false`，主机 Langfuse 环境变量未继承；未启动进程核查云端。 |
-| A02 模式覆盖 | PASS（配置级） | 参数测试覆盖全部七种本机 API 模式：显式 true 时均配置 API 导出；`dev-web` 只有前端，委托远端 API。正式、dev01、隔离测试 Compose 均可叠加覆盖层；配置验证见 CI。 |
+| A01 无 Key 关闭 | PASS（配置级） | 单测证明无 Key 时 API `OTEL_TARGETS=''`、`OTEL_CONSOLE_EXPORT=false`，主机 Langfuse 环境变量未继承；未启动进程核查云端。 |
+| A02 模式覆盖 | PASS（配置级） | 参数测试覆盖全部七种本机 API 模式：根目录 `.env` 有完整有效 Key 时均自动配置 API 导出；`dev-web` 只有前端，委托 dev01 API。正式、dev01、隔离测试 Compose 入口均自动选择覆盖层；配置验证见 CI。 |
 | A03 源文件安全 | PASS（单测） | 测试权限、属主、非普通文件、符号链接、缺失、重复、格式、URL、相对路径与异常不回显假密钥；未读取真实密钥。 |
 | A04 子进程隔离 | PASS（单测） | 全部七种本机 API 模式中，仅 API 环境有三个 Langfuse 字段；Web/Mock/Tunnel/Preflight 无字段。 |
 | A05 合成普通对话 | BLOCKED | 新 Worktree 缺独立的根目录 `.env` 与数据库/Redis 测试实例；未执行 Langfuse 页面核验，无 Trace ID/Run ID。 |
 | A06 合成 Tool Calling | BLOCKED | 未执行云端 LLM → Tool → LLM 与 Tool Call ID 核验。 |
 | A07 Summary | BLOCKED | 未执行能触发摘要的多轮云端合成样例；最终采用/回退仍须结合审计。 |
 | A08 网络/Key 失效 | NOT RUN | 未对独立 API 做 401、超时、断网故障注入。 |
-| A09 关闭追踪 | NOT RUN | 配置级 OFF 已测；关闭后的新 Run 与 Batch 队列尚未实测。 |
-| A10 后端回归 | PASS | Ruff `scripts/dev.py scripts/prepare-dev01.py server/src server/tests` 通过；全量 pytest `365/365` 通过（复用 Host 现有 Aegra 0.10.8 Runtime）；不更改 Golden 与历史 B06=FAIL。 |
+| A09 关闭追踪 | NOT RUN | 无 Key 的配置级 OFF 已测；移除 Key 并重启后的新 Run 与 Batch 队列尚未实测。 |
+| A10 后端回归 | PASS（本地） | Ruff `scripts/dev.py scripts/compose_with_langfuse.py scripts/prepare-dev01.py server/src server/tests` 通过；全量 pytest `366/366` 通过；最新 HEAD CI 待核对。不更改 Golden 与历史 B06=FAIL。 |
 | A11 既有前端进度 | PASS（CI/静态） | 前端文件未改；CI Web lint/build 通过，没有进行浏览器联调。 |
 | A12 真实安全边界 | PASS（本轮操作） | 未连接真实 Kubernetes、未写入/改动 dev01 正式服务或稳定服务；`real`/Memory/Compose 开启后的云端数据范围尚未运行级核验。 |
 
@@ -21,6 +21,6 @@
 
 ## 复现与填写
 
-离线：本轮复用 Host 已有 `server/.venv` 的 Aegra CLI/API 0.10.8 Runtime（没有下载或升级依赖），运行 Ruff `scripts/dev.py scripts/prepare-dev01.py server/src server/tests`：PASS；全部本机 API 模式扩展后全量 pytest：`365 passed`；`git diff --check`：PASS。新 Worktree 的 sandbox 无法写既有测试需要的忽略目录 `.local/eval-runs`；在 Host 权限下对同一 Worktree 重跑完整套件后通过。CI 的 Python、Web lint/build 与 Compose 结果以最新 HEAD 为准；本地 Web 浏览器回归 NOT RUN。
+离线：本轮复用 Host 已有 `server/.venv` 的 Aegra CLI/API 0.10.8 Runtime（没有下载或升级依赖）。自动开启逻辑和 Compose 入口修改后，Ruff、Bash 语法、`git diff --check` 均通过，全量 pytest：`366 passed`。新 Worktree 的 sandbox 无法写既有测试需要的忽略目录 `.local/eval-runs`；在 Host 权限下对同一 Worktree 重跑完整套件后通过。CI 的 Python、Web lint/build 与 Compose 结果以最新 HEAD 为准；本地 Web 浏览器回归 NOT RUN。
 
 云端：先确认独立的本机 Mock API、端口、PostgreSQL/Redis、Compose 项目与卷，再按[设计与操作说明](issue39-langfuse-observability.md)用合成 Thread/Run 核验。记录以下脱敏字段：本地时间/UTC、场景、Thread ID、Run ID、Langfuse Trace ID/链接、Root/LLM/Tool/Summary 是否实际可见、父子关系、State/History 的 Tool Call ID、`context_summary` 审计状态、401/超时结果。不要记录 Prompt、输出、密钥或完整环境变量。未看到 Cloud Trace 时保持 `BLOCKED` 或 `FAIL`，不得将 exporter attached 视为 PASS。

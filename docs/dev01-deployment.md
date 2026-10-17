@@ -32,9 +32,9 @@ make dev-stop
 
 使用命令打印的新 URL，避免沿用旧 `apiUrl` 查询参数。`NEXT_PUBLIC_API_URL` 优先于查询参数。网页 API Token 根据目标 API 地址隔离：远端 Token 私下查看 `.local/dev01.env`，开发 Token 私下查看根目录 `.env` 的 `DEMO_API_TOKEN`，再在网页输入。不要把 Token 放进 URL、截图或 Git。
 
-Mac 原生开发与本机 Compose 共用根目录 `.env`，按 `.env.example` 配置，权限必须为 0600。`make dev-*` 只提取其中的开发凭据、可选 `DEV_SSH_HOST`/`DEV_REMOTE_API_URL` 和 `LANGFUSE_TRACING_ENABLED`；Compose 专用端口、服务开关与 Langfuse Key 不进入普通开发子进程。不要设置 `TRIAGE_ENV` 或 `TRIAGE_MOCK_DATASET`，场景由启动命令决定；普通开发字段重复或未知键会被拒绝。开发入口固定 `kube_triage_agent_dev` 账号/数据库与开发 Redis；前端进程不接收数据库密码或模型 Key。`dev-web` 创建的会话属于正式应用，其余本地 API 场景共用开发库。Langfuse 的三项凭据在任一本机 API 模式显式开启后才从同一 `.env` 校验并提取，仅交给 API 子进程；此时重复或错误格式会安全拒绝。`dev-web` 只有前端，是否导出取决于远端 API。详见 [Issue #39](issue39-langfuse-observability.md)。
+Mac 原生开发与本机 Compose 共用根目录 `.env`，按 `.env.example` 配置，权限必须为 0600。`make dev-*` 只提取其中的开发凭据、可选 `DEV_SSH_HOST`/`DEV_REMOTE_API_URL`；Compose 专用端口和服务开关不进入普通开发子进程。不要设置 `TRIAGE_ENV` 或 `TRIAGE_MOCK_DATASET`，场景由启动命令决定；普通开发字段重复或未知键会被拒绝。开发入口固定 `kube_triage_agent_dev` 账号/数据库与开发 Redis；前端进程不接收数据库密码或模型 Key。`dev-web` 创建的会话属于正式应用，其余本地 API 场景共用开发库。根目录 `.env` 中有完整有效的 Langfuse 三项配置时，任一本机 API 模式自动导出，Key 仅交给 API 子进程；重复、缺失或错误格式会安全拒绝。`dev-web` 只有前端，是否导出取决于远端 API。详见 [Issue #39](issue39-langfuse-observability.md)。
 
-若要让 `make dev-web` 所连的 dev01 API 导出 Langfuse Trace，须由 dev01 环境所有者在私有 `.env` 配置 Langfuse 公私钥，并显式使用 `./scripts/dev01-compose.sh --langfuse` 覆盖层管理 API。基础 Compose 仍关闭导出；`--langfuse` 不会由本机 Web 自动传到远端。真实 Reader/会话数据可能进入 Cloud Japan，启用前按 [Issue #39 隐私说明](issue39-langfuse-observability.md)审查。本文常规部署命令不包含覆盖层，不会自动变更现有 dev01 服务。
+`make dev-web` 所连的 dev01 API 会在其私有根目录 `.env` 具备完整有效 Langfuse Key 时，由 `./scripts/dev01-compose.sh` 自动加入覆盖层；本机 Web 不接收 Key。真实 Reader/会话数据可能进入 Cloud Japan，配置 Key 前按 [Issue #39 隐私说明](issue39-langfuse-observability.md)审查。仅更新源码不会自动重建现有 dev01 API；须由环境所有者在维护窗口部署。
 
 首次准备 Runtime 时先检查 Host 已有工具和缓存，再在项目内执行：
 

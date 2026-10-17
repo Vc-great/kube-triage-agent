@@ -17,10 +17,4 @@ if [[ -z "${COMPOSE_PROJECT_NAME:-}" ]]; then
   echo "Set an explicit COMPOSE_PROJECT_NAME after checking project ownership." >&2
   exit 2
 fi
-langfuse_files=()
-if [[ "${1:-}" == --langfuse ]]; then
-  langfuse_files=(-f infra/langfuse.compose.yaml)
-  shift
-fi
-exec docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env \
-  -f infra/compose.yaml "${langfuse_files[@]}" "$@"
+exec python3 scripts/compose_with_langfuse.py formal "$COMPOSE_PROJECT_NAME" "$@"
