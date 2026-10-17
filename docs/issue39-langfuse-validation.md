@@ -14,13 +14,13 @@
 | A08 网络/Key 失效 | NOT RUN | 未对独立 API 做 401、超时、断网故障注入。 |
 | A09 关闭追踪 | NOT RUN | 配置级 OFF 已测；关闭后的新 Run 与 Batch 队列尚未实测。 |
 | A10 后端回归 | PASS | Ruff `scripts/dev.py server/src server/tests` 通过；全量 pytest `363/363` 通过（复用 Host 现有 Aegra 0.10.8 Runtime）；不更改 Golden 与历史 B06=FAIL。 |
-| A11 既有前端进度 | PASS（静态） | 前端文件未改；没有进行 Web 浏览器联调。 |
+| A11 既有前端进度 | PASS（CI/静态） | 前端文件未改；CI Web lint/build 通过，没有进行浏览器联调。 |
 | A12 真实安全边界 | PASS（本轮操作） | 未连接真实 Kubernetes、未写入/改动 dev01 正式服务或稳定服务；正式 Compose 固定 OFF。 |
 
 证据等级：源码/配置与单元测试只证明环境构造和失败边界；Mock 模型联调、Cloud Ingestion、Langfuse UI 中真实父子 Span 与 Run/Thread 映射目前没有证据。`UNKNOWN` 项不可按预期推断为成功。云端核验前先审查测试问题、Mock 数据、Run metadata 和截图，确保无真实用户内容、Pod/Event/Log、Secret、Header、kubeconfig、Memory 内容。发现任何真实数据可能上传时停止云端步骤。
 
 ## 复现与填写
 
-离线：本轮复用 Host 已有 `server/.venv` 的 Aegra CLI/API 0.10.8 Runtime（没有下载或升级依赖），运行 Ruff `scripts/dev.py server/src server/tests`：PASS；全量 pytest：`363 passed in 5.30s`；`git diff --check`：PASS。新 Worktree 的 sandbox 无法写既有测试需要的忽略目录 `.local/eval-runs`；在 Host 权限下对同一 Worktree 重跑完整套件后通过。Web 文件未改，Web lint/build 与浏览器回归 NOT RUN。
+离线：本轮复用 Host 已有 `server/.venv` 的 Aegra CLI/API 0.10.8 Runtime（没有下载或升级依赖），运行 Ruff `scripts/dev.py scripts/prepare-dev01.py server/src server/tests`：PASS；根目录 `.env` 联动调整后全量 pytest：`363 passed`；`git diff --check`：PASS。新 Worktree 的 sandbox 无法写既有测试需要的忽略目录 `.local/eval-runs`；在 Host 权限下对同一 Worktree 重跑完整套件后通过。CI 的 Python、Web lint/build 与 Compose 通过；本地 Web 浏览器回归 NOT RUN。
 
 云端：先确认独立的本机 Mock API、端口、PostgreSQL/Redis、Compose 项目与卷，再按[设计与操作说明](issue39-langfuse-observability.md)用合成 Thread/Run 核验。记录以下脱敏字段：本地时间/UTC、场景、Thread ID、Run ID、Langfuse Trace ID/链接、Root/LLM/Tool/Summary 是否实际可见、父子关系、State/History 的 Tool Call ID、`context_summary` 审计状态、401/超时结果。不要记录 Prompt、输出、密钥或完整环境变量。未看到 Cloud Trace 时保持 `BLOCKED` 或 `FAIL`，不得将 exporter attached 视为 PASS。
