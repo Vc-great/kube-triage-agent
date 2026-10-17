@@ -1,0 +1,10 @@
+{
+  "graphs": {
+    "agent": "./src/kube_triage/graph.py:graph",
+    "deep_diagnosis": "./src/kube_triage/deep_diagnosis_entry.py:graph"
+  },
+  "auth": {
+    "path": "./src/kube_triage/auth.py:auth",
+    "disable_studio_auth": true
+  }
+}
