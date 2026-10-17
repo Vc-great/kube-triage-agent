@@ -227,6 +227,9 @@ def child_environments(mode, values, host_env=None):
     if langfuse:
         api_env.update(langfuse)
         api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME=f"kube-triage-agent-{mode}")
+        if not any(api_env.get(key) for key in (
+                "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")):
+            api_env["HTTPS_PROXY"] = "http://127.0.0.1:7890"
     if memory_on:
         api_env["INCIDENT_MEMORY_PROVENANCE_SECRET"] = values[
             "INCIDENT_MEMORY_PROVENANCE_SECRET"]

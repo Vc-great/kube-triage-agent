@@ -35,6 +35,7 @@ def test_valid_keys_auto_enable_every_local_profile_only_in_api(tmp_path, monkey
     assert children["api"]["OTEL_TARGETS"] == "LANGFUSE"
     assert children["api"]["OTEL_SERVICE_NAME"] == f"kube-triage-agent-{mode}"
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
+    assert children["api"]["HTTPS_PROXY"] == "http://127.0.0.1:7890"
     assert children["api"]["LANGFUSE_BASE_URL"] == "https://jp.cloud.langfuse.com"
     assert {key for key in children["api"] if key.startswith("LANGFUSE_")} == dev.LANGFUSE_KEYS
     preflight = dev.preflight_environment(children["api"])
@@ -45,6 +46,7 @@ def test_valid_keys_auto_enable_every_local_profile_only_in_api(tmp_path, monkey
             continue
         assert not any(key.startswith("LANGFUSE_") for key in environment)
         assert "OTEL_TARGETS" not in environment
+        assert "HTTPS_PROXY" not in environment
 
 
 def test_web_only_mode_delegates_to_remote_api_without_local_keys(monkeypatch, tmp_path):
@@ -62,6 +64,7 @@ def test_missing_keys_default_off_and_do_not_inherit_host_keys(monkeypatch, tmp_
     children = dev.child_environments(mode, values, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == ""
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
+    assert "HTTPS_PROXY" not in children["api"]
     assert not any(key.startswith("LANGFUSE_") for child in children.values() for key in child)
 
 
@@ -103,6 +106,14 @@ def test_legacy_switch_does_not_block_key_auto_enable(tmp_path, monkeypatch):
     children = dev.child_environments(
         "mock", {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "false"}, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == "LANGFUSE"
+
+
+def test_existing_host_https_proxy_is_preserved(tmp_path, monkeypatch):
+    monkeypatch.setattr(dev, "ENV_FILE", source_file(tmp_path))
+    children = dev.child_environments(
+        "mock", FAKE_VALUES, {**HOST_ENV, "HTTPS_PROXY": "http://127.0.0.1:7999"})
+    assert children["api"]["HTTPS_PROXY"] == "http://127.0.0.1:7999"
+    assert "HTTPS_PROXY" not in children["web"]
 
 
 def test_optional_source_rejects_partial_keys(tmp_path):

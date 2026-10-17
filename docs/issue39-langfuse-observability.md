@@ -15,6 +15,14 @@
 
 Compose 覆盖层无法通过格式校验证明 Key 属于预期项目，也不会替你审查真实数据。先核对目标 API、项目/卷归属、数据范围和访问控制；不要把 `docker compose config` 的完整输出贴到日志或 PR，因为其中可能含 Key。运行时不改变 Reader/Repair 权限，但正式 API 的输入、输出和工具结果可能被导出，故不在此任务中自动部署远端或对真实集群运行云端 Smoke。
 
+## 7890 代理
+
+本机原生 API 保留启动终端的 `HTTPS_PROXY`/`https_proxy`/`ALL_PROXY`；有有效 Langfuse Key 且这些变量均未设置时，API 子进程默认使用 `http://127.0.0.1:7890`。Web、Mock MCP、Tunnel 不接收这个补充代理。Aegra 的 OTLP HTTP 导出使用 Requests，会按这些环境变量访问 Langfuse 的 HTTPS endpoint；代理不需要也不应写进 `LANGFUSE_BASE_URL`。
+
+Compose 覆盖层只给 API 容器设置 `HTTPS_PROXY=http://host.docker.internal:7890`、内部服务的 `NO_PROXY` 和 `host.docker.internal:host-gateway` 映射。容器里的 `127.0.0.1` 是容器自身，不能指向宿主机代理。Mac 的 Docker Desktop 可通过该主机名访问宿主机；Linux dev01 的 `host-gateway` 指向 Docker 网桥上的宿主机地址，代理必须监听该地址或其他容器可访问的地址。若 dev01 的 7890 只监听 `127.0.0.1`，需先由环境所有者调整代理监听范围并限制访问，不能仅凭 Compose 配置通过就声称 Trace 可达。当前未从本 Worktree 连通 dev01，远端监听地址与云端导出均未实测。
+
+`HTTPS_PROXY` 作用于 API 的其他 HTTPS 请求，包括模型 Provider；若 Provider 是私有 HTTPS 地址，应先核对 `NO_PROXY` 是否覆盖该地址。不要禁用 TLS 校验，也不要把带凭据的代理 URL 提交到仓库或贴进日志。
+
 关闭追踪时，移除对应机器根目录 `.env` 的三项 Langfuse Key，并在确认服务归属后重启**本 Worktree 自己的** API 开发进程，或通过相同 Compose 入口重建对应 API。关闭后新 Run 不应导出；此前 Batch 队列仍可能上传，云端旧 Trace 不会自动删除。不要以服务退出时仍出现旧 Trace 推断开关失效。
 
 ## 隐私和可观察范围

@@ -36,6 +36,8 @@ Mac 原生开发与本机 Compose 共用根目录 `.env`，按 `.env.example` �
 
 `make dev-web` 所连的 dev01 API 会在其私有根目录 `.env` 具备完整有效 Langfuse Key 时，由 `./scripts/dev01-compose.sh` 自动加入覆盖层；本机 Web 不接收 Key。真实 Reader/会话数据可能进入 Cloud Japan，配置 Key 前按 [Issue #39 隐私说明](issue39-langfuse-observability.md)审查。仅更新源码不会自动重建现有 dev01 API；须由环境所有者在维护窗口部署。
 
+Langfuse 需要 7890 代理时，本机原生 API 使用启动终端的代理设置，未设置则默认 `http://127.0.0.1:7890`；Compose API 使用 `http://host.docker.internal:7890`。dev01 的 Linux 容器经 Docker 网桥访问宿主机代理，要求 7890 监听网桥可达地址；仅监听 dev01 的 `127.0.0.1` 不够。远端监听与实际出网须由环境所有者核验，详见 [Issue #39 代理说明](issue39-langfuse-observability.md#7890-代理)。
+
 首次准备 Runtime 时先检查 Host 已有工具和缓存，再在项目内执行：
 
 ```bash
