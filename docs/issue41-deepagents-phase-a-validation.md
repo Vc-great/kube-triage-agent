@@ -26,7 +26,7 @@
 | A07 恢复与回归 | BLOCKED | 同一 Compose 数据卷下重启 Aegra，原 Thread State 恢复 8 消息，第三轮 Run success 后 12 消息、3 对 AI/Tool；原 Graph 代码未改，Python 全套回归通过。Run 取消、断线重连/事件重放、稳定环境旧 Thread 均 NOT RUN。 |
 | A08 资源/安全 | FAIL | 静态代码、FakeModel 与 Mock MCP：无 K8s 写工具、Host FS、Repair/Memory 执行；隔离运行关闭 OTel，未读取 `.env`、kubeconfig 或真实 Pod 数据。但首次错误 FakeModel 曾以无效合成 Key 进入 Provider 路径；实际请求是否到达 Provider 为 UNKNOWN。发现后停止并改为无 Provider 客户端的 `BaseChatModel`，最终隔离协议测试无 Provider 路径。 |
 | A09 工程质量 | PASS | `.venv/bin/ruff check src tests` 全通过；`.venv/bin/pytest -q` 388 通过；`git diff --check` 通过。Web 未改，Web lint/build NOT RUN。 |
-| A10 交付 | BLOCKED | 中文设计/验收/面试文档与 Draft PR 按交付流程提交；PR、最终 HEAD、CI 以 PR 页面及最终回报为准，不在提交前编造。 |
+| A10 交付 | PASS | 中文设计/验收/面试文档已提交；[Draft PR #42](https://github.com/Vc-great/kube-triage-agent/pull/42) 为 Open/Draft，Issue #41 仍 Open。PR 初始提交 `74253d0b0dbcc63f32baa1bca962c0ae3d5bceb0`；CI 在 2026-10-17 查询时 compose PASS、python/web PENDING，最终状态以 PR Checks 为准。 |
 
 ## 脱敏协议轨迹与故障
 
@@ -35,6 +35,8 @@
 首次探索性 Smoke 使用了继承 `ChatOpenAI` 的测试类，仅覆盖 `_agenerate`，Aegra SSE 走到未覆盖的流式 Provider 接口，返回 `OpenAIAuthenticationError` 与 `end: error`。当时只有合成问题、无效合成 Key；未使用任何真实集群/有效模型凭据。发现后立即停止 Aegra，将测试类改为独立 `BaseChatModel`，同时覆盖 `_agenerate` 与 `_astream`，增加流式单测，并在正式 Compose 拓扑重跑成功。探索性独立容器/卷已按明确名称删除；该失败不能抹去，也不算成功协议证据。
 
 复现协议 Smoke 的关键命令：先设置合成的 `ISSUE41_DB_PASSWORD`，执行 `docker compose -p kube-triage-issue41-phase-a -f infra/issue41.phase-a.compose.yaml up -d --wait`；在 `TRIAGE_ENV=test`、`MOCK_MCP_HOST=127.0.0.1` 下启动 `python -m kube_triage.mock_mcp`；以 `env -i` 明确传入测试环境变量，令 `DEEP_DIAGNOSIS_FAKE_MODEL=true`、`MCP_SERVER_URL=http://127.0.0.1:8000/mcp`、`OTEL_TARGETS=`、`POSTGRES_PORT=15441`、`REDIS_URL=redis://127.0.0.1:16341/0`，运行 `aegra serve --host 127.0.0.1 --port 12441 --config aegra.phase-a.json`；随后以同一合成测试 Token 执行 `scripts/issue41_phase_a_smoke.py`。重启 Aegra 后查询上述 Thread 的 `/state`，再在该 Thread 上发第三轮 Run。不得在有真实 `.env`、真实 Provider Key 或端口归属不明的环境直接复现。
+
+验收后已停止本次 Aegra 与 Mock MCP，并执行专属 Compose 项目的 `down`；只按精确名称删除 `kube-triage-issue41-phase-a_postgres_data` 和 `kube-triage-issue41-phase-a_redis_data`。未对其他项目执行清理。
 
 ## 范围与结论
 

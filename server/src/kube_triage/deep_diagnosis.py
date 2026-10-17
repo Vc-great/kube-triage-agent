@@ -73,7 +73,7 @@ class ReaderBoundary(AgentMiddleware):
         latest = next((m for m in reversed(turn) if isinstance(m, AIMessage)), None)
         calls = latest.tool_calls if latest is not None else []
         indices = [i for i, item in enumerate(calls) if item.get("id") == ident]
-        if len(indices) != 1 or used + indices[0] >= MAX_READS:
+        if not ident or len(indices) != 1 or used + indices[0] >= MAX_READS:
             return ToolMessage(content="本轮 Reader 预算已用尽或 Tool Call ID 无效。",
                                name=name, tool_call_id=ident, status="error")
         result = await handler(request)
