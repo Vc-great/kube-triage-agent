@@ -49,7 +49,12 @@ jobs:
           EVAL_PROMPT_VARIANT=A TRIAGE_MOCK_DATASET=issue12-blind-v1 API_PORT=12128 WEB_PORT=13128 docker compose -p kube-triage-issue12-a -f infra/test.compose.yaml config --quiet
           EVAL_PROMPT_VARIANT=B TRIAGE_MOCK_DATASET=issue12-blind-v1 API_PORT=12129 WEB_PORT=13129 docker compose -p kube-triage-issue12-b -f infra/test.compose.yaml config --quiet
           docker compose -p kube-triage-ci-dev01 -f infra/compose.yaml -f infra/dev01.compose.yaml config --quiet
-          bash -n scripts/dev01-compose.sh scripts/deploy-dev01.sh infra/postgres/init-dev-db.sh
+          docker compose -p kube-triage-ci-dev01-langfuse -f infra/compose.yaml -f infra/dev01.compose.yaml -f infra/langfuse.compose.yaml config --quiet
+          docker compose -p kube-triage-ci-test-langfuse -f infra/test.compose.yaml -f infra/langfuse.compose.yaml config --quiet
+          docker compose -p kube-triage-ci-real -f infra/compose.yaml config --format json | python3 -c 'import json,sys; e=json.load(sys.stdin)["services"]["api"]["environment"]; assert e["OTEL_TARGETS"] == ""; assert not any(k.startswith("LANGFUSE_") for k in e)'
+          docker compose -p kube-triage-ci-dev01-langfuse -f infra/compose.yaml -f infra/dev01.compose.yaml -f infra/langfuse.compose.yaml config --format json | python3 -c 'import json,sys; s=json.load(sys.stdin)["services"]; e=s["api"]["environment"]; assert e["OTEL_TARGETS"] == "LANGFUSE"; assert all(k in e for k in ("LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_BASE_URL")); assert all(not any(k.startswith("LANGFUSE_") for k in v.get("environment", {})) for n,v in s.items() if n != "api")'
+          docker compose -p kube-triage-ci-test-langfuse -f infra/test.compose.yaml -f infra/langfuse.compose.yaml config --format json | python3 -c 'import json,sys; s=json.load(sys.stdin)["services"]; e=s["api"]["environment"]; assert e["TRIAGE_ENV"] == "test" and e["OTEL_TARGETS"] == "LANGFUSE"; assert all(k in e for k in ("LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_BASE_URL")); assert all(not any(k.startswith("LANGFUSE_") for k in v.get("environment", {})) for n,v in s.items() if n != "api")'
+          bash -n scripts/compose.sh scripts/dev01-compose.sh scripts/deploy-dev01.sh infra/postgres/init-dev-db.sh
         env:
           POSTGRES_USER: ci_user
           POSTGRES_DB: ci_db
@@ -62,3 +67,5 @@ jobs:
           POSTGRES_DEV_PASSWORD: ci-placeholder-only
           READER_UID: '1000'
           READER_GID: '1000'
+          LANGFUSE_SECRET_KEY: ci-placeholder-only
+          LANGFUSE_PUBLIC_KEY: ci-placeholder-only

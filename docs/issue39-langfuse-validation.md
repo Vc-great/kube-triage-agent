@@ -5,7 +5,7 @@
 | 编号 | 状态 | 本轮证据与边界 |
 | --- | --- | --- |
 | A01 默认关闭 | PASS（配置级） | 单测证明默认 API `OTEL_TARGETS=''`、`OTEL_CONSOLE_EXPORT=false`，主机 Langfuse 环境变量未继承；未启动进程核查云端。 |
-| A02 模式覆盖 | PASS（配置级） | 参数测试覆盖全部七种本机 API 模式：显式 true 时均配置 API 导出；`dev-web` 只有前端，委托远端 API。 |
+| A02 模式覆盖 | PASS（配置级） | 参数测试覆盖全部七种本机 API 模式：显式 true 时均配置 API 导出；`dev-web` 只有前端，委托远端 API。正式、dev01、隔离测试 Compose 均可叠加覆盖层；配置验证见 CI。 |
 | A03 源文件安全 | PASS（单测） | 测试权限、属主、非普通文件、符号链接、缺失、重复、格式、URL、相对路径与异常不回显假密钥；未读取真实密钥。 |
 | A04 子进程隔离 | PASS（单测） | 全部七种本机 API 模式中，仅 API 环境有三个 Langfuse 字段；Web/Mock/Tunnel/Preflight 无字段。 |
 | A05 合成普通对话 | BLOCKED | 新 Worktree 缺独立的根目录 `.env` 与数据库/Redis 测试实例；未执行 Langfuse 页面核验，无 Trace ID/Run ID。 |
@@ -15,7 +15,7 @@
 | A09 关闭追踪 | NOT RUN | 配置级 OFF 已测；关闭后的新 Run 与 Batch 队列尚未实测。 |
 | A10 后端回归 | PASS | Ruff `scripts/dev.py scripts/prepare-dev01.py server/src server/tests` 通过；全量 pytest `365/365` 通过（复用 Host 现有 Aegra 0.10.8 Runtime）；不更改 Golden 与历史 B06=FAIL。 |
 | A11 既有前端进度 | PASS（CI/静态） | 前端文件未改；CI Web lint/build 通过，没有进行浏览器联调。 |
-| A12 真实安全边界 | PASS（本轮操作） | 未连接真实 Kubernetes、未写入/改动 dev01 正式服务或稳定服务；`real`/Memory 开启后的云端数据范围尚未运行级核验。 |
+| A12 真实安全边界 | PASS（本轮操作） | 未连接真实 Kubernetes、未写入/改动 dev01 正式服务或稳定服务；`real`/Memory/Compose 开启后的云端数据范围尚未运行级核验。 |
 
 证据等级：源码/配置与单元测试只证明环境构造和失败边界；Mock 模型联调、Cloud Ingestion、Langfuse UI 中真实父子 Span 与 Run/Thread 映射目前没有证据。`UNKNOWN` 项不可按预期推断为成功。合成云端核验前先审查测试问题、Mock 数据、Run metadata 和截图，确保无真实用户内容、Pod/Event/Log、Secret、Header、kubeconfig、Memory 内容。`real`/Memory 模式若需运行级核验，须另确认真实数据向 Langfuse Cloud Japan 发送的授权范围。
 
