@@ -1,0 +1,37 @@
+# 仅供 Issue #41 Phase A 隔离协议 Smoke；不与正式 Compose 叠加。
+name: kube-triage-issue41-phase-a
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    environment:
+      POSTGRES_USER: issue41
+      POSTGRES_DB: issue41
+      POSTGRES_PASSWORD: ${ISSUE41_DB_PASSWORD:?set synthetic test password}
+    ports:
+      - "127.0.0.1:15441:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U issue41 -d issue41"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    labels:
+      codex.issue: "41"
+  redis:
+    image: redis:8.4.7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:16341:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    labels:
+      codex.issue: "41"
+volumes:
+  postgres_data: {}
+  redis_data: {}
