@@ -62,6 +62,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       SERVER_URL: ${SERVER_URL:-http://localhost:${API_PORT:-12026}}
       AEGRA_CONFIG: /app/aegra.json
+      OTEL_TARGETS: ""
+      OTEL_CONSOLE_EXPORT: "false"
     ports:
       - "${API_BIND_HOST:-127.0.0.1}:${API_PORT:-12026}:2026"
     depends_on:

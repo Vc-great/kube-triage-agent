@@ -1,0 +1,140 @@
+"""Langfuse export may only be configured for an explicit local Mock API."""
+
+import importlib.util
+import os
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).parents[2]
+spec = importlib.util.spec_from_file_location("dev_langfuse", ROOT / "scripts/dev.py")
+dev = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(dev)
+FAKE_VALUES = {"POSTGRES_PASSWORD": "db-fake", "DEMO_API_TOKEN": "demo-fake",
+               "LLM_MODEL": "fake-model", "LLM_API_KEY": "model-fake"}
+HOST_ENV = {"PATH": "/usr/bin", "LANGFUSE_SECRET_KEY": "host-secret",
+            "OTEL_TARGETS": "LANGFUSE"}
+
+
+def source_file(tmp_path, content=None):
+    source = tmp_path / "private.env"
+    source.write_text(content or (
+        'LANGFUSE_SECRET_KEY="sk-fake"\nLANGFUSE_PUBLIC_KEY="pk-fake"\n'
+        'LANGFUSE_BASE_URL="https://jp.cloud.langfuse.com/"\nOTHER_VALUE=ignored\n'
+    ))
+    source.chmod(0o600)
+    return source
+
+
+@pytest.mark.parametrize("mode", ["mock", "mock-window", "mock-summary"])
+def test_explicit_mock_only_injects_api(tmp_path, mode):
+    source = source_file(tmp_path)
+    values = {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true",
+              "LANGFUSE_ENV_FILE": str(source)}
+    children = dev.child_environments(mode, values, HOST_ENV)
+    assert children["api"]["OTEL_TARGETS"] == "LANGFUSE"
+    assert children["api"]["OTEL_SERVICE_NAME"] == "kube-triage-agent-mock"
+    assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
+    assert children["api"]["LANGFUSE_BASE_URL"] == "https://jp.cloud.langfuse.com"
+    assert {key for key in children["api"] if key.startswith("LANGFUSE_")} == dev.LANGFUSE_KEYS
+    preflight = dev.preflight_environment(children["api"])
+    assert preflight["OTEL_TARGETS"] == ""
+    assert not any(key.startswith("LANGFUSE_") for key in preflight)
+    for name in ("web", "mock", "tunnel"):
+        assert not any(key.startswith("LANGFUSE_") for key in children[name])
+        assert "OTEL_TARGETS" not in children[name]
+
+
+@pytest.mark.parametrize("mode", ["real", "memory", "memory-read", "memory-write", "web"])
+def test_disallowed_modes_force_off_without_reading_source(mode):
+    values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake",
+              "LANGFUSE_TRACING_ENABLED": "true", "LANGFUSE_ENV_FILE": "/absent/source.env"}
+    children = dev.child_environments(mode, values, HOST_ENV)
+    assert dev.langfuse_status(mode, values) == "forced_off"
+    if mode != "web":
+        assert children["api"]["OTEL_TARGETS"] == ""
+        assert not any(key.startswith("LANGFUSE_") for key in children["api"])
+    for child in children.values():
+        assert "host-secret" not in child.values()
+
+
+def test_default_off_does_not_read_source_or_inherit_host_keys():
+    children = dev.child_environments("mock", {**FAKE_VALUES,
+        "LANGFUSE_ENV_FILE": "/absent/source.env"}, HOST_ENV)
+    assert children["api"]["OTEL_TARGETS"] == ""
+    assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
+    assert not any(key.startswith("LANGFUSE_") for child in children.values() for key in child)
+
+
+def test_dev_env_accepts_only_switch_and_source_path(monkeypatch, tmp_path):
+    config = tmp_path / "dev.env"
+    config.write_text("LANGFUSE_TRACING_ENABLED=true\nLANGFUSE_ENV_FILE=/tmp/mock.env\n")
+    config.chmod(0o600)
+    monkeypatch.setattr(dev, "ENV_FILE", config)
+    assert dev.read_env() == {"LANGFUSE_TRACING_ENABLED": "true",
+                              "LANGFUSE_ENV_FILE": "/tmp/mock.env"}
+    config.write_text("LANGFUSE_SECRET_KEY=never-here\n")
+    with pytest.raises(RuntimeError, match="不允许配置 LANGFUSE_SECRET_KEY"):
+        dev.read_env()
+
+
+@pytest.mark.parametrize("switch", ["TRUE", "1", "yes", "", "false "])
+def test_invalid_switch_fails_closed(switch):
+    with pytest.raises(RuntimeError, match="LANGFUSE_SWITCH_INVALID"):
+        dev.child_environments("mock", {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": switch}, HOST_ENV)
+
+
+@pytest.mark.parametrize("content,code", [
+    ('LANGFUSE_SECRET_KEY="sk-fake"\nLANGFUSE_SECRET_KEY="again"\n',
+     "LANGFUSE_SOURCE_DUPLICATE"),
+    ('LANGFUSE_SECRET_KEY "sk-fake"\n', "LANGFUSE_SOURCE_FORMAT_INVALID"),
+    ('LANGFUSE_SECRET_KEY="sk-fake\n', "LANGFUSE_SOURCE_FORMAT_INVALID"),
+    ('LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n',
+     "LANGFUSE_SOURCE_KEYS_MISSING"),
+    (('LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n'
+      'LANGFUSE_BASE_URL=http://jp.cloud.langfuse.com\n'), "LANGFUSE_URL_INVALID"),
+    (('LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n'
+      'LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com/api/public/otel/v1/traces\n'),
+     "LANGFUSE_URL_INVALID"),
+    (('LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n'
+      'LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com?token=bad\n'),
+     "LANGFUSE_URL_INVALID"),
+    (('LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n'
+      'LANGFUSE_BASE_URL=https://someone@jp.cloud.langfuse.com\n'),
+     "LANGFUSE_URL_INVALID"),
+    (('LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n'
+      'LANGFUSE_BASE_URL=https://other.cloud.langfuse.com\n'),
+     "LANGFUSE_URL_INVALID"),
+])
+def test_bad_source_fails_without_echo(tmp_path, content, code):
+    source = source_file(tmp_path, content)
+    with pytest.raises(RuntimeError, match=code) as error:
+        dev.read_langfuse_env(source)
+    assert "sk-fake" not in str(error.value)
+    assert "pk-fake" not in str(error.value)
+
+
+def test_symlink_mode_and_missing_file_are_rejected(tmp_path):
+    source = source_file(tmp_path)
+    link = tmp_path / "link.env"
+    link.symlink_to(source)
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_UNAVAILABLE"):
+        dev.read_langfuse_env(link)
+    source.chmod(0o644)
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_MODE_INVALID"):
+        dev.read_langfuse_env(source)
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_UNAVAILABLE"):
+        dev.read_langfuse_env(tmp_path / "missing.env")
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_PATH_INVALID"):
+        dev.read_langfuse_env(Path("relative.env"))
+
+
+def test_non_regular_or_foreign_owner_is_rejected(tmp_path, monkeypatch):
+    pipe = tmp_path / "pipe.env"
+    os.mkfifo(pipe, mode=0o600)
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_OWNER_INVALID"):
+        dev.read_langfuse_env(pipe)
+    source = source_file(tmp_path)
+    monkeypatch.setattr(dev.os, "getuid", lambda: -1)
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_OWNER_INVALID"):
+        dev.read_langfuse_env(source)
