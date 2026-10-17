@@ -27,10 +27,10 @@ def source_file(tmp_path, content=None):
 
 
 @pytest.mark.parametrize("mode", ["mock", "mock-window", "mock-summary"])
-def test_explicit_mock_only_injects_api(tmp_path, mode):
+def test_explicit_mock_only_injects_api(tmp_path, monkeypatch, mode):
     source = source_file(tmp_path)
-    values = {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true",
-              "LANGFUSE_ENV_FILE": str(source)}
+    monkeypatch.setattr(dev, "ENV_FILE", source)
+    values = {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true"}
     children = dev.child_environments(mode, values, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == "LANGFUSE"
     assert children["api"]["OTEL_SERVICE_NAME"] == "kube-triage-agent-mock"
@@ -46,9 +46,10 @@ def test_explicit_mock_only_injects_api(tmp_path, mode):
 
 
 @pytest.mark.parametrize("mode", ["real", "memory", "memory-read", "memory-write", "web"])
-def test_disallowed_modes_force_off_without_reading_source(mode):
+def test_disallowed_modes_force_off_without_reading_source(monkeypatch, tmp_path, mode):
+    monkeypatch.setattr(dev, "ENV_FILE", tmp_path / "absent.env")
     values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake",
-              "LANGFUSE_TRACING_ENABLED": "true", "LANGFUSE_ENV_FILE": "/absent/source.env"}
+              "LANGFUSE_TRACING_ENABLED": "true"}
     children = dev.child_environments(mode, values, HOST_ENV)
     assert dev.langfuse_status(mode, values) == "forced_off"
     if mode != "web":
@@ -58,23 +59,45 @@ def test_disallowed_modes_force_off_without_reading_source(mode):
         assert "host-secret" not in child.values()
 
 
-def test_default_off_does_not_read_source_or_inherit_host_keys():
-    children = dev.child_environments("mock", {**FAKE_VALUES,
-        "LANGFUSE_ENV_FILE": "/absent/source.env"}, HOST_ENV)
+def test_default_off_does_not_read_source_or_inherit_host_keys(monkeypatch, tmp_path):
+    monkeypatch.setattr(dev, "ENV_FILE", tmp_path / "absent.env")
+    children = dev.child_environments("mock", FAKE_VALUES, HOST_ENV)
     assert children["api"]["OTEL_TARGETS"] == ""
     assert children["api"]["OTEL_CONSOLE_EXPORT"] == "false"
     assert not any(key.startswith("LANGFUSE_") for child in children.values() for key in child)
 
 
-def test_dev_env_accepts_only_switch_and_source_path(monkeypatch, tmp_path):
-    config = tmp_path / "dev.env"
-    config.write_text("LANGFUSE_TRACING_ENABLED=true\nLANGFUSE_ENV_FILE=/tmp/mock.env\n")
+def test_root_env_filters_compose_fields_and_late_loads_keys(monkeypatch, tmp_path):
+    config = tmp_path / ".env"
+    config.write_text(
+        "POSTGRES_PASSWORD=db-fake\nDEMO_API_TOKEN=demo-fake\n"
+        "LLM_MODEL=fake-model\nLLM_API_KEY=model-fake\n"
+        "WEB_PORT=13000\nREPAIR_ENABLED=false\n"
+        "LANGFUSE_TRACING_ENABLED=true\n"
+        "LANGFUSE_SECRET_KEY=sk-fake\nLANGFUSE_PUBLIC_KEY=pk-fake\n"
+        "LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com\n"
+    )
     config.chmod(0o600)
     monkeypatch.setattr(dev, "ENV_FILE", config)
-    assert dev.read_env() == {"LANGFUSE_TRACING_ENABLED": "true",
-                              "LANGFUSE_ENV_FILE": "/tmp/mock.env"}
-    config.write_text("LANGFUSE_SECRET_KEY=never-here\n")
-    with pytest.raises(RuntimeError, match="不允许配置 LANGFUSE_SECRET_KEY"):
+    values = dev.read_env()
+    assert values == {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true"}
+    children = dev.child_environments("mock", values, HOST_ENV)
+    assert children["api"]["LANGFUSE_SECRET_KEY"] == "sk-fake"
+    assert "LANGFUSE_SECRET_KEY" not in dev.preflight_environment(children["api"])
+    config.write_text("LANGFUSE_SECRET_KEY=one\nLANGFUSE_SECRET_KEY=two\n")
+    assert dev.read_env() == {}
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_DUPLICATE"):
+        dev.child_environments("mock", {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true"})
+    config.write_text("TRIAGE_ENV=test\n")
+    with pytest.raises(RuntimeError, match="不允许配置 TRIAGE_ENV"):
+        dev.read_env()
+    config.write_text("LANGFUSE_SECRET_KEY sk-fake=bad\n")
+    assert dev.read_env() == {}
+    with pytest.raises(RuntimeError, match="LANGFUSE_SOURCE_FORMAT_INVALID") as error:
+        dev.child_environments("mock", {**FAKE_VALUES, "LANGFUSE_TRACING_ENABLED": "true"})
+    assert "sk-fake" not in str(error.value)
+    monkeypatch.setattr(dev.os, "getuid", lambda: -1)
+    with pytest.raises(RuntimeError, match="当前用户持有"):
         dev.read_env()
 
 

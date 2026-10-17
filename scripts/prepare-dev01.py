@@ -29,14 +29,14 @@ def main():
     directory = ROOT / ".local"
     directory.mkdir(mode=0o700, exist_ok=True)
     remote = directory / "dev01.env"
-    local = directory / "dev.env"
+    local = ROOT / ".env"
     if remote.exists() or local.exists():
         raise SystemExit("私有配置已存在；为避免替换数据库密码，本脚本不覆盖。")
     source = read_env(args.source_env)
     if not source.get("LLM_MODEL") or not source.get("LLM_API_KEY"):
         raise SystemExit("源配置缺少真实模型配置。")
     deployment = read_env(ROOT / ".env.dev01.example")
-    development = read_env(ROOT / ".env.development.example")
+    development = read_env(ROOT / ".env.example")
     for target in (deployment, development):
         for key in ("LLM_MODEL", "LLM_BASE_URL", "LLM_API_KEY"):
             target[key] = source.get(key, "")
@@ -53,7 +53,7 @@ def main():
             raise SystemExit("配置值含不支持的字符；私下检查源配置。")
     private_env(remote, deployment)
     private_env(local, development)
-    print("已生成 .local/dev01.env 与 .local/dev.env（0600），未输出凭据。")
+    print("已生成 .local/dev01.env 与 .env（0600），未输出凭据。")
 
 
 if __name__ == "__main__":

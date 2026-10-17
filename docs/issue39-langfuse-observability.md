@@ -4,13 +4,13 @@
 
 ## 配置和启动
 
-1. 在**当前 Worktree** 的 `.local/dev.env` 添加 `LANGFUSE_TRACING_ENABLED=true`。此文件仍须为 0600；开关只接受小写 `true` 或 `false`。不配置时为 `false`。
-2. 只在已获授权的私有源 `.env` 中放 `LANGFUSE_SECRET_KEY`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com`。源文件必须是当前用户拥有的普通文件、非符号链接、权限恰为 0600。若该文件不在当前 Worktree 根目录，向 `.local/dev.env` 添加 `LANGFUSE_ENV_FILE=/绝对路径/私有.env`。这是用户显式指定的只读源路径；启动器不会搜索其他位置，也不会复制密钥。
+1. 在**当前 Worktree 根目录** 的私有 `.env` 添加 `LANGFUSE_TRACING_ENABLED=true`。开关只接受小写 `true` 或 `false`；不配置时为 `false`。原生开发和本机 Compose 共用此文件，不再使用 `.local/dev.env`。
+2. 在同一 `.env` 中放 `LANGFUSE_SECRET_KEY`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com`。文件必须是当前用户拥有的普通文件、非符号链接、权限恰为 0600。新 Worktree 若没有自己的 `.env`，启动会失败；启动器不会从其他 Worktree 搜索、复制或修改凭据。
 3. 确认输入和 Mock MCP 数据均为合成、无敏感信息，然后运行 `make dev-mock`、`make dev-mock-window` 或 `make dev-mock-summary`。`make dev-status` 与启动输出只显示 `on`、`off`、`forced_off`，不会显示密钥。
 
-`make dev`、`make dev-web`、所有 Memory 模式和正式 Compose 即使存在密钥或开关为 `true` 也强制关闭。正式 Compose 明确设置 `OTEL_TARGETS=''`。允许的 Mock 模式若显式开启但缺文件、权限/属主不符、重复/缺失字段、格式错误或 URL 不合规，会以不含字段值的错误码拒绝启动。私有文件只提取上述三个键；其他行不作为 shell 代码执行或注入子进程。`OTEL_SERVICE_NAME=kube-triage-agent-mock`、`OTEL_CONSOLE_EXPORT=false` 固定由启动器生成。不要把完整 OTLP 路径写入 `LANGFUSE_BASE_URL`。
+`make dev`、`make dev-web`、所有 Memory 模式和正式 Compose 即使存在密钥或开关为 `true` 也强制关闭。正式 Compose 明确设置 `OTEL_TARGETS=''`。普通原生开发配置解析会忽略 `.env` 中的 Langfuse Key；仅允许的 Mock 模式显式开启后，才从同一文件安全提取这三个键。若缺文件、权限/属主不符、重复/缺失字段、格式错误或 URL 不合规，会以不含字段值的错误码拒绝启动。其他 Compose 字段不注入原生开发子进程，也不执行 shell 代码。`OTEL_SERVICE_NAME=kube-triage-agent-mock`、`OTEL_CONSOLE_EXPORT=false` 固定由启动器生成。不要把完整 OTLP 路径写入 `LANGFUSE_BASE_URL`。
 
-关闭时将 `.local/dev.env` 中的开关改为 `false` 或删除，并在用户确认当前服务归属后重启**本 Worktree 自己的** Mock 开发进程。关闭后新 Run 不应导出；此前 Batch 队列仍可能上传，云端旧 Trace 不会自动删除。不要以服务退出时仍出现旧 Trace 推断开关失效。
+关闭时将根目录 `.env` 中的开关改为 `false` 或删除，并在用户确认当前服务归属后重启**本 Worktree 自己的** Mock 开发进程。关闭后新 Run 不应导出；此前 Batch 队列仍可能上传，云端旧 Trace 不会自动删除。不要以服务退出时仍出现旧 Trace 推断开关失效。
 
 ## 隐私和可观察范围
 

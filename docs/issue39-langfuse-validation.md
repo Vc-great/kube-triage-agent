@@ -8,7 +8,7 @@
 | A02 模式隔离 | PASS（配置级） | 参数测试覆盖 real、web、Memory 三种模式，显式 true 仍不读私有源，API 导出关闭。 |
 | A03 源文件安全 | PASS（单测） | 测试权限、属主、非普通文件、符号链接、缺失、重复、格式、URL、相对路径与异常不回显假密钥；未读取真实密钥。 |
 | A04 子进程隔离 | PASS（单测） | 三个允许的 Mock 模式中，仅 API 环境有三个 Langfuse 字段；Web/Mock/Tunnel/Preflight 无字段。 |
-| A05 合成普通对话 | BLOCKED | 新 Worktree 缺独立的 `.local/dev.env` 与数据库/Redis 测试实例；未执行 Langfuse 页面核验，无 Trace ID/Run ID。 |
+| A05 合成普通对话 | BLOCKED | 新 Worktree 缺独立的根目录 `.env` 与数据库/Redis 测试实例；未执行 Langfuse 页面核验，无 Trace ID/Run ID。 |
 | A06 合成 Tool Calling | BLOCKED | 未执行云端 LLM → Tool → LLM 与 Tool Call ID 核验。 |
 | A07 Summary | BLOCKED | 未执行能触发摘要的多轮云端合成样例；最终采用/回退仍须结合审计。 |
 | A08 网络/Key 失效 | NOT RUN | 未对独立 API 做 401、超时、断网故障注入。 |

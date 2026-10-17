@@ -20,17 +20,25 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 DIRECTORY = ROOT / ".local" / "dev"
 STATE = DIRECTORY / "state.json"
-ENV_FILE = ROOT / ".local" / "dev.env"
+ENV_FILE = ROOT / ".env"
 SCRIPT = Path(__file__).resolve()
 STOP_REQUESTED = False
 PRIVATE_KEYS = frozenset({"POSTGRES_PASSWORD", "DEMO_API_TOKEN", "LLM_MODEL",
                           "LLM_BASE_URL", "LLM_API_KEY",
                           "INCIDENT_MEMORY_PROVENANCE_SECRET", "DEV_SSH_HOST",
-                          "DEV_REMOTE_API_URL", "LANGFUSE_TRACING_ENABLED",
-                          "LANGFUSE_ENV_FILE"})
+                          "DEV_REMOTE_API_URL", "LANGFUSE_TRACING_ENABLED"})
 LANGFUSE_KEYS = frozenset({"LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY",
                            "LANGFUSE_BASE_URL"})
 LANGFUSE_MOCK_MODES = frozenset({"mock", "mock-window", "mock-summary"})
+SHARED_FILE_KEYS = frozenset({"POSTGRES_USER", "POSTGRES_DB", "WEB_PORT", "API_PORT",
+                              "NEXT_PUBLIC_API_URL", "MCP_SERVER_URL",
+                              "CONTEXT_WINDOW_ENABLED", "CONTEXT_SUMMARY_ENABLED",
+                              "CONTEXT_ESTIMATED_TOTAL_BUDGET",
+                              "INCIDENT_MEMORY_ENABLED", "INCIDENT_MEMORY_READ_ENABLED",
+                              "INCIDENT_MEMORY_WRITE_ENABLED", "INCIDENT_MEMORY_MAX_HITS",
+                              "INCIDENT_MEMORY_MAX_CANDIDATES", "REPAIR_ENABLED",
+                              "REPAIR_MCP_SERVER_URL", "SERVER_URL",
+                              "API_BIND_HOST", "WEB_BIND_HOST"})
 COMMON_HOST_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL",
                               "LANG", "XDG_CACHE_HOME", "UV_CACHE_DIR",
                               "UV_PYTHON_INSTALL_DIR", "PNPM_HOME", "COREPACK_HOME"})
@@ -57,22 +65,34 @@ PROFILES = {
 
 def read_env():
     if ENV_FILE.is_symlink() or not ENV_FILE.is_file():
-        raise RuntimeError("缺少 .local/dev.env；按 .env.development.example 配置。")
+        raise RuntimeError("缺少 .env；按 .env.example 配置。")
+    if ENV_FILE.stat().st_uid != os.getuid():
+        raise RuntimeError(".env 必须由当前用户持有。")
     if stat.S_IMODE(ENV_FILE.stat().st_mode) != 0o600:
-        raise RuntimeError("请先 chmod 600 .local/dev.env。")
+        raise RuntimeError("请先 chmod 600 .env。")
     values = {}
+    seen = set()
     for number, line in enumerate(ENV_FILE.read_text().splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+        # Ignore Cloud credentials here even when malformed. Only an allowed
+        # Mock profile with the explicit switch parses them in read_langfuse_env().
+        if re.match(r"(?:export[ \t]+)?LANGFUSE_(?:SECRET_KEY|PUBLIC_KEY|BASE_URL)\b",
+                    line.strip()):
+            continue
         if "=" not in line:
-            raise RuntimeError(f".local/dev.env 第 {number} 行格式错误。")
+            raise RuntimeError(f".env 第 {number} 行格式错误。")
         key, value = line.split("=", 1)
         key = key.strip()
-        if key not in PRIVATE_KEYS:
-            raise RuntimeError(f".local/dev.env 不允许配置 {key}；场景参数由启动命令决定。")
-        if key in values:
-            raise RuntimeError(f".local/dev.env 中 {key} 重复。")
-        values[key] = value.strip().strip("\"'")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+            raise RuntimeError(f".env 第 {number} 行字段名格式错误。")
+        if key not in PRIVATE_KEYS | SHARED_FILE_KEYS:
+            raise RuntimeError(f".env 不允许配置 {key}；场景参数由启动命令决定。")
+        if key in seen:
+            raise RuntimeError(f".env 中 {key} 重复。")
+        seen.add(key)
+        if key in PRIVATE_KEYS:
+            values[key] = value.strip().strip("\"'")
     return values
 
 
@@ -215,8 +235,7 @@ def child_environments(mode, values, host_env=None):
                "CONTEXT_ESTIMATED_TOTAL_BUDGET": "6500" if profile["window"] else "16384",
                "OTEL_TARGETS": "", "OTEL_CONSOLE_EXPORT": "false"}
     if tracing == "on":
-        source = values.get("LANGFUSE_ENV_FILE") or str(ROOT / ".env")
-        api_env.update(read_langfuse_env(Path(source)))
+        api_env.update(read_langfuse_env(ENV_FILE))
         api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME="kube-triage-agent-mock")
     if memory_on:
         api_env["INCIDENT_MEMORY_PROVENANCE_SECRET"] = values[
