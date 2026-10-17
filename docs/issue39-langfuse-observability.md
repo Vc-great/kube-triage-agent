@@ -19,7 +19,9 @@ Compose 覆盖层无法通过格式校验证明 Key 属于预期项目，也不�
 
 本机原生 API 保留启动终端的 `HTTPS_PROXY`/`https_proxy`/`ALL_PROXY`；有有效 Langfuse Key 且这些变量均未设置时，API 子进程默认使用 `http://127.0.0.1:7890`。Web、Mock MCP、Tunnel 不接收这个补充代理。Aegra 的 OTLP HTTP 导出使用 Requests，会按这些环境变量访问 Langfuse 的 HTTPS endpoint；代理不需要也不应写进 `LANGFUSE_BASE_URL`。
 
-Compose 覆盖层只给 API 容器设置 `HTTPS_PROXY=http://host.docker.internal:7890`、内部服务的 `NO_PROXY` 和 `host.docker.internal:host-gateway` 映射。容器里的 `127.0.0.1` 是容器自身，不能指向宿主机代理。Mac 的 Docker Desktop 可通过该主机名访问宿主机；Linux dev01 的 `host-gateway` 指向 Docker 网桥上的宿主机地址，代理必须监听该地址或其他容器可访问的地址。若 dev01 的 7890 只监听 `127.0.0.1`，需先由环境所有者调整代理监听范围并限制访问，不能仅凭 Compose 配置通过就声称 Trace 可达。当前未从本 Worktree 连通 dev01，远端监听地址与云端导出均未实测。
+Compose 覆盖层只给 API 容器设置 `HTTPS_PROXY`、内部服务的 `NO_PROXY` 和 `host.docker.internal:host-gateway` 映射。容器里的 `127.0.0.1` 是容器自身，不能指向宿主机代理。Mac 的 Docker Desktop 使用 `http://host.docker.internal:7890`；dev01 的启动入口使用已经由当前容器 TCP 测到可达的 `http://192.168.31.110:7890`。dev01 默认 `host-gateway` 为 `172.17.0.1`，但代理不监听该地址，所以不能将它用于 dev01。代理仍须允许 API 容器所在的 `172.19.0.0/16` 网段执行 HTTP CONNECT；仅凭 TCP 可连接或 Compose 配置通过不能声称 Trace 可达。
+
+2026-10-17 经 `dev01-t` 只读核验：宿主机通过本机和 LAN 7890 访问 Langfuse 公共首页均返回 HTTP 200；现有 API 容器对 `192.168.31.110:7890` 和 `172.20.0.1:7890` 的 TCP 连接成功，但发送无认证的 HTTP CONNECT 后立即被重置。需要由 dev01 代理环境所有者检查对 Docker 网段的访问规则或透明代理策略，再从 API 容器复测公共 HTTPS 和实际 OTLP 导出；本次没有更改远端代理或重建服务。
 
 `HTTPS_PROXY` 作用于 API 的其他 HTTPS 请求，包括模型 Provider；若 Provider 是私有 HTTPS 地址，应先核对 `NO_PROXY` 是否覆盖该地址。不要禁用 TLS 校验，也不要把带凭据的代理 URL 提交到仓库或贴进日志。
 

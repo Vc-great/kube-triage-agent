@@ -130,12 +130,17 @@ def test_compose_auto_overlay_and_host_key_isolation(tmp_path, monkeypatch, stac
     source = source_file(tmp_path)
     monkeypatch.setattr(compose, "ENV_FILE", source)
     command, environment = compose.compose_invocation(
-        stack, "isolated-project", ["config", "--quiet"], HOST_ENV)
+        stack, "isolated-project", ["config", "--quiet"],
+        {**HOST_ENV, "KTA_LANGFUSE_PROXY_URL": "http://untrusted:1"})
     assert command.count("infra/langfuse.compose.yaml") == 1
     expected_file = "infra/test.compose.yaml" if stack == "test" else "infra/compose.yaml"
     assert expected_file in command
     assert environment["LANGFUSE_SECRET_KEY"] == "sk-fake"
     assert environment["LANGFUSE_PUBLIC_KEY"] == "pk-fake"
+    if stack == "dev01":
+        assert environment["KTA_LANGFUSE_PROXY_URL"] == "http://192.168.31.110:7890"
+    else:
+        assert "KTA_LANGFUSE_PROXY_URL" not in environment
     source.write_text("OTHER_VALUE=ignored\n")
     command, environment = compose.compose_invocation(
         stack, "isolated-project", ["config", "--quiet"], HOST_ENV)
