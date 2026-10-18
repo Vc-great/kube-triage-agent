@@ -50,7 +50,9 @@ sequenceDiagram
 
 ## Closure 补强（2026-10-18）
 
-`ReaderBoundary.aafter_model(state, runtime)` 采用锁定 LangChain Middleware 的状态更新契约，返回 `{"messages": [AIMessage(id=原消息 ID, ...)]}` 覆盖本次最终答复，不改写原始 Tool Call/ToolMessage。仅对 `target_pod()` 识别出的明确目标生效；问候与模型介绍可无工具回答。守卫只看本轮配对且唯一的 `pods_get` ID、固定 Namespace/名称、成功状态、Pod kind、UID 和有效 phase；同轮 UID 冲突拒绝确定性结论。403/404/超时只从真实配对错误回执映射为固定文案。此守卫不读取 Memory，不获得 Repair 或写权限。Provider 入口显式设置 `DEEP_DIAGNOSIS_ENABLE_PROVIDER=true` 才可启动；默认关闭。测试 Fake 直接继承 `BaseChatModel`，实现同步、异步和流式接口，并禁止测试进程建立网络连接。
+`ReaderBoundary.aafter_model(state, runtime)` 采用锁定 LangChain Middleware 的状态更新契约，返回 `{"messages": [AIMessage(id=原消息 ID, ...)]}` 覆盖本次最终答复，不改写原始 Tool Call/ToolMessage。仅对显式 `Pod <name>` 目标生效（复用 `target_pod()` 并覆盖常见自然问法）；问候与模型介绍可无工具回答。守卫只看本轮配对且唯一的 `pods_get` ID、固定 Namespace/名称、成功状态、Pod kind、UID 和有效 phase；同轮 UID 冲突拒绝确定性结论。403/404/超时只从真实配对错误回执映射为固定文案。此守卫不读取 Memory，不获得 Repair 或写权限。Provider 入口显式设置 `DEEP_DIAGNOSIS_ENABLE_PROVIDER=true` 才可启动；默认关闭。测试 Fake 直接继承 `BaseChatModel`，实现同步、异步和流式接口，并禁止测试进程建立网络连接。
+
+独立审查后在 `abefore_agent` 增加新 Run 输入检查：当前 Human 轮次不得预置 AI/Tool 消息，防止客户端注入伪造 `pods_get` 回执。Pod `status.phase` 先校验为字符串，再检查枚举；异常形状只会变成未核验。实验无人工中断恢复路径；旧轮消息位于新 Human 之前，不作为本轮证据。
 
 ## 隔离与回退
 

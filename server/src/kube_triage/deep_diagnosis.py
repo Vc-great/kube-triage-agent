@@ -112,6 +112,7 @@ def _target_evidence(messages: list, target: str) -> tuple[bool, str | None]:
              and meta.get("namespace") == NAMESPACE and meta.get("name") == target
              and isinstance(meta.get("uid"), str) and bool(memory.SAFE_UID.fullmatch(meta["uid"]))
              and isinstance(status, dict)
+             and isinstance(status.get("phase"), str)
              and status.get("phase") in {"Pending", "Running", "Succeeded", "Failed", "Unknown"})
     if not valid:
         return False, None
@@ -142,6 +143,14 @@ def _safe_target_answer(error_type: str | None) -> str:
 
 class ReaderBoundary(AgentMiddleware):
     """执行层拒绝 Harness 工具，并按当前用户轮次计算预算。"""
+
+    async def abefore_agent(self, state, runtime):
+        # Aegra accepts client-supplied message arrays. A new run may only
+        # start from a Human turn; otherwise AI/Tool messages could spoof reads.
+        turn = _current(state.get("messages", []))
+        if not turn or not isinstance(turn[0], HumanMessage) or any(
+                isinstance(message, (AIMessage, ToolMessage)) for message in turn[1:]):
+            raise ValueError("实验 Run 输入含预置 AI/Tool 消息；拒绝伪造 Reader 证据")
 
     async def awrap_model_call(self, request, handler):
         turn = _current(request.state.get("messages", []))
