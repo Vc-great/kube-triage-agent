@@ -2,7 +2,7 @@
 
 ## 基线与入口
 
-基于 `origin/main` `a6a287352c1af05bc365406ddf4db6b46ee8f07e`。正式 `server/aegra.json` 仍仅注册 `agent`，`graph.py` 未改。实验入口是 `server/aegra.phase-a.json` 的 `deep_diagnosis`；它同时注册原 `agent`，须显式传给独立 Aegra 实例。Web 默认 Graph ID 仍为 `agent`，无新按钮。
+原 Phase A 基于 `origin/main` `a6a287352c1af05bc365406ddf4db6b46ee8f07e`。正式 `server/aegra.json` 仍仅注册 `agent`，`graph.py` 未改。实验入口是 `server/aegra.phase-a.json` 的 `deep_diagnosis`；2026-10-18 Closure 将该实验配置收紧为只注册此 Graph，避免 Fake 协议运行装载正式 Provider Client。Web 默认 Graph ID 仍为 `agent`，无新按钮。
 
 原 Graph 的普通诊断为 LLM↔Reader，单轮 4 次模型决策、6 次 Reader 调用；`/repair-demo`、Memory 录入/撤销与 Context Summary 有独立路由。Reader 执行层在 `mcp_client.py` 仅接受四个工具，限制 `kube-triage-demo`、Pod/容器名、`tail=1..100`、额外字段，发现时要求 tools/list 恰好四项。Reader 发现和调用各有 8 秒超时，结果最多 16 KiB。`docs/architecture.md` 的节点图未列新近合并的 Memory/Context 节点，故以源码为准。
 
@@ -47,6 +47,10 @@ sequenceDiagram
 | `resources_scale` | 原 Repair MCP | 否 | 实验 Graph 未引用 Repair | 无 Kubernetes 写操作 | 静态代码；隔离实例 Repair=false |
 
 模型可见性是 FakeChatOpenAI 收到的实际绑定工具列表所证明；真实 Provider 的 Profile 组合和动态工具列表仍未测试，因此不能把本表解释为真实模型已验收。Reader 回执是低信任数据，不能提升成系统指令、修复授权或当前健康结论；FakeModel 不证明真实模型能抵御语义层 Prompt Injection。
+
+## Closure 补强（2026-10-18）
+
+`ReaderBoundary.aafter_model(state, runtime)` 采用锁定 LangChain Middleware 的状态更新契约，返回 `{"messages": [AIMessage(id=原消息 ID, ...)]}` 覆盖本次最终答复，不改写原始 Tool Call/ToolMessage。仅对 `target_pod()` 识别出的明确目标生效；问候与模型介绍可无工具回答。守卫只看本轮配对且唯一的 `pods_get` ID、固定 Namespace/名称、成功状态、Pod kind、UID 和有效 phase；同轮 UID 冲突拒绝确定性结论。403/404/超时只从真实配对错误回执映射为固定文案。此守卫不读取 Memory，不获得 Repair 或写权限。Provider 入口显式设置 `DEEP_DIAGNOSIS_ENABLE_PROVIDER=true` 才可启动；默认关闭。测试 Fake 直接继承 `BaseChatModel`，实现同步、异步和流式接口，并禁止测试进程建立网络连接。
 
 ## 隔离与回退
 

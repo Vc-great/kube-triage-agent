@@ -18,6 +18,7 @@ services:
       retries: 20
     labels:
       codex.issue: "41"
+      ao.session: ${AO_SESSION_ID:?set AO session id}
   redis:
     image: redis:8.4.7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -32,6 +33,7 @@ services:
       retries: 20
     labels:
       codex.issue: "41"
+      ao.session: ${AO_SESSION_ID:?set AO session id}
 volumes:
   postgres_data: {}
   redis_data: {}

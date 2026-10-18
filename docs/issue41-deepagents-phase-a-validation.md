@@ -41,3 +41,23 @@
 ## 范围与结论
 
 没有真实 Kubernetes 读写、真实 Provider 成功调用、Langfuse Cloud 发送、旧生产 Checkpoint 迁移或稳定服务操作。第一次合成数据测试意外进入 Provider 客户端路径；外部是否收到该请求无法证明，故 A08 留 FAIL，不以修复后的成功覆盖失败记录。Model Profile 在真实模型、Prompt Injection 语义、Run 取消/重连和稳定环境旧 Thread 仍有证据缺口，Phase A **NO-GO**，不建议仅凭当前 PoC 进入 Phase B。首选修复方向：在同一隔离 Aegra 拓扑补充可审计的取消/重连与真实模型工具披露证据；真实 Provider、真实 Reader 和数据外传必须另行授权。若保持零 Provider 成本，可先用更强的 FakeModel 合成注入/UID 用例收紧执行与答复契约。
+
+## 2026-10-18 Phase A Closure 新增证据
+
+以下是新一轮验收，不修改上述原始 A08=FAIL，也不修改 Phase 3B B06=FAIL。开工前 `git fetch origin main` 得 `bdbdc6eda41804bbb78ad0f67274163b5e767dc3`；#42 已合并，#41 Open。新 AO 工作树分支 `ao/kube-triage-agent-2/issue41-phase-a-closure`。正式 Graph、`server/aegra.json`、Repair、Memory、原始 Checkpoint 与 Golden 均未改。证据等级：S=源码/锁定 SDK，F=FakeModel 合成测试，P=隔离本机 Aegra/Mock MCP 协议；无真实模型或 Kubernetes 证据。
+
+| Gate | 状态 | 等级与依据 |
+| --- | --- | --- |
+| CL00 | PASS | S：最新 main SHA、独立 AO Worktree/分支；专属 Compose Project `kube-triage-issue41-closure-2`、localhost 12441/15441/16341/8000 事前空闲，专属卷事前不存在；正式 Graph 未改。 |
+| CL01 | PASS | S/F：锁定 `deepagents==0.7.28`；Fake 实收工具表恰为四 Reader；Harness `write_file` 等执行被拒。真实 Provider Profile 未测。 |
+| CL02 | PASS | F：`aafter_model` 目标守卫拦截无证据的健康断言、403/404/超时、跨 Pod/Namespace、坏 UID/状态；问候可直接回答。 |
+| CL03 | PASS | F/P：测试 Fake 仅继承 `BaseChatModel`，同步/异步/流式均覆盖；socket 网络哨兵拒绝外联；实验 Aegra 仅加载 Fake Graph，无 Provider 凭据，隔离 SSE 成功。原 A08=FAIL 仍保留。 |
+| CL04 | PASS | S/F：实验 Provider 入口默认抛 `ConfigurationError`，仅显式 `DEEP_DIAGNOSIS_ENABLE_PROVIDER=true` 时创建真实模型；正式配置未改且原测试通过。 |
+| CL05 | PASS | F/S：`tail` 对 true、字符串整数、浮点、0、101 均拒绝；0/1/多/7 调用回归，7 次仅执行 6 次且回执 ID 对齐。四次是 Graph 模型决策数，不是 Provider 内部重试次数；本轮无 Provider 重试实测。 |
+| CL06 | PASS | P：专属 Aegra Thread 两轮 SSE `end`，State 8 消息、History 10 项、Tool ID 配对；重启后原 Thread 8 消息，第三轮 12 消息和 3 对 ID。 |
+| CL07 | PASS（本拓扑） | P：取消 API HTTP 200，Run 随即及 2/8 秒后均为 `interrupted`，State 仅 1 条用户消息；该合成执行停止。断线后用真实 `Last-Event-ID=...event_1` 重连，收到 event_2 起至 `end`，首事件未重放。仅证明本机 in-process executor 与 in-memory SSE broker。 |
+| CL08 | PASS（确定性） | F：日志注入却断言健康、UID 冲突、错误/空/坏 Reader 回执均被守卫拒绝；真实 LLM 注入语义 NOT RUN。 |
+| CL09 | PASS（本地） | F/S：`uv sync --frozen --offline` 使用本机缓存；`ruff check src tests` 通过；`pytest -q` 以本次最终命令为准。CI 以 Draft PR Checks 为准。 |
+| CL10 | 待 PR/Review | S：中文设计、验收、面试复盘更新；独立 AO Reviewer 和 Draft PR 以实际结果补记。 |
+
+本轮 Docker 镜像已缓存，未下载依赖或镜像。`env -i` 启动 Fake Aegra 与 Mock MCP，`OTEL_TARGETS=`，没有运行期 Provider 目的地或有效凭据；Python 测试的网络哨兵禁止 socket 出站。协议服务只监听 localhost。先核实容器的 `ao.session=kube-triage-agent-2` 与 Compose Project 标签，随后停止 Aegra/Mock MCP，按精确项目执行不带 `--volumes` 的 `down`，仅删除两只核实属于本轮的新卷。未操作其他项目资源。历史 A08 外联结果仍 UNKNOWN。

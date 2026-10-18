@@ -17,3 +17,7 @@
 3. **并行 Tool Call 如何守住预算和 ID？** 以本轮 HumanMessage 为界，计数已完成 ToolMessage，再按当前 AIMessage 中 Tool Call 的稳定位置决定是否执行。每个调用无论成功、失败或超预算，返回对应 `tool_call_id`；错 ID 回执被替换成安全错误。
 4. **StateBackend 和 Context Offloading 能证明什么？** 本阶段只证明使用 StateBackend 时不暴露文件工具，没有做 Offloading。未来即使保存虚拟调查笔记，笔记也不能代替原始 Reader 回执；被 16 KiB 入口截断的数据无法通过后续 Offloading 恢复。
 5. **Planning 的额外成本值得吗？** 现在没有真实模型 Usage 或 A/B 数据，不能估算真实 Token 或宣称收益。后续需按简单/复杂冻结样例比较准确率、错误结论、模型调用、Reader 调用与延迟，并经用户单独授权模型成本和合成数据云端发送。
+
+## 2026-10-18 Closure 追问
+
+第一版 Fake 继承 `ChatOpenAI`，流式遗漏曾触达 Provider 路径，因此本轮换成独立 `BaseChatModel`，显式覆盖同步、异步、流式，并用网络拒绝哨兵验证。最终答复边界采用 SDK 的 `aafter_model` 状态更新，用相同消息 ID 替换未经核验的目标 Pod 结论；这保留了 SSE 和 ToolMessage 配对。Fake 的日志注入用例只能证明确定性守卫会拒绝无目标 `pods_get` 时的健康断言，不能证明真实模型理解并抵抗注入。四次模型决策是 Graph 已完成决策数；Provider 客户端内部重试尝试数是另一口径，本轮无真实 Provider 调用，因此没有重试实测。

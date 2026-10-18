@@ -11,5 +11,7 @@ if os.getenv("DEEP_DIAGNOSIS_FAKE_MODEL") == "true":
     from kube_triage.deep_diagnosis_fake import ProtocolFakeModel
 
     graph = build_graph(ProtocolFakeModel())
-else:
+elif os.getenv("DEEP_DIAGNOSIS_ENABLE_PROVIDER") == "true":
     graph = build_graph()
+else:
+    raise ConfigurationError("Deep Diagnosis Provider 默认关闭；须显式启用实验入口")
