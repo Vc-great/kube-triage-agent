@@ -6,6 +6,10 @@ dev01 完整部署与 Mac 原生开发见 [部署与开发指南](docs/dev01-dep
 
 单用户 AI 全栈学习与面试 Demo：Aegra Thread/Run/SSE/Checkpoint + LangGraph + 原生 Reader MCP。正式自然语言诊断恒走真实 OpenAI 兼容 LLM → 四个只读 MCP 工具 → Kubernetes API，Namespace 固定为 `kube-triage-demo`。缺配置、未批准 Reader URL 和生产模拟配置均 Fail Closed；无 Echo、固定命令或 Mock 回退。
 
+## AI 规划与 AO 执行
+
+中大型开发任务采用 [轻量 SDD 工作流](docs/agent-workflow.md)：网页 ChatGPT 先核对 Issue、代码与已有 PR，提交纯文档 Planning PR；设计合入 `main` 后，由 AO 使用短提示词调度 Codex 从 [计划目录](docs/plans/README.md) 读取设计、按阶段实现与验收。长期 Agent 约束见 [AGENTS.md](AGENTS.md)，新方案可复制 [计划模板](docs/plans/TEMPLATE.md)。小型修复继续使用 Issue → 实施 PR，无需强制额外文档。
+
 ## 独立项目快速启动
 
 先只读核对 Docker 项目标签、端口与资源归属。不要用新 Worktree 操作稳定 `kube-triage-agent` 或 `ragflow-lab`。
