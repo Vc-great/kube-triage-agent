@@ -15,7 +15,7 @@ def run():
     assistants = client.get("/assistants")
     assistants.raise_for_status()
     assert {item["graph_id"] for item in assistants.json()["assistants"]} == {
-        "agent", "deep_diagnosis"}
+        "deep_diagnosis"}
     response = client.post("/threads", json={})
     response.raise_for_status()
     thread_id = response.json()["thread_id"]

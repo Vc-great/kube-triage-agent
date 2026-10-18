@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
+import yaml
 from deepagents import (
     GeneralPurposeSubagentProfile,
     HarnessProfile,
@@ -15,10 +17,12 @@ from deepagents.backends import StateBackend
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from kube_triage import incident_memory as memory
+from kube_triage.incident_memory_retrieval import target_pod
 from kube_triage.llm import chat_model
-from kube_triage.mcp_client import ALLOWED_TOOLS, call_tool
+from kube_triage.mcp_client import ALLOWED_TOOLS, NAMESPACE, POD_NAME, call_tool
 
 MAX_DECISIONS = 4
 MAX_READS = 6
@@ -38,7 +42,7 @@ class _PodArgs(_Args):
 
 
 class _LogArgs(_PodArgs):
-    tail: int = Field(default=20, ge=1, le=100)
+    tail: StrictInt = Field(default=20, ge=1, le=100)
     container: str | None = None
 
 
@@ -49,8 +53,104 @@ def _current(messages: list) -> list:
     return messages
 
 
+_EXPLICIT_POD = re.compile(r"(?:kube-triage-demo/)?Pod[ /]([a-z0-9](?:[-a-z0-9]*[a-z0-9])?)")
+
+
+def _explicit_target(content: object) -> str | None:
+    if not isinstance(content, str) or len(content) > 300:
+        return None
+    exact = target_pod(content)
+    if exact:
+        return exact
+    matches = set(_EXPLICIT_POD.findall(content))
+    if len(matches) > 1:
+        return "<multiple-targets>"
+    if not matches:
+        return None
+    name = matches.pop()
+    return name if len(name) <= 253 and POD_NAME.fullmatch(name) else None
+
+
+def _target_evidence(messages: list, target: str) -> tuple[bool, str | None]:
+    """Accept only the latest paired, successful current-turn pods_get for the target."""
+    turn = _current(messages)
+    calls = [call for message in turn if isinstance(message, AIMessage)
+             for call in message.tool_calls if call.get("name") == "pods_get"
+             and call.get("args") == {"namespace": NAMESPACE, "name": target}]
+    if not calls:
+        return False, None
+    call = calls[-1]
+    ident = call.get("id")
+    if not isinstance(ident, str) or not ident or sum(
+            item.get("id") == ident for message in turn if isinstance(message, AIMessage)
+            for item in message.tool_calls) != 1:
+        return False, None
+    replies = [message for message in turn if isinstance(message, ToolMessage)
+               and message.tool_call_id == ident]
+    if len(replies) != 1 or replies[0].name != "pods_get":
+        return False, None
+    reply = replies[0]
+    try:
+        payload = json.loads(reply.content)
+    except (TypeError, ValueError):
+        return False, None
+    if not isinstance(payload, dict):
+        return False, None
+    if reply.status != "success" or payload.get("ok") is not True:
+        return False, payload.get("error_type") if payload.get("ok") is False else None
+    result = payload.get("result")
+    if not isinstance(result, str) or not result or len(result) > 16384:
+        return False, None
+    try:
+        pod = yaml.safe_load(result)
+    except yaml.YAMLError:
+        return False, None
+    if not isinstance(pod, dict):
+        return False, None
+    meta, status = pod.get("metadata"), pod.get("status")
+    valid = (pod.get("kind") == "Pod" and isinstance(meta, dict)
+             and meta.get("namespace") == NAMESPACE and meta.get("name") == target
+             and isinstance(meta.get("uid"), str) and bool(memory.SAFE_UID.fullmatch(meta["uid"]))
+             and isinstance(status, dict)
+             and isinstance(status.get("phase"), str)
+             and status.get("phase") in {"Pending", "Running", "Succeeded", "Failed", "Unknown"})
+    if not valid:
+        return False, None
+    for earlier in calls[:-1]:
+        prior = [message for message in turn if isinstance(message, ToolMessage)
+                 and message.tool_call_id == earlier.get("id") and message.name == "pods_get"]
+        if len(prior) != 1 or prior[0].status != "success":
+            continue
+        try:
+            previous = json.loads(prior[0].content)
+            previous_pod = yaml.safe_load(previous.get("result")) if previous.get("ok") else None
+            previous_uid = previous_pod.get("metadata", {}).get("uid")
+        except (AttributeError, TypeError, ValueError, yaml.YAMLError):
+            continue
+        if isinstance(previous_uid, str) and previous_uid != meta["uid"]:
+            return False, None
+    return True, None
+
+
+def _safe_target_answer(error_type: str | None) -> str:
+    details = {
+        "forbidden": "本轮 Reader 读取目标 Pod 被拒绝（403）；",
+        "not_found": "本轮 Reader 未找到目标 Pod（404）；",
+        "timeout": "本轮 Reader 读取目标 Pod 超时；",
+    }
+    return details.get(error_type, "本轮没有取得可信的目标 Pod Reader 证据；") + "当前状态与根因未核验。"
+
+
 class ReaderBoundary(AgentMiddleware):
     """执行层拒绝 Harness 工具，并按当前用户轮次计算预算。"""
+
+    async def abefore_agent(self, state, runtime):
+        # Aegra accepts client-supplied message arrays. A new run may only
+        # start from a Human turn; otherwise AI/Tool messages could spoof reads.
+        turn = _current(state.get("messages", []))
+        if not turn or not isinstance(turn[0], HumanMessage) or any(
+                isinstance(message, (AIMessage, ToolMessage)) for message in turn[1:]):
+            raise ValueError("实验 Run 输入含预置 AI/Tool 消息；拒绝伪造 Reader 证据")
 
     async def awrap_model_call(self, request, handler):
         turn = _current(request.state.get("messages", []))
@@ -61,6 +161,20 @@ class ReaderBoundary(AgentMiddleware):
         if {tool.name for tool in tools} != ALLOWED_TOOLS or len(tools) != 4:
             raise RuntimeError("Deep Diagnosis 模型工具清单不是四个 Reader")
         return await handler(request.override(tools=tools))
+
+    async def aafter_model(self, state, runtime):
+        turn = _current(state.get("messages", []))
+        latest = turn[-1] if turn else None
+        if not isinstance(latest, AIMessage) or latest.tool_calls:
+            return None
+        user = next((m for m in turn if isinstance(m, HumanMessage)), None)
+        target = _explicit_target(user.content) if user else None
+        if not target:
+            return None
+        verified, error_type = _target_evidence(state["messages"], target)
+        if verified:
+            return None
+        return {"messages": [AIMessage(id=latest.id, content=_safe_target_answer(error_type))]}
 
     async def awrap_tool_call(self, request, handler):
         call = request.tool_call
