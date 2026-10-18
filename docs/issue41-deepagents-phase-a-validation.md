@@ -58,7 +58,7 @@
 | CL07 | PASS（本拓扑） | P：取消 API HTTP 200，Run 随即及 2/8 秒后均为 `interrupted`，State 仅 1 条用户消息；该合成执行停止。断线后用真实 `Last-Event-ID=...event_1` 重连，收到 event_2 起至 `end`，首事件未重放。仅证明本机 in-process executor 与 in-memory SSE broker。 |
 | CL08 | PASS（确定性） | F：日志注入却断言健康、UID 冲突、错误/空/坏 Reader 回执均被守卫拒绝；真实 LLM 注入语义 NOT RUN。 |
 | CL09 | PASS | F/S：`uv sync --frozen --offline` 使用本机缓存；`ruff check src tests` 通过；最终 `pytest -q` 414 passed。Draft PR #43 的 compose/python/web CI 均通过。 |
-| CL10 | 待复审 | S：中文设计、验收、面试复盘更新；Draft PR #43 已创建。AO 隔离 Reviewer 首轮指出客户端伪造消息及非字符串 phase 两处需修，均已补测修复，等待新 Head 复审。Reviewer 的 GitHub inline 写入被审批策略拒绝，结论留存在 AO 审查记录。 |
+| CL10 | PASS（AO 内部 Review） | S：中文设计、验收、面试复盘更新；Draft PR #43 已创建。AO 隔离 Reviewer 首轮指出客户端伪造消息及非字符串 phase 两处需修，均已补测修复；对代码 Head `686e3c1b9900eb037b15e528333c9e1473c1d21d` 复审 approved，无新必改项。Reviewer 的 GitHub review 写入被审批策略拒绝，结论留存在 AO 审查记录，不能视为 GitHub 独立账户批准。 |
 
 本轮 Docker 镜像已缓存，未下载依赖或镜像。`env -i` 启动 Fake Aegra 与 Mock MCP，`OTEL_TARGETS=`，没有运行期 Provider 目的地或有效凭据；Python 测试的网络哨兵禁止 socket 出站。协议服务只监听 localhost。先核实容器的 `ao.session=kube-triage-agent-2` 与 Compose Project 标签，随后停止 Aegra/Mock MCP，按精确项目执行不带 `--volumes` 的 `down`，仅删除两只核实属于本轮的新卷。未操作其他项目资源。历史 A08 外联结果仍 UNKNOWN。
 
