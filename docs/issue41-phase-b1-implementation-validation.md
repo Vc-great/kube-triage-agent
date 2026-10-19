@@ -27,14 +27,14 @@
 | **B6 UI / Trace** | **PASS（本机范围）** | Aegra 0.10.8 的 Planning Graph SSE `values`、Todo Checkpoint/新轮清空、Last-Event-ID 续流与取消已测；React 只在 Planning Graph 校验后显示合法 Todo；Web lint/build 通过。真实浏览器手工验收和 Langfuse Cloud 可见性 NOT RUN。 |
 | **B7 离线 A/B** | **PASS（协议/开销计数）** | 无 Provider FakeModel + 同源合成 Reader 回执，覆盖 CrashLoop、ImagePull、OOM、Healthy 与两项复杂合成案的 OFF/ON 配对。所有场景 Reader 次数相同；简单案 OFF/ON 模型决策均为 2、Todo 为 0；复杂案 OFF 为 2 次决策/0 Todo，ON 为 4 次决策/2 Todo。固定 Fake 回答不是质量评分，也不能推断真实 Token、时延或诊断准确率。 |
 | **B8 Real LLM + Mock MCP** | **NOT RUN** | 未获授权，且本次明确禁止真实付费 Provider/外传。Token Usage 与真实模型质量收益 UNKNOWN。 |
-| **B9 回归与交付** | **IN PROGRESS** | Python/Web 本地 Gate 与 GitHub CI 已通过。AO Reviewer 首轮发现 smoke URL userinfo 绕过问题，已加严格 loopback URL 校验和回归用例；等待新提交 CI 与 Reviewer 复审。PR 保持 Draft，仅引用 `Refs #41`，不自动合并、不关闭 Issue。 |
+| **B9 回归与交付** | **PASS** | Phase B1 Draft PR #46 的最新代码提交 `a04e4c5d04ca0b617dd33880ce951a17b616f2f0` 对应 GitHub CI run 123 的 `compose`、`python`、`web` 全部成功。AO Reviewer 首轮发现的 smoke URL userinfo 绕过已修复，复审 verdict 为 `approved`，未发现遗留修改项；因 approval policy=never，AO 无法向 GitHub 发布 review。PR 保持 Draft，不自动合并、不关闭 Issue。 |
 
 ## 实际命令与证据
 
 Python 使用锁定依赖环境：
 
 ```text
-server/.venv/bin/ruff check server/src server/tests
+server/.venv/bin/ruff check server/src server/tests scripts/issue41_phase_b1_smoke.py
 server/.venv/bin/pytest -q server/tests
 ```
 
@@ -49,7 +49,7 @@ pnpm build
 
 结果：lint exit 0（18 条仓库既有 warning、0 error；新增 Todo 组件无 lint warning）；Next.js production build 成功。
 
-隔离协议命令：`python scripts/issue41_phase_b1_smoke.py`。测试 Aegra 0.10.8 同时加载 `deep_diagnosis` 与 `deep_diagnosis_planning`，FakeModel 通过合成 Mock MCP 跑复杂调查和简单问候；验证工具 ID 配对、结构化 Todo SSE、中断恢复（Last-Event-ID 不重放）、新轮次清空、baseline 仅 Reader，以及取消状态 `interrupted`。Aegra 使用本地专属 Postgres/Redis 端口与卷，OTel 关闭；结束后精确清理了本次资源。
+隔离协议命令：`python scripts/issue41_phase_b1_smoke.py`。测试 Aegra 0.10.8 同时加载 `deep_diagnosis` 与 `deep_diagnosis_planning`，FakeModel 通过合成 Mock MCP 跑复杂调查和简单问候；验证工具 ID 配对、结构化 Todo SSE、中断恢复（Last-Event-ID 不重放）、新轮次清空、baseline 仅 Reader，以及取消状态 `interrupted`。新增 URL 校验测试拒绝 userinfo、非 loopback、非 HTTP、路径、查询和非法端口。Aegra 使用本地专属 Postgres/Redis 端口与卷，OTel 关闭；结束后精确清理了本次资源。
 
 早期 Phase A A08=**FAIL** 与 Phase 3B B06=**FAIL** 原样保留。本报告不覆盖、不重评分历史结论。
 
