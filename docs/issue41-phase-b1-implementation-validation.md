@@ -27,7 +27,7 @@
 | **B6 UI / Trace** | **PASS（本机范围）** | Aegra 0.10.8 的 Planning Graph SSE `values`、Todo Checkpoint/新轮清空、Last-Event-ID 续流与取消已测；React 只在 Planning Graph 校验后显示合法 Todo；Web lint/build 通过。真实浏览器手工验收和 Langfuse Cloud 可见性 NOT RUN。 |
 | **B7 离线 A/B** | **PASS（协议/开销计数）** | 无 Provider FakeModel + 同源合成 Reader 回执，覆盖 CrashLoop、ImagePull、OOM、Healthy 与两项复杂合成案的 OFF/ON 配对。所有场景 Reader 次数相同；简单案 OFF/ON 模型决策均为 2、Todo 为 0；复杂案 OFF 为 2 次决策/0 Todo，ON 为 4 次决策/2 Todo。固定 Fake 回答不是质量评分，也不能推断真实 Token、时延或诊断准确率。 |
 | **B8 Real LLM + Mock MCP** | **NOT RUN** | 未获授权，且本次明确禁止真实付费 Provider/外传。Token Usage 与真实模型质量收益 UNKNOWN。 |
-| **B9 回归与交付** | **PASS** | Phase B1 Draft PR #46 的最新代码提交 `a04e4c5d04ca0b617dd33880ce951a17b616f2f0` 对应 GitHub CI run 123 的 `compose`、`python`、`web` 全部成功。AO Reviewer 首轮发现的 smoke URL userinfo 绕过已修复，复审 verdict 为 `approved`，未发现遗留修改项；因 approval policy=never，AO 无法向 GitHub 发布 review。PR 保持 Draft，不自动合并、不关闭 Issue。 |
+| **B9 回归与交付** | **PASS** | 实现代码提交 `a04e4c5d04ca0b617dd33880ce951a17b616f2f0` 对应 GitHub CI run 123 的 `compose`、`python`、`web` 全部成功；Phase B1 的 60–90 秒讲述与递进追问见本报告下节。AO Reviewer 对最新面试交付与安全修复 verdict 为 `approved`，未发现遗留修改项；因 approval policy=never，AO 无法向 GitHub 发布 review。PR 保持 Draft，不自动合并、不关闭 Issue。 |
 
 ## 实际命令与证据
 
