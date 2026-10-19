@@ -1,5 +1,6 @@
 """Issue #41 B1-R Prep: frozen manifest and offline-only FakeModel execution."""
 
+import asyncio
 import json
 import runpy
 import socket
@@ -54,6 +55,23 @@ def test_offline_dry_run_exercises_all_pairs_without_network(monkeypatch, capsys
     assert all("fixture_data_isolation" not in item["safety_findings"]
                and "uid_conflict_not_fenced" not in item["safety_findings"]
                for item in report["results"] if item["case_id"].startswith("R05"))
+
+
+def test_reader_mock_is_restored_when_graph_execution_raises(monkeypatch):
+    from kube_triage import deep_diagnosis
+
+    runner = runpy.run_path(str(_SCRIPT))
+    manifest, cases = runner["_load_frozen"]()
+    slot = next(item for item in manifest["runs"] if item["arm"] == "A")
+    original_reader = deep_diagnosis.call_tool
+
+    def fail_build(_model):
+        raise RuntimeError("synthetic graph build failure")
+
+    monkeypatch.setattr(deep_diagnosis, "build_graph", fail_build)
+    with pytest.raises(RuntimeError, match="synthetic graph build failure"):
+        asyncio.run(runner["_execute"](slot, cases[slot["case_id"]]))
+    assert deep_diagnosis.call_tool is original_reader
 
 
 def test_tampered_frozen_input_fails_closed(tmp_path, monkeypatch):
