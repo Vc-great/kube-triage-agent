@@ -333,6 +333,12 @@ def probe(scenario):
             observations["termination"] = type(exc).__name__
             assert scenario in {"exception", "cancel", "exception_before", "cancel_before"}
             state = (await graph.aget_state(config)).values
+        expected_termination = {
+            "exception": "RuntimeError", "exception_before": "RuntimeError",
+            "cancel": "CancelledError", "cancel_before": "CancelledError",
+        }
+        if scenario in expected_termination:
+            assert observations.get("termination") == expected_termination[scenario]
         assert model.seen_tools == sorted({
             "pods_list_in_namespace", "pods_get", "events_list", "pods_log", "write_todos",
             "read_file", "write_file",

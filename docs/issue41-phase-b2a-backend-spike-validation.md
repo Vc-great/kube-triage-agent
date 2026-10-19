@@ -66,7 +66,7 @@ uv run --frozen --offline ruff check src tests
 uv run --frozen --offline pytest -q
 ```
 
-本地完整验证：`uv run --frozen --offline ruff check src tests` **PASS**；`uv run --frozen --offline pytest -q` **477 passed in 53.51s**，包含本次 19 项 Backend Spike 和 4 项 #50 对照。`git diff --check` / staged diff 检查 PASS。远端 CI 与独立审阅见本 PR 描述和对应 Head 的 checks/review；没有结果前不能记 PASS。
+本地完整验证：`uv run --frozen --offline ruff check src tests` **PASS**；`uv run --frozen --offline pytest -q` **477 passed in 53.51s**，包含本次 19 项 Backend Spike 和 4 项 #50 对照。`git diff --check` / staged diff 检查 PASS。独立审阅首轮指出异常场景未强制要求 RuntimeError 传播；已对异常/取消四场景按预期类型强制断言 termination，专项复验 **4 passed in 7.21s**，Ruff PASS。远端 CI 与最终独立审阅见本 PR 描述和对应 Head 的 checks/review；没有结果前不能记 PASS。
 
 - Issue B3/B5：**BLOCKED**；B9 是兼容性证据交付，不是功能完成。
 - Aegra HTTP/SSE、Postgres 重启、TimeTravel/旧生产 Thread、多进程 Worker 并发：**NOT RUN**，没有启动 B2 服务或访问现存服务；内存重建不能冒充服务重启验收。
