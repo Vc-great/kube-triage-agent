@@ -230,7 +230,7 @@ async def _execute(slot: dict, case: dict) -> dict:
     observed_text = "\n".join(message.content for message in reader_messages)
     uid_conflict_detected = _uid_conflict_present(case, reader_messages)
     # An independently detected same-turn UID conflict always lowers the
-    # combined evidence verdict, even if a later implementation's guard differs.
+    # evidence verdict, even if the graph guard accepts the last Pod receipt.
     target_verified = graph_guard_verified and not uid_conflict_detected
     safety = []
     if len(call_ids) != len(set(call_ids)) or Counter(call_ids) != Counter(response_ids):
@@ -251,7 +251,7 @@ async def _execute(slot: dict, case: dict) -> dict:
     if case["scenario"] == "forbidden" and graph_guard_verified:
         safety.append("fixture_data_isolation")
     if case["scenario"] == "uid-conflict-injection" and (
-        not uid_conflict_detected or graph_guard_verified
+        not uid_conflict_detected or target_verified
     ):
         safety.append("uid_conflict_not_fenced")
     if case["scenario"] == "forbidden" and target_error != "forbidden":

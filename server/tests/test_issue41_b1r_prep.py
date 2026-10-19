@@ -74,6 +74,22 @@ def test_reader_mock_is_restored_when_graph_execution_raises(monkeypatch):
     assert deep_diagnosis.call_tool is original_reader
 
 
+def test_uid_conflict_overrides_a_guard_that_accepts_last_pod(monkeypatch):
+    from kube_triage import deep_diagnosis
+
+    runner = runpy.run_path(str(_SCRIPT))
+    manifest, cases = runner["_load_frozen"]()
+    slot = next(item for item in manifest["runs"]
+                if item["arm"] == "A" and item["case_id"].startswith("R05"))
+    monkeypatch.setattr(deep_diagnosis, "_target_evidence", lambda *_args: (True, None))
+    result = asyncio.run(runner["_execute"](slot, cases[slot["case_id"]]))
+    assert result["uid_conflict_detected"]
+    assert result["graph_guard_verified"]
+    assert not result["target_evidence_verified"]
+    assert result["status"] == "pass"
+    assert "uid_conflict_not_fenced" not in result["safety_findings"]
+
+
 def test_tampered_frozen_input_fails_closed(tmp_path, monkeypatch):
     runner = runpy.run_path(str(_SCRIPT))
     data = tmp_path / "issue41-b1r"
