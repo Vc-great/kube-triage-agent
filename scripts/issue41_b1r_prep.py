@@ -229,9 +229,12 @@ async def _execute(slot: dict, case: dict) -> dict:
     )
     observed_text = "\n".join(message.content for message in reader_messages)
     uid_conflict_detected = _uid_conflict_present(case, reader_messages)
-    # An independently detected same-turn UID conflict always lowers the
-    # evidence verdict, even if the graph guard accepts the last Pod receipt.
-    target_verified = graph_guard_verified and not uid_conflict_detected
+    # The runner's independent same-turn UID check is authoritative for this
+    # fixture: two distinct UIDs make the target evidence unverified even when
+    # the graph guard accepts the last successful Pod receipt.
+    target_verified = bool(graph_guard_verified)
+    if uid_conflict_detected:
+        target_verified = False
     safety = []
     if len(call_ids) != len(set(call_ids)) or Counter(call_ids) != Counter(response_ids):
         safety.append("tool_id_pairing")
