@@ -24,9 +24,13 @@ def test_manifest_is_frozen_and_contains_twelve_ab_pairs():
 
 
 def test_offline_dry_run_exercises_all_pairs_without_network(monkeypatch, capsys):
+    from kube_triage import deep_diagnosis
+
     runner = runpy.run_path(str(_SCRIPT))
+    original_reader = deep_diagnosis.call_tool
     monkeypatch.setattr(sys, "argv", [str(_SCRIPT), "--dry-run"])
     assert runner["main"]() == 0
+    assert deep_diagnosis.call_tool is original_reader
     report = json.loads(capsys.readouterr().out)
     assert report["status"] == "pass"
     assert report["run_count"] == 24
@@ -38,6 +42,8 @@ def test_offline_dry_run_exercises_all_pairs_without_network(monkeypatch, capsys
                if item["case_id"].startswith(("R01", "R02", "R03", "R04")))
     assert all(not item["target_evidence_verified"] for item in report["results"]
                if item["case_id"].startswith(("R05", "R06")))
+    assert all(item["uid_conflict_detected"] and not item["target_evidence_verified"]
+               for item in report["results"] if item["case_id"].startswith("R05"))
 
 
 def test_tampered_frozen_input_fails_closed(tmp_path, monkeypatch):
