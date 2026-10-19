@@ -102,8 +102,9 @@ def test_uid_conflict_overrides_a_guard_that_accepts_last_pod(monkeypatch):
     assert result["uid_conflict_detected"]
     assert result["graph_guard_verified"]
     assert not result["target_evidence_verified"]
+    assert result["target_evidence_reason"] == "uid_conflict"
     assert result["status"] == "pass"
-    assert "uid_conflict_not_fenced" not in result["safety_findings"]
+    assert result["safety_findings"] == []
 
 
 def test_tampered_frozen_input_fails_closed(tmp_path, monkeypatch):
