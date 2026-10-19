@@ -49,6 +49,8 @@ def test_offline_dry_run_exercises_all_pairs_without_network(monkeypatch, capsys
                if item["case_id"].startswith(("R05", "R06")))
     assert all(item["uid_conflict_detected"] and not item["target_evidence_verified"]
                for item in report["results"] if item["case_id"].startswith("R05"))
+    assert all(not item["graph_guard_verified"] for item in report["results"]
+               if item["case_id"].startswith("R05"))
 
 
 def test_tampered_frozen_input_fails_closed(tmp_path, monkeypatch):
