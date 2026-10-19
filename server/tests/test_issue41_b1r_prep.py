@@ -57,6 +57,22 @@ def test_offline_dry_run_exercises_all_pairs_without_network(monkeypatch, capsys
                for item in report["results"] if item["case_id"].startswith("R05"))
 
 
+def test_socket_guards_are_restored_when_dry_run_fails(monkeypatch, capsys):
+    runner = runpy.run_path(str(_SCRIPT))
+    original_sockets = (socket.socket.connect, socket.socket.connect_ex,
+                        socket.create_connection)
+
+    async def fail_run():
+        raise RuntimeError("synthetic dry-run failure")
+
+    monkeypatch.setitem(runner["_run"].__globals__, "_run", fail_run)
+    monkeypatch.setattr(sys, "argv", [str(_SCRIPT), "--dry-run"])
+    assert runner["main"]() == 1
+    assert (socket.socket.connect, socket.socket.connect_ex,
+            socket.create_connection) == original_sockets
+    assert json.loads(capsys.readouterr().out)["status"] == "fail"
+
+
 def test_reader_mock_is_restored_when_graph_execution_raises(monkeypatch):
     from kube_triage import deep_diagnosis
 
