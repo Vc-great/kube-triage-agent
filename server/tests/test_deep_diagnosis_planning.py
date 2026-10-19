@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import runpy
 import socket
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +15,31 @@ from langgraph.checkpoint.memory import MemorySaver
 from pydantic import Field
 
 from kube_triage import deep_diagnosis_planning as planning
+
+_smoke_helpers = runpy.run_path(
+    str(Path(__file__).resolve().parents[2] / "scripts" / "issue41_phase_b1_smoke.py")
+)
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:22441",
+    "http://127.0.0.1:1/",
+])
+def test_isolated_smoke_url_accepts_loopback_only(url):
+    assert _smoke_helpers["is_isolated_api_url"](url)
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:@attacker.example:22441",
+    "http://user:pass@127.0.0.1:22441",
+    "https://127.0.0.1:22441",
+    "http://localhost:22441",
+    "http://127.0.0.1:22441/path",
+    "http://127.0.0.1:22441/?target=attacker",
+    "http://127.0.0.1:not-a-port",
+])
+def test_isolated_smoke_url_rejects_unsafe_urls(url):
+    assert not _smoke_helpers["is_isolated_api_url"](url)
 
 
 @pytest.fixture(autouse=True)

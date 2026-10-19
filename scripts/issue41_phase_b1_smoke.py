@@ -2,14 +2,34 @@
 
 import json
 import os
+from urllib.parse import urlsplit
 
 import httpx
+
+
+def is_isolated_api_url(value: str) -> bool:
+    """Accept only a plain HTTP URL to the IPv4 loopback API."""
+    try:
+        parsed = urlsplit(value)
+        return (
+            parsed.scheme == "http"
+            and parsed.hostname == "127.0.0.1"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port is not None
+            and 1 <= parsed.port <= 65535
+            and parsed.path in ("", "/")
+            and not parsed.query
+            and not parsed.fragment
+        )
+    except ValueError:
+        return False
 
 
 def run():
     base = os.environ.get("ISSUE41_API_URL", "http://127.0.0.1:22441")
     token = os.environ.get("ISSUE41_TEST_TOKEN", "")
-    if not token or not base.startswith("http://127.0.0.1:"):
+    if not token or not is_isolated_api_url(base):
         raise SystemExit("仅允许本机隔离 API 与显式合成测试 Token")
     client = httpx.Client(base_url=base, headers={"x-api-key": token}, timeout=30)
     assistants = client.get("/assistants")

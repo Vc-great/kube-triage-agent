@@ -27,7 +27,7 @@
 | **B6 UI / Trace** | **PASS（本机范围）** | Aegra 0.10.8 的 Planning Graph SSE `values`、Todo Checkpoint/新轮清空、Last-Event-ID 续流与取消已测；React 只在 Planning Graph 校验后显示合法 Todo；Web lint/build 通过。真实浏览器手工验收和 Langfuse Cloud 可见性 NOT RUN。 |
 | **B7 离线 A/B** | **PASS（协议/开销计数）** | 无 Provider FakeModel + 同源合成 Reader 回执，覆盖 CrashLoop、ImagePull、OOM、Healthy 与两项复杂合成案的 OFF/ON 配对。所有场景 Reader 次数相同；简单案 OFF/ON 模型决策均为 2、Todo 为 0；复杂案 OFF 为 2 次决策/0 Todo，ON 为 4 次决策/2 Todo。固定 Fake 回答不是质量评分，也不能推断真实 Token、时延或诊断准确率。 |
 | **B8 Real LLM + Mock MCP** | **NOT RUN** | 未获授权，且本次明确禁止真实付费 Provider/外传。Token Usage 与真实模型质量收益 UNKNOWN。 |
-| **B9 回归与交付** | **IN PROGRESS** | Python/Web 本地 Gate 已完成；Draft PR、CI 和独立 Reviewer 结果待记录。PR 将只引用 `Refs #41`，不自动合并、不关闭 Issue。 |
+| **B9 回归与交付** | **IN PROGRESS** | Python/Web 本地 Gate 与 GitHub CI 已通过。AO Reviewer 首轮发现 smoke URL userinfo 绕过问题，已加严格 loopback URL 校验和回归用例；等待新提交 CI 与 Reviewer 复审。PR 保持 Draft，仅引用 `Refs #41`，不自动合并、不关闭 Issue。 |
 
 ## 实际命令与证据
 
@@ -38,7 +38,7 @@ server/.venv/bin/ruff check server/src server/tests
 server/.venv/bin/pytest -q server/tests
 ```
 
-结果：Ruff `All checks passed!`；pytest `438 passed`。
+结果：Ruff `All checks passed!`；pytest `447 passed`（加入 9 个 smoke URL 校验用例后）。
 
 Web 使用 `pnpm install --frozen-lockfile --offline --ignore-scripts` 从本机 store 复用 647 个锁定包，下载 0 个包；随后：
 
