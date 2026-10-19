@@ -53,6 +53,20 @@ pnpm build
 
 早期 Phase A A08=**FAIL** 与 Phase 3B B06=**FAIL** 原样保留。本报告不覆盖、不重评分历史结论。
 
+## 面试讲述与递进追问（Phase B1）
+
+### 60–90 秒讲述
+
+这次我没有把现有诊断 Agent 整体迁移到 Deep Agents，而是在保留正式 LangGraph 路径和 Phase A 基线的前提下，单独增加默认隔离的 Planning Graph。原因是我们要验证 Harness 的 Todo Middleware 是否能帮助复杂 Kubernetes 调查，同时不能扩大原有只读权限。实现显式启用锁定版本的 `TodoListMiddleware`，把四个受控 Kubernetes Reader 与本地 `write_todos` 分开：模型可见列表和执行层都做白名单校验，Reader 仍沿用 Namespace、参数、Tool ID、时限、调用预算和目标 Pod UID 证据守卫；Todo 与模型决策有独立限额。Aegra SSE 将结构化 Todo 状态交给 React 展示，简单问候不强制建计划，失败不会把未完成任务伪报成功。FakeModel、合成 Mock MCP 和隔离 Aegra 验证了工具配对、Checkpoint、新轮清空、重连和取消；OFF/ON 对照显示复杂合成场景多两次模型决策，但不能由此推断真实质量或 Token 收益。B2 文件系统和 Context Offloading 没有实施；旧证据与 Checkpoint 保持原样。这样先得到可回退的 B1 证据，再决定是否值得申请后续阶段。
+
+### 递进追问与回答要点
+
+1. **为什么选择 Deep Agents Harness，而不是继续纯 LangGraph？** 这是有边界的实验，不是迁移结论：用实际 `TodoListMiddleware` 验证 Harness 对复杂任务计划状态的价值，Aegra 与现有正式 Graph 仍保留。SDK 工具表和执行层白名单共同限制能力；Aegra profile 的排除项合并曾导致 `write_todos` 不可用，集成 smoke 暴露后通过消除基线冗余排除项解决，同时基线仍只暴露 Reader。证据：本报告 B1/B6、Aegra 隔离协议记录。
+2. **Planning 值得额外 Token 成本吗？** 目前不能下真实成本或质量结论。合成复杂案 ON 多两次 Fake 模型决策与两次本地 Todo 调用，简单案没有额外规划；Fake 不产生真实 Token Usage，也不是准确率评测。需获授权后，用配对数据、真实 Usage 和人工 Rubric 再判断。
+3. **怎样确保 Todo 不会变成 Kubernetes 权限或可信证据？** Todo 是 Harness 状态，不是 MCP 结果。Reader 仍经原 Namespace/参数/Tool ID/预算校验，并绑定目标 Pod UID；未配对工具调用、伪造状态、跨 Namespace、恶意日志和同名不同 UID 都有合成测试。Todo 和 Reader 各自有独立白名单、限额。
+4. **B1 的 StateBackend、Context Offloading 怎么处理原始 ToolMessage？** 本阶段没有新增虚拟文件或 Offloading；这属于未批准的 B2/B3。当前 Reader 原始 ToolMessage、Tool Call ID 和旧 Checkpoint 保留，Todo 状态仅用于计划展示，不能替代原始证据。后续若研究 Offloading，必须证明配对关系、来源和证据时效可回查，不能把摘要/计划提升为新证据。
+5. **怎样回退并保留现有实现？** 不加载 `server/aegra.phase-b1.json` 或移除其中的 Planning Graph 入口；正式 `agent` 和 Phase A `deep_diagnosis` 保持可用。没有迁移旧 Thread/Checkpoint，也没有改变 Repair/HITL/Memory。
+
 ## 成本、缺口与回退
 
 - Mock 配对只测协议与调用数：复杂 Planning ON 比 OFF 多 2 次模型决策和 2 次本地 Todo 调用；简单场景没有 Planning 额外调用。Provider Usage 缺失，真实 Token/费用、延迟和质量收益均 UNKNOWN / NOT RUN。
