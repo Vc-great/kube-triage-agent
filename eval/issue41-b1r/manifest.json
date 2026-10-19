@@ -1,0 +1,276 @@
+{
+  "dataset_version": "issue41-b1r-synthetic-v1",
+  "seed": 4101,
+  "randomizer": "Python random.Random; shuffled arm order within each pair, then pair order",
+  "sha256": {
+    "cases.json": "b112ab33f3726742c9e36a9a5048053dc876c08b1bcc3e2725eef81a38e8336c",
+    "rubric.json": "214aec1158bb1d6c9480f97d6770fa6a2fcb2c267fc8fedb8cddfcd305fa4051",
+    "human-review-template.csv": "69c0611b6776e7b870c577d7f0a2efc83c198531edfd0884a90954ae708bcf0b"
+  },
+  "runs": [
+    {
+      "case_id": "R03-oom",
+      "replicate": 1,
+      "pair_id": "R03-oom-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R03-oom-rep1-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R03-oom",
+      "replicate": 1,
+      "pair_id": "R03-oom-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R03-oom-rep1-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R05-uid-injection",
+      "replicate": 2,
+      "pair_id": "R05-uid-injection-rep2",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R05-uid-injection-rep2-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R05-uid-injection",
+      "replicate": 2,
+      "pair_id": "R05-uid-injection-rep2",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R05-uid-injection-rep2-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R02-imagepull",
+      "replicate": 2,
+      "pair_id": "R02-imagepull-rep2",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R02-imagepull-rep2-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R02-imagepull",
+      "replicate": 2,
+      "pair_id": "R02-imagepull-rep2",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R02-imagepull-rep2-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R01-crashloop",
+      "replicate": 2,
+      "pair_id": "R01-crashloop-rep2",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R01-crashloop-rep2-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R01-crashloop",
+      "replicate": 2,
+      "pair_id": "R01-crashloop-rep2",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R01-crashloop-rep2-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R06-reader-denied",
+      "replicate": 2,
+      "pair_id": "R06-reader-denied-rep2",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R06-reader-denied-rep2-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R06-reader-denied",
+      "replicate": 2,
+      "pair_id": "R06-reader-denied-rep2",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R06-reader-denied-rep2-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R03-oom",
+      "replicate": 2,
+      "pair_id": "R03-oom-rep2",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R03-oom-rep2-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R03-oom",
+      "replicate": 2,
+      "pair_id": "R03-oom-rep2",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R03-oom-rep2-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R04-healthy",
+      "replicate": 1,
+      "pair_id": "R04-healthy-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R04-healthy-rep1-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R04-healthy",
+      "replicate": 1,
+      "pair_id": "R04-healthy-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R04-healthy-rep1-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R02-imagepull",
+      "replicate": 1,
+      "pair_id": "R02-imagepull-rep1",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R02-imagepull-rep1-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R02-imagepull",
+      "replicate": 1,
+      "pair_id": "R02-imagepull-rep1",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R02-imagepull-rep1-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R05-uid-injection",
+      "replicate": 1,
+      "pair_id": "R05-uid-injection-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R05-uid-injection-rep1-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R05-uid-injection",
+      "replicate": 1,
+      "pair_id": "R05-uid-injection-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R05-uid-injection-rep1-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R04-healthy",
+      "replicate": 2,
+      "pair_id": "R04-healthy-rep2",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R04-healthy-rep2-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R04-healthy",
+      "replicate": 2,
+      "pair_id": "R04-healthy-rep2",
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "run_id": "R04-healthy-rep2-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R06-reader-denied",
+      "replicate": 1,
+      "pair_id": "R06-reader-denied-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R06-reader-denied-rep1-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R06-reader-denied",
+      "replicate": 1,
+      "pair_id": "R06-reader-denied-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R06-reader-denied-rep1-A",
+      "arm": "A"
+    },
+    {
+      "case_id": "R01-crashloop",
+      "replicate": 1,
+      "pair_id": "R01-crashloop-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R01-crashloop-rep1-B",
+      "arm": "B"
+    },
+    {
+      "case_id": "R01-crashloop",
+      "replicate": 1,
+      "pair_id": "R01-crashloop-rep1",
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "run_id": "R01-crashloop-rep1-A",
+      "arm": "A"
+    }
+  ]
+}
