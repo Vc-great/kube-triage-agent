@@ -27,7 +27,7 @@ from kube_triage.mcp_client import ALLOWED_TOOLS, NAMESPACE, POD_NAME, call_tool
 MAX_DECISIONS = 4
 MAX_READS = 6
 _HIDDEN = frozenset({
-    "task", "write_todos", "ls", "read_file", "write_file", "edit_file",
+    "task", "ls", "read_file", "write_file", "edit_file",
     "delete", "glob", "grep", "execute", "shell", "apply_patch",
 })
 

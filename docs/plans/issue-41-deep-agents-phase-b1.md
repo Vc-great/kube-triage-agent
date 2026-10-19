@@ -1,10 +1,10 @@
 # Issue #41 · Deep Agents Phase B1：Planning / Todo / Replanning 设计与执行计划
 
 > - GitHub Issue：https://github.com/Vc-great/kube-triage-agent/issues/41
-> - 状态：Proposed（仅规划；未实施 B1；待 Planning PR 人工审阅/合并）
-> - 规划 PR：创建后以本分支 PR 为准；尚未合并
-> - 规划基线：2026-10-19，`origin/main=e15e515e0d161fd9e2161bef1b8fac598715f74c`；实施前必须重新 fetch
-> - 当前批准阶段：仅编写与提交 B1 Planning PR；**B1 Implementation 尚未授权启动**
+> - 状态：Approved（Planning PR #45 已合并；此状态只表示设计获批，不代表代码验收完成）
+> - 规划 PR：[#45 已合并](https://github.com/Vc-great/kube-triage-agent/pull/45)，merge commit `27e2a6913c481fc344b0d17a057bb1f04a39a597`
+> - 规划基线：2026-10-19，`origin/main=e15e515e0d161fd9e2161bef1b8fac598715f74c`（历史设计基线，不是当前实现基线）
+> - 当前批准阶段：仅 Phase B1 Implementation；B2/B3 未批准
 > - 唯一权威验收要求：[Issue #41 的 Phase B 验收矩阵](https://github.com/Vc-great/kube-triage-agent/issues/41)；本文提供其中 **B1 Planning 子集**的技术实现与验证方法，不另立相互冲突的完成标准
 > - 范围：B1 单阶段；B2 Filesystem / Offloading、B3 Summarization 对照另行设计与审批
 
@@ -18,7 +18,7 @@
 - PR [#38](https://github.com/Vc-great/kube-triage-agent/pull/38)：独立、固定词表的 `agent_progress` SSE Timeline；PR [#29/#30](https://github.com/Vc-great/kube-triage-agent/pull/30)：原 Agent 上下文裁剪/摘要；PR [#44](https://github.com/Vc-great/kube-triage-agent/pull/44)：轻量 SDD 工作流及 `AGENTS.md`。
 - `server/aegra.json` 仍只加载正式 `agent`；`server/aegra.phase-a.json` 只加载实验 `deep_diagnosis`。`server/src/kube_triage/deep_diagnosis_entry.py` 要求显式 FakeModel 或实验 Provider 开关；默认拒绝真实 Provider。Web 默认 `assistantId=agent`，但现有配置界面可选择 Graph ID。
 
-尚未实现：
+规划基线时尚未实现（当前实施分支的代码与验收状态见[Phase B1 Implementation 验收记录](../issue41-phase-b1-implementation-validation.md)）：
 - `TodoListMiddleware`、`write_todos`、结构化 `todos` State、Replanning 及 Todo UI；没有真实 LLM 的 Planning Token/延迟收益证据。
 - 当前 `ReaderBoundary` 在模型请求端要求**恰好 4 个 Reader**，执行时拒绝所有非 Reader；计数使用本轮 `ToolMessage` 总数，不能直接加 `write_todos` 而不重构。
 - 原 Issue #41 立项文字中“尚无 deepagents 依赖/仅一个 Graph”的描述已经过时；以合并后的源码、锁文件和此处现状为准。Issue #28 仍有未完 Gate，不用 B1 实施替代它。
@@ -130,14 +130,14 @@ Aegra (独立实验配置 / 独立 Graph ID)
 
 ## 6. 执行计划、停止条件、回退
 
-### Planning PR（本次交付）
+### Planning PR（已完成，按 GitHub 事实更新）
 
 - [x] 核对 Issue #41、PR #42/#43、最新 `main`、`AGENTS.md`、`docs/agent-workflow.md`、现有 Deep Diagnosis、SDK 及 SSE/Web 路径。
 - [x] 编写本设计，基于官方 SDK 明确 Todo 工具/状态、边界、取舍、阶段和 Gate 的实施方法。
-- [ ] 纯 Markdown 提交独立 Planning PR，`Refs #41`，**不合并、不修改 Issue 验收权威、不实施业务代码**。
-- [ ] 用户人工审阅并合并到 `main`；随后才可启动 AO/Codex Worker。
+- [x] 纯 Markdown 独立 Planning PR #45，`Refs #41`；仅提交设计文档。
+- [x] PR #45 已合并至 `main`；其 Proposed/待合并文字为历史规划状态。
 
-### B1 Implementation（仅在上述 Planning PR 合并且获授权后）
+### B1 Implementation（规划 PR 合并并获批准后执行；该前置条件已由 PR #45 满足）
 
 1. AO 指派 Codex 从最新 `origin/main` 的独立 Worktree 读取 Issue、`AGENTS.md`、本文件与 PR #43 的真实代码/测试；确认锁定 SDK 实际 Middleware API。
 2. 先落地隔离 `deep_diagnosis_planning` + Todo State 与五工具权限分流，完成模型可见工具集合与执行前拒绝测试；**原 `deep_diagnosis` / `agent` 不变**。
@@ -154,12 +154,12 @@ Aegra (独立实验配置 / 独立 Graph ID)
 - **稳定环境 STOP**：禁止操作用户正常运行的 Compose、Pod、数据库卷。隔离环境需事前确认资源归属，用新端口/专有 Compose/独立数据库，只能精准清理本任务创建的资源。
 - **回退**：保持原正式配置与原 Phase A 实验 Graph，移除/不启用 B1 Graph 即回退；不删除/更改历史 Thread、Checkpoint、Golden。不能保证版本兼容时保持实验默认关闭。
 
-## 7. AO 交接（**只有本 Planning PR 合并后才有效**）
+## 7. AO 交接（**前置条件已满足：Planning PR #45 已合并**）
 
 - 仓库：`Vc-great/kube-triage-agent`
 - Issue：[`#41`](https://github.com/Vc-great/kube-triage-agent/issues/41)
 - 已批准设计路径（合并后）：`docs/plans/issue-41-deep-agents-phase-b1.md`
-- 本轮实施阶段：**Phase B1 Planning only**；不进入 B2/B3。
+- 本轮实施阶段：**Phase B1 Implementation only**；不进入 B2/B3。
 - 先读：`AGENTS.md`、本计划、`server/src/kube_triage/deep_diagnosis.py`、`docs/issue41-deepagents-phase-a-validation.md`。
 - 严禁：真实 Kubernetes 写入、扩大 Reader、真实模型付费调用、外传真实数据、修改稳定资源、自动合并或关闭 #41。
 - 交付：B1 独立 Implementation PR、逐项 Gate 证据、真实 Head SHA/CI、功能/风险对照、必要 Reviewer 修复与 STOP/GO 建议。
@@ -173,3 +173,4 @@ Aegra (独立实验配置 / 独立 Graph ID)
 - TodoListMiddleware Reference：https://reference.langchain.com/python/langchain/agents/middleware/todo/TodoListMiddleware
 - 项目工作流：`AGENTS.md`、`docs/agent-workflow.md`、`docs/plans/README.md`
 - 2026-10-19：依据 `main=e15e515` 与用户确认的 B1 方向起草规划；尚无 B1 实现或实际验证，Planning PR 状态以 GitHub 为准。
+- 2026-10-19：PR #45 合并至 `main=27e2a6913c481fc344b0d17a057bb1f04a39a597`；用户批准仅实施 B1。Implementation 实际基线与 Gate 证据见本 PR 的验收记录；B2/B3 未批准。

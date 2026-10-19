@@ -31,7 +31,8 @@ import { appendProgress, isAgentProgressEvent, type AgentProgressEvent } from "@
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 
-export type StateType = { messages: Message[]; ui?: UIMessage[] };
+export type PlanningTodo = { content: string; status: "pending" | "in_progress" | "completed" };
+export type StateType = { messages: Message[]; ui?: UIMessage[]; todos?: PlanningTodo[] };
 
 const useTypedStream = useStream<
   StateType,
@@ -40,6 +41,7 @@ const useTypedStream = useStream<
       messages?: Message[] | Message | string;
       ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
       context?: Record<string, unknown>;
+      todos?: PlanningTodo[];
     };
     CustomEventType: UIMessage | RemoveUIMessage | AgentProgressEvent;
   }

@@ -239,11 +239,12 @@ def test_cross_namespace_never_reaches_mcp(monkeypatch):
     assert next(m for m in result["messages"] if isinstance(m, ToolMessage)).status == "error"
 
 
-def test_unknown_harness_tool_is_not_executable():
+@pytest.mark.parametrize("name", ["write_file", "write_todos"])
+def test_unknown_harness_tool_is_not_executable(name):
     boundary = deep.ReaderBoundary()
     from types import SimpleNamespace
 
-    request = SimpleNamespace(tool_call={"name": "write_file", "id": "blocked", "args": {}},
+    request = SimpleNamespace(tool_call={"name": name, "id": "blocked", "args": {}},
                               state={"messages": [HumanMessage(content="合成诊断")]})
     async def forbidden(_request):
         raise AssertionError("Harness 工具不得执行")
