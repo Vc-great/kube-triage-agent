@@ -40,6 +40,7 @@ import {
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { AgentExecutionTimeline } from "./agent-execution-timeline";
+import { PlanningTodos } from "./planning-todos";
 import {
   useArtifactOpen,
   ArtifactContent,
@@ -457,6 +458,7 @@ export function Thread() {
                     />
                   )}
                   <AgentExecutionTimeline events={stream.progressEvents} running={isLoading} />
+                  <PlanningTodos />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}
