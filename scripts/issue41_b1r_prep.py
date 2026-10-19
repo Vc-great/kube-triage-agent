@@ -203,6 +203,8 @@ async def _execute(slot: dict, case: dict) -> dict:
     namespaces = [call.get("args", {}).get("namespace") for call in tool_calls
                   if call.get("name") in READERS]
     final = str(messages[-1].content)
+    # The shipped guard compares earlier successful Pods with the latest UID;
+    # R05 must therefore remain unverified despite two individually valid reads.
     target_verified, target_error = deep_diagnosis._target_evidence(
         messages, case["target_pod"]
     )
@@ -294,14 +296,21 @@ def main() -> int:
     def deny(*_args, **_kwargs):
         raise AssertionError("B1-R Prep dry-run forbids network sockets")
 
-    socket.socket.connect = deny
-    socket.socket.connect_ex = deny
-    socket.create_connection = deny
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+    original_create_connection = socket.create_connection
     try:
+        socket.socket.connect = deny
+        socket.socket.connect_ex = deny
+        socket.create_connection = deny
         results = asyncio.run(_run())
     except (AssertionError, ImportError, RuntimeError, TypeError, ValueError) as exc:
         print(json.dumps({"status": "fail", "error_type": type(exc).__name__}, indent=2))
         return 1
+    finally:
+        socket.socket.connect = original_connect
+        socket.socket.connect_ex = original_connect_ex
+        socket.create_connection = original_create_connection
     report = {
         "dataset_version": "issue41-b1r-synthetic-v1",
         "fixture_sha256": _sha(DATA / "cases.json"),

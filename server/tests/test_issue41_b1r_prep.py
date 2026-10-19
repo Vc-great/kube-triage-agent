@@ -2,6 +2,7 @@
 
 import json
 import runpy
+import socket
 import sys
 from pathlib import Path
 
@@ -28,9 +29,13 @@ def test_offline_dry_run_exercises_all_pairs_without_network(monkeypatch, capsys
 
     runner = runpy.run_path(str(_SCRIPT))
     original_reader = deep_diagnosis.call_tool
+    original_sockets = (socket.socket.connect, socket.socket.connect_ex,
+                        socket.create_connection)
     monkeypatch.setattr(sys, "argv", [str(_SCRIPT), "--dry-run"])
     assert runner["main"]() == 0
     assert deep_diagnosis.call_tool is original_reader
+    assert (socket.socket.connect, socket.socket.connect_ex,
+            socket.create_connection) == original_sockets
     report = json.loads(capsys.readouterr().out)
     assert report["status"] == "pass"
     assert report["run_count"] == 24
