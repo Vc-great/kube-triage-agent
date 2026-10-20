@@ -288,7 +288,7 @@ def synthetic_http(replies):
     return httpx.MockTransport(handler)
 
 
-def make_model(client, budget, case):
+def make_model(client, budget, case, *, model_options=None):
     from langchain_openai import ChatOpenAI
 
     class AuditedModel(ChatOpenAI):
@@ -304,9 +304,10 @@ def make_model(client, budget, case):
                 budget.reason = budget.reason or "model_error"
                 raise
 
-    return AuditedModel(model="b1r-offline-model", api_key="synthetic-not-a-key",
-        base_url="https://b1r.invalid/v1", http_async_client=client,
-        max_retries=1, timeout=1, max_completion_tokens=budget.OUTPUT,
+    options = {"model": "b1r-offline-model", "base_url": "https://b1r.invalid/v1",
+               "max_retries": 1} if model_options is None else model_options
+    return AuditedModel(**options, api_key="synthetic-not-a-key", http_async_client=client,
+        timeout=1, max_completion_tokens=budget.OUTPUT,
         use_responses_api=False, streaming=False, disable_streaming=True,
         callbacks=[], cache=False)
 
@@ -361,7 +362,7 @@ def score(messages, case, arm, raw_answers):
                             for m in reader_messages]}
 
 
-async def execute(slot, case, budget, run_limits, transport=None):
+async def execute(slot, case, budget, run_limits, transport=None, *, adapter=None):
     import httpx
     from langchain_core.callbacks import AsyncCallbackHandler
     from langchain_core.messages import HumanMessage, ToolMessage
@@ -439,9 +440,11 @@ async def execute(slot, case, budget, run_limits, transport=None):
         if transport is None:
             transport = synthetic_http(prep._scripted_model(case, slot["run_id"],
                                                            slot["arm"]).replies)
-        async with httpx.AsyncClient(transport=guarded_transport(transport, budget),
+        guard = guarded_transport if adapter is None else adapter.guarded_transport
+        async with httpx.AsyncClient(transport=guard(transport, budget),
                                     trust_env=False, follow_redirects=False) as client:
-            model = make_model(client, budget, case)
+            model = (make_model(client, budget, case) if adapter is None
+                     else adapter.make_model(client, budget, case))
             deep_diagnosis.call_tool = reader
             builder = (deep_diagnosis.build_graph if slot["arm"] == "A"
                        else deep_diagnosis_planning.build_graph)
@@ -490,6 +493,8 @@ async def execute(slot, case, budget, run_limits, transport=None):
         provider_request_attempts=0, reserved_tokens=budget.run_tokens,
         reserved_synthetic_cost=str(budget.run_cost), currency="SYNTHETIC",
         elapsed_ms=round((time.monotonic() - started) * 1000))
+    if adapter is not None:
+        adapter.annotate(row)
     return row
 
 
