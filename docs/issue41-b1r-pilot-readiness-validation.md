@@ -30,7 +30,7 @@ uv run --frozen --offline pytest -q
 uv run --frozen --offline python ../scripts/check_issue11_manifests.py
 ```
 
-Ruff 与 manifests 静态检查 PASS。最终全量 pytest：**528 passed in 56.17s**；新增 Runner 的定向测试：**51 passed**。覆盖 429/500/连接错误/timeout、0/1 次请求上限、两层 Token/费用预约、4/10 模型决策、并发预约、单 Run 截止、无 Usage/错误回显、重定向/stream/多 generation/未知端点、危险工具/跨 Namespace/参数、原始不安全回答、Reader 403、UID 冲突、Todo 假完成、输出权限/路径和网络/环境恢复。
+Ruff 与 manifests 静态检查 PASS。最终全量 pytest：**534 passed in 58.05s**；新增 Runner 的定向测试：**57 passed**。覆盖 429/500/连接错误/timeout、0/1 次请求上限、两层 Token/费用预约、4/10 模型决策、并发预约、单 Run 截止、无 Usage/错误回显、重定向/stream/多 generation/未知端点、危险工具/跨 Namespace/参数、原始不安全回答、Reader 403、UID 冲突、Todo 假完成、输出权限/路径和网络/环境恢复。
 
 在仓库根目录执行（输出路径为每次全新私有临时目录，不提交原始结果）：
 
@@ -50,10 +50,16 @@ server/.venv/bin/python scripts/issue41_b1r_pilot.py --offline-readiness --outpu
 | Token/费用 | PASS（合成契约） | 发送前预约与 Usage 校验、未知保留 null；真实价格/Usage UNKNOWN，不批准实际 Provider 执行 |
 | 工具/Mock/安全 | PASS（规则/协议） | 原生校验复用、原始模型输出与最终证据检查、UID/注入/403/工具 ID、Todo 不充当证据；不外推真实语义安全 |
 | 网络/输出隔离 | PASS（专用离线 CLI） | Transport 拒绝真实网络、socket/DNS/UDP 防线、环境清空、0700/0600/拒绝 symlink 与覆盖测试 |
-| Ruff/pytest/适用 CI | 本地 PASS / 远程待核对 | Ruff、528 tests、manifests 静态检查与 git diff --check 通过；远程 CI 在 PR 提交后核对，不预标 PASS |
-| 独立 Review | NOT RUN | PR 提交后请求 AO 原生 Reviewer，以最终 verdict 更新 |
+| Ruff/pytest/适用 CI | 本地 PASS；远程见 PR | Ruff、534 tests、manifests 静态检查与 git diff --check 通过；首次 head 的 Python/Web/Compose 均 PASS，新 head 以 [PR #55](https://github.com/Vc-great/kube-triage-agent/pull/55) 最终 CI 记录为准 |
+| 独立 Review | 最终 verdict 见 PR | 首轮两项问题已修复并补六项回归；[PR #55](https://github.com/Vc-great/kube-triage-agent/pull/55) 记录最新 head 独立 verdict，不以旧 head 结果冒充最终批准 |
 | 人工盲审/模型质量 | NOT RUN / UNKNOWN | 仅提供模板与合成协议演练，不自动生成真人评分 |
 | Issue B8 / Pilot / Formal | NOT RUN | 本阶段禁止真实 Provider，未执行实际 Pilot/Formal |
 | B2-A / B2-B / B3 | 暂停 / NOT RUN | B2 Issue B3/B5 的既有 BLOCKED 不解除；无 B3 实施 |
 
 真实 Provider 执行入口保持 **BLOCKED_PENDING_AUTHORIZATION_AND_PROVIDER_CONTRACT**。未来需另批 Provider/端点/TLS/出站、HTTP 尝试数、单 Run/总 Token/真实费用/价格、数据白名单及测试窗口，并验证该 Provider 的 tokenizer、Usage 与失败计费上界；此 PR 的离线 PASS 不能自动解锁。旧 Phase A A08=FAIL、Phase 3B B06=FAIL 保留。回退只需不用新脚本，无正式路径/部署/Checkpoint 迁移。PR 保持 Draft，不自动合并，不关闭 #41。
+
+## 独立审查修复
+
+首轮 Reviewer 指出：带 tool_calls 的正文绕过安全检查，以及 Graph 异常停止时丢失已取得的 Reader 轨迹。修复后，所有非空原始正文均参与禁止断言/无证据健康断言检查，最终降级措辞单独适用于最终回复。工具执行使用本地 inline callback 和任务 ContextVar 增量捕获实际调用参数、Tool Call ID、原始 Mock 结果、Graph ToolMessage 与顺序；并行开始、实际 Mock 执行与回执完成顺序分开记录，不假设三者相同。STOP 后仍保留 Reader 次数、UID 冲突与盲审 Evidence。Graph 与冻结输入保持不变。
+
+新增回归包含带合法调用的恶意正文、合法中间正文，以及读取两次 UID/注入日志后分别触发安全失败、请求预算耗尽、SDK 超时的失败轨迹。定向测试 **57 passed**；全量回归 **534 passed in 58.05s**；新 head 的 CI/独立 Review 结果由 PR 最终证据记录。
