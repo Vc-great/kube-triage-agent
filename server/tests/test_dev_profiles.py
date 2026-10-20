@@ -20,6 +20,15 @@ VALUES = {"POSTGRES_PASSWORD": "synthetic-db-secret",
           "INCIDENT_MEMORY_PROVENANCE_SECRET": "independent-synthetic-memory-secret-12345"}
 
 
+@pytest.fixture(autouse=True)
+def isolated_env_file(tmp_path, monkeypatch):
+    """Profile checks must never depend on developer or CI private configuration."""
+    path = tmp_path / "dev.env"
+    path.write_text("# Synthetic profile fixture without Langfuse credentials.\n")
+    path.chmod(0o600)
+    monkeypatch.setattr(DEV, "ENV_FILE", path)
+
+
 @pytest.mark.parametrize("mode,reader,memory,context,port,repair", [
     ("real", "real", "read-write", "summary", 18081, "real"),
     ("mock", "mock", "off", "off", 8000, "off"),
@@ -45,6 +54,8 @@ def test_profile_preflight(monkeypatch, mode, reader, memory, context, port, rep
     assert "DEMO_API_TOKEN" not in envs["web"]
     assert "CONTEXT_SUMMARY_ENABLED" not in envs["web"]
     assert envs["api"]["DEMO_API_TOKEN"] == VALUES["DEMO_API_TOKEN"]
+    assert envs["api"]["OTEL_TARGETS"] == ""
+    assert not any(key.startswith("LANGFUSE_") for env in envs.values() for key in env)
     if reader == "mock":
         assert envs["mock"]["TRIAGE_MOCK_DATASET"] == "memory-web"
         assert envs["mock"]["MOCK_MCP_HOST"] == "127.0.0.1"
