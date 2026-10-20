@@ -430,7 +430,10 @@ def test_failure_after_reads_preserves_actual_order_ids_and_blind_evidence(tmp_p
     finally:
         output.close()
     blind = json.loads((tmp_path / "out" / "blind.json").read_text())
-    assert blind[0]["evidence"] == receipts
+    assert blind[0]["evidence"] == [{k: r[k] for k in ("name", "content", "status")}
+                                    for r in receipts]
+    assert "tool_call_id" not in json.dumps(blind)
+    assert slot["run_id"] not in json.dumps(blind)
 
 
 def test_intermediate_content_is_scored_without_final_degradation_rule(inputs):

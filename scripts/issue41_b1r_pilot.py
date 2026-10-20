@@ -541,7 +541,9 @@ def blind_export(rows, output):
         blind_id = uuid.uuid4().hex
         mapping[blind_id] = row["run_id"]
         items.append({"blind_id": blind_id, "case_id": row["case_id"],
-                      "answer": row.get("final_answer"), "evidence": row.get("reader_evidence", []),
+                      "answer": row.get("final_answer"), "evidence": [
+                          {key: receipt[key] for key in ("name", "content", "status")}
+                          for receipt in row.get("reader_evidence", [])],
                       "human_review": "NOT RUN"})
         writer.writerow({"blind_id": blind_id, "case_id": row["case_id"],
                          "replicate": row["replicate"]})

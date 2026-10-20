@@ -30,7 +30,7 @@ uv run --frozen --offline pytest -q
 uv run --frozen --offline python ../scripts/check_issue11_manifests.py
 ```
 
-Ruff 与 manifests 静态检查 PASS。最终全量 pytest：**534 passed in 58.05s**；新增 Runner 的定向测试：**57 passed**。覆盖 429/500/连接错误/timeout、0/1 次请求上限、两层 Token/费用预约、4/10 模型决策、并发预约、单 Run 截止、无 Usage/错误回显、重定向/stream/多 generation/未知端点、危险工具/跨 Namespace/参数、原始不安全回答、Reader 403、UID 冲突、Todo 假完成、输出权限/路径和网络/环境恢复。
+Ruff 与 manifests 静态检查 PASS。最终全量 pytest：**534 passed in 57.94s**；新增 Runner 的定向测试：**57 passed**。覆盖 429/500/连接错误/timeout、0/1 次请求上限、两层 Token/费用预约、4/10 模型决策、并发预约、单 Run 截止、无 Usage/错误回显、重定向/stream/多 generation/未知端点、危险工具/跨 Namespace/参数、原始不安全回答、Reader 403、UID 冲突、Todo 假完成、输出权限/路径和网络/环境恢复。
 
 在仓库根目录执行（输出路径为每次全新私有临时目录，不提交原始结果）：
 
@@ -62,4 +62,6 @@ server/.venv/bin/python scripts/issue41_b1r_pilot.py --offline-readiness --outpu
 
 首轮 Reviewer 指出：带 tool_calls 的正文绕过安全检查，以及 Graph 异常停止时丢失已取得的 Reader 轨迹。修复后，所有非空原始正文均参与禁止断言/无证据健康断言检查，最终降级措辞单独适用于最终回复。工具执行使用本地 inline callback 和任务 ContextVar 增量捕获实际调用参数、Tool Call ID、原始 Mock 结果、Graph ToolMessage 与顺序；并行开始、实际 Mock 执行与回执完成顺序分开记录，不假设三者相同。STOP 后仍保留 Reader 次数、UID 冲突与盲审 Evidence。Graph 与冻结输入保持不变。
 
-新增回归包含带合法调用的恶意正文、合法中间正文，以及读取两次 UID/注入日志后分别触发安全失败、请求预算耗尽、SDK 超时的失败轨迹。定向测试 **57 passed**；全量回归 **534 passed in 58.05s**；新 head 的 CI/独立 Review 结果由 PR 最终证据记录。
+新增回归包含带合法调用的恶意正文、合法中间正文，以及读取两次 UID/注入日志后分别触发安全失败、请求预算耗尽、SDK 超时的失败轨迹。定向测试 **57 passed**；全量回归 **534 passed in 57.94s**；新 head 的 CI/独立 Review 结果由 PR 最终证据记录。
+
+盲审导出仅保留 Reader 名称/正文/状态，移除含槽位臂信息的 Tool Call ID；完整 ID 仍在私有审计。回归断言匿名文件不含这些 ID 或原 Run ID。
