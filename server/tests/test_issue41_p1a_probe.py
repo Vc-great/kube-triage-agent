@@ -235,20 +235,28 @@ def test_launch_environment_and_policy(monkeypatch):
     def execute(cmd, **kw):
         assert cmd[:2] == ["/usr/bin/sandbox-exec", "-p"]
         assert '(deny network*)' in cmd[2]
-        assert '(remote tcp "localhost:8080")' in cmd[2]
+        assert 'allow network-outbound' not in cmd[2]
+        assert kw['pass_fds'] == (123,)
         assert "synthetic-private-key" not in repr(cmd)
         assert p.os.environ["CPA_API_KEY"] == "synthetic-private-key"
         assert "HTTPS_PROXY" not in p.os.environ
         assert "LANGSMITH_API_KEY" not in p.os.environ
-        assert kw["timeout"] == 610
+        assert 0 < kw["timeout"] <= 600
         return SimpleNamespace(returncode=0)
+    from contextlib import contextmanager
+    @contextmanager
+    def connect(address, timeout):
+        assert address == ("127.0.0.1", 8080)
+        assert timeout == 45
+        yield SimpleNamespace(fileno=lambda: 123)
+    monkeypatch.setattr(p.socket, "create_connection", connect)
     monkeypatch.setattr(p.subprocess, "run", execute)
     assert p.launch("http://127.0.0.1:8080/v1/chat/completions",
                     "/private/tmp/synthetic-unused") == 0
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS OS egress policy verification")
-def test_os_egress_exact_loopback_and_denied_other_port():
+def test_os_egress_inherited_connection_and_all_new_connections_denied():
     import socket
     import subprocess
     with socket.socket() as allowed, socket.socket() as denied:
@@ -259,22 +267,29 @@ def test_os_egress_exact_loopback_and_denied_other_port():
         port = allowed.getsockname()[1]
         other = denied.getsockname()[1]
         code = f'''
-import socket
-s = socket.create_connection(("127.0.0.1", {port}), timeout=1)
-s.close()
-try:
-    socket.create_connection(("127.0.0.1", {other}), timeout=1)
-except PermissionError:
-    print("OS_EGRESS_PASS")
-else:
+import socket,sys
+s = socket.socket(fileno=int(sys.argv[1])); s.settimeout(1)
+s.sendall(b"synthetic"); s.close()
+for port in ({port}, {other}):
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=1)
+    except PermissionError:
+        continue
     raise RuntimeError("egress escaped")
+print("OS_EGRESS_PASS")
 '''
-        result = subprocess.run(["/usr/bin/sandbox-exec", "-p",
-            ('(version 1)(allow default)(deny network*)'
-             f'(allow network-outbound (remote tcp "localhost:{port}"))'),
-            sys.executable, "-I", "-c", code], check=False, capture_output=True, text=True, timeout=10)
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as approved:
+            result = subprocess.run(["/usr/bin/sandbox-exec", "-p",
+                '(version 1)(allow default)(deny network*)', sys.executable, "-I", "-c", code,
+                str(approved.fileno())], pass_fds=(approved.fileno(),), check=False,
+                capture_output=True, text=True, timeout=10)
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "OS_EGRESS_PASS"
+        allowed.settimeout(2)
+        conn, _ = allowed.accept()
+        with conn:
+            conn.settimeout(2)
+            assert conn.recv(20) == b"synthetic"
 
 
 def test_remote_os_gate_no_dns(monkeypatch):
@@ -293,6 +308,8 @@ def test_loopback_synthetic_child_private_evidence(tmp_path, monkeypatch, capfd,
     from http.server import BaseHTTPRequestHandler, HTTPServer
     requests = []
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
         def log_message(self, *args):
             pass
 
@@ -367,3 +384,41 @@ def test_synonym_claim_cannot_pass_semantic_gate():
     assert result["protocol_status"] == "PASS"
     assert result["status"] == result["semantic_status"] == "UNKNOWN"
     assert result["semantic_review"] == "NOT RUN"
+
+
+def test_lan_exception_is_exact():
+    p.endpoint(p.LAN_ENDPOINT)
+    for target in [p.LAN_ENDPOINT.replace(".110", ".111"),
+                   p.LAN_ENDPOINT.replace(":8317", ":8318"),
+                   p.LAN_ENDPOINT.replace("/v1/", "/v2/"),
+                   p.LAN_ENDPOINT + "?key=no", p.LAN_ENDPOINT + "/"]:
+        with pytest.raises(p.Stop):
+            p.endpoint(target)
+
+
+def test_inherited_backend_no_reconnect_or_other_route(monkeypatch):
+    from types import SimpleNamespace
+
+    from anyio.abc import SocketStream
+
+    async def scenario():
+        with monkeypatch.context() as patch:
+            fake = SimpleNamespace(getpeername=lambda: ("127.0.0.1", 8080), close=lambda: None)
+            patch.setattr(p.socket, "socket", lambda **kw: fake)
+            async def wrap(sock):
+                assert sock is fake
+                return object()
+            patch.setattr(SocketStream, "from_socket", wrap)
+            transport = p.inherited_transport(123, "http://127.0.0.1:8080/v1/chat/completions")
+            backend = transport._pool._network_backend
+            with pytest.raises(p.Stop, match="reconnect_or_destination_denied"):
+                await backend.connect_tcp("127.0.0.2", 8080)
+            await backend.connect_tcp("127.0.0.1", 8080)
+            with pytest.raises(p.Stop, match="reconnect_or_destination_denied"):
+                await backend.connect_tcp("127.0.0.1", 8080)
+            with pytest.raises(p.Stop, match="unix_socket_denied"):
+                await backend.connect_unix_socket("/fake")
+            fake.getpeername = lambda: ("127.0.0.2", 8080)
+            with pytest.raises(p.Stop, match="inherited_peer_mismatch"):
+                p.inherited_transport(123, "http://127.0.0.1:8080/v1/chat/completions")
+    asyncio.run(scenario())

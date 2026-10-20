@@ -1,8 +1,8 @@
 """Isolated P1-A CPA synthetic wire probes. No Graph, Reader execution or dotenv.
 
 Default is offline preflight. Live requires an explicit exact endpoint, private
-CPA_API_KEY injection and a macOS sandbox-exec child. Remote HTTPS remains
-BLOCKED until an OS policy supporting the exact remote destination is available.
+CPA_API_KEY injection and a macOS sandbox-exec child with no new network access.
+The sole LAN HTTP exception is the exact endpoint explicitly approved by the user.
 """
 from __future__ import annotations
 
@@ -26,6 +26,9 @@ import issue41_b1r_pilot as pilot
 from issue41_provider_contract import LOCKED
 
 MODEL = "gpt-6-luna"
+# User explicitly approved this sole plaintext LAN endpoint on 2026-10-20.
+LAN_ENDPOINT = "http://192.168.31.110:8317/v1/chat/completions"
+PROBE_LOCKED = LOCKED | {"httpcore": "1.0.9", "anyio": "4.15.1"}
 ARGS = {"namespace": "kube-triage-demo", "name": "p1a-synthetic-pod"}
 TEXT = "纯合成协议测试。请用中文回复：当前没有真实集群证据。"
 TOOL_PROMPT = "纯合成协议测试。请调用 pods_get，namespace=kube-triage-demo，name=p1a-synthetic-pod。"
@@ -50,10 +53,9 @@ def endpoint(value):
         if loop:
             if u.scheme not in {"http", "https"} or port is None:
                 raise ValueError
-        else:
-            if u.scheme != "https" or not re.fullmatch(
-                    r"[a-z0-9]+(?:[-.][a-z0-9]+)*\.[a-z]{2,}", u.hostname):
-                raise ValueError
+        elif value != LAN_ENDPOINT and (u.scheme != "https" or not re.fullmatch(
+                r"[a-z0-9]+(?:[-.][a-z0-9]+)*\.[a-z]{2,}", u.hostname)):
+            raise ValueError
         host = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
         if value != f"{u.scheme}://{host}" + (f":{port}" if port else "") + u.path:
             raise ValueError
@@ -189,7 +191,7 @@ async def probes(target, key, inner, ledger):
     from langchain_openai.chat_models.base import _convert_message_to_dict
     from langsmith import tracing_context
 
-    if any(importlib.metadata.version(k) != v for k, v in LOCKED.items()):
+    if any(importlib.metadata.version(k) != v for k, v in PROBE_LOCKED.items()):
         ledger.stop("locked_sdk")
     async with httpx.AsyncClient(transport=guard(inner, target, ledger), timeout=45,
                                  trust_env=False, follow_redirects=False) as client:
@@ -278,57 +280,80 @@ def summary(ledger):
             "B8": "NOT RUN", "P1-B": "NOT AUTHORIZED", "kubernetes_requests": 0}
 
 
-def child(target, addresses, output):
-    """Only launched under OS egress restriction; pin DNS while retaining TLS hostname."""
+def inherited_transport(fd, target):
+    """Use exactly one preconnected socket; no DNS, reconnect or second destination.
+
+    httpx's private pool seam is covered against the frozen httpcore/anyio versions.
+    The child OS policy forbids connect(), including when keep-alive is lost.
+    """
+    import httpcore
+    from anyio.abc import SocketStream
+    from httpcore._backends.anyio import AnyIOStream
+
     u = endpoint(target)
-    original = socket.getaddrinfo
+    sock = socket.socket(fileno=fd)
+    peer = sock.getpeername()
+    if peer[:2] != (u.hostname, u.port):
+        sock.close()
+        raise Stop("inherited_peer_mismatch")
 
-    def pinned(host, port, *args, **kwargs):
-        if isinstance(host, bytes):
-            host = host.decode()
-        if host != u.hostname or port != (u.port or 443):
-            raise Stop("dns_target")
-        return [item for address in addresses
-                for item in original(address, port, *args, **kwargs)]
+    class Backend(httpcore.AsyncNetworkBackend):
+        used = False
 
+        async def connect_tcp(self, host, port, **kwargs):
+            if self.used or host != u.hostname or port != u.port:
+                raise Stop("reconnect_or_destination_denied")
+            self.used = True
+            return AnyIOStream(await SocketStream.from_socket(sock))
+
+        async def connect_unix_socket(self, path, **kwargs):
+            raise Stop("unix_socket_denied")
+
+    transport = httpx.AsyncHTTPTransport(verify=True, retries=0, trust_env=False)
+    transport._pool = httpcore.AsyncConnectionPool(network_backend=Backend(), retries=0,
+        max_connections=1, max_keepalive_connections=1, keepalive_expiry=600)
+    return transport
+
+
+def child(target, fd, output, started):
+    """The only network capability is the inherited socket to the approved peer."""
     key = os.environ.get("CPA_API_KEY")
     ledger = Ledger()
+    ledger.started = started
     private = pilot.PrivateOutput(output)
     try:
-        socket.getaddrinfo = pinned
         with isolated_environment():
-            asyncio.run(probes(target, key, httpx.AsyncHTTPTransport(
-                verify=True, retries=0, trust_env=False), ledger))
+            asyncio.run(probes(target, key, inherited_transport(fd, target), ledger))
     except BaseException:  # noqa: BLE001 - never expose provider exceptions/secrets
         ledger.reason = ledger.reason or "probe_error"
     finally:
-        socket.getaddrinfo = original
         private.write("summary.json", json.dumps(summary(ledger), ensure_ascii=False, indent=2))
         private.close()
-    # stdout is routinely retained in AO/task logs. Private rows never leave the file.
     public = {k: v for k, v in summary(ledger).items() if k != "rows"}
     print(json.dumps(public, ensure_ascii=False))
     return 0 if not ledger.reason else 1
 
 
 def launch(target, output):
+    started = time.monotonic()
     u = endpoint(target)
     key = os.environ.get("CPA_API_KEY")
     executable = shutil.which("sandbox-exec")
     if not key or not executable or sys.platform != "darwin":
         raise Stop("config_or_os_egress_unavailable")
-    # macOS Seatbelt remote filters support localhost/*, not arbitrary remote IPs.
-    # Never replace an exact remote allowlist with *:443 or rely only on Python.
-    if u.hostname not in {"127.0.0.1", "::1"}:
+    if u.hostname not in {"127.0.0.1", "::1"} and target != LAN_ENDPOINT:
         raise Stop("remote_os_egress_unavailable")
-    addresses = [u.hostname]
-    profile = ('(version 1)(allow default)(deny network*)'
-               f'(allow network-outbound (remote tcp "localhost:{u.port}"))')
-    code = (f"import sys; sys.path.insert(0, {str(pilot.prep.ROOT / 'scripts')!r}); "
-            f"import issue41_p1a_probe as p; sys.exit(p.child({target!r}, {addresses!r}, {output!r}))")
-    with isolated_environment(key):
-        return subprocess.run([executable, "-p", profile, sys.executable, "-I", "-c", code],
-                              check=False, timeout=610).returncode
+    # One numeric destination is connected before sandbox activation. This sends
+    # no HTTP/Key. The child inherits only this network socket and cannot reconnect.
+    with socket.create_connection((u.hostname, u.port), timeout=45) as connected:
+        fd = connected.fileno()
+        code = (f"import sys; sys.path.insert(0, {str(pilot.prep.ROOT / 'scripts')!r}); "
+                f"import issue41_p1a_probe as p; "
+                f"sys.exit(p.child({target!r}, {fd!r}, {output!r}, {started!r}))")
+        with isolated_environment(key):
+            return subprocess.run([executable, "-p", '(version 1)(allow default)(deny network*)',
+                sys.executable, "-I", "-c", code], pass_fds=(fd,), check=False,
+                timeout=max(1, 600 - (time.monotonic() - started))).returncode
 
 
 def main():
