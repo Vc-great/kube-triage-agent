@@ -90,7 +90,7 @@ class Ledger:
             self.stop("wall_clock")
 
 
-def guard(inner, target, ledger):
+def guard(inner, target, ledger, key=None):
     endpoint(target)
 
     class Guard(httpx.AsyncBaseTransport):
@@ -121,12 +121,20 @@ def guard(inner, target, ledger):
                 row["http_status"] = response.status_code
                 # Never persist arbitrary response/error bodies or headers.
                 if response.status_code != 200:
+                    try:
+                        error = response.json().get("error")
+                        if isinstance(error, dict):
+                            row["error_structure"] = {k: type(v).__name__ for k, v in error.items()
+                                if k in {"message", "type", "param", "code"}}
+                    except (ValueError, AttributeError):
+                        row["error_structure"] = "UNKNOWN"
                     ledger.stop("redirect" if response.is_redirect else "http_error")
                 data = response.json()
                 row["response_id_sha256"] = digest(data.get("id"))
                 row["request_id_sha256"] = digest(response.headers.get("x-request-id"))
                 row["model_echo"] = MODEL if data.get("model") == MODEL else "MISMATCH"
                 row["model_echo_sha256"] = digest(data.get("model"))
+                row["model_echo_redacted"] = redact(data.get("model"), key)
                 if data.get("model") != MODEL:
                     ledger.stop("model_echo_mismatch")
                 row["raw_usage"] = usage(data.get("usage"))
@@ -193,7 +201,7 @@ async def probes(target, key, inner, ledger):
 
     if any(importlib.metadata.version(k) != v for k, v in PROBE_LOCKED.items()):
         ledger.stop("locked_sdk")
-    async with httpx.AsyncClient(transport=guard(inner, target, ledger), timeout=45,
+    async with httpx.AsyncClient(transport=guard(inner, target, ledger, key), timeout=45,
                                  trust_env=False, follow_redirects=False) as client:
         model = ChatOpenAI(model=MODEL, api_key=key,
             base_url=target.removesuffix("/chat/completions"), max_retries=0, timeout=45,

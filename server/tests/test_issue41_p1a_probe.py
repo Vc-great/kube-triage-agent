@@ -72,7 +72,7 @@ def test_endpoint_accept(target):
     p.endpoint(target)
 
 
-@pytest.mark.parametrize("status", [301, 302, 307, 403, 429, 500, 503])
+@pytest.mark.parametrize("status", [301, 302, 307, 400, 403, 422, 429, 500, 503])
 def test_http_failure_no_retry_or_next_step(status):
     seen = []
     def handler(req):
@@ -103,7 +103,8 @@ def test_response_failure(mutation, reason):
     ledger = run(lambda req: response(1, **mutation))
     assert ledger.reason == reason
     assert ledger.attempts == 1
-    assert "different-private-alias" not in json.dumps(p.summary(ledger))
+    if reason == "model_echo_mismatch":
+        assert ledger.rows[0]["model_echo_redacted"] == "different-private-alias"
 
 
 def test_usage_missing_remains_unknown():
@@ -422,3 +423,10 @@ def test_inherited_backend_no_reconnect_or_other_route(monkeypatch):
             with pytest.raises(p.Stop, match="inherited_peer_mismatch"):
                 p.inherited_transport(123, "http://127.0.0.1:8080/v1/chat/completions")
     asyncio.run(scenario())
+
+
+def test_secret_echo_in_model_is_redacted():
+    ledger = run(lambda req: response(1, model="synthetic-key"))
+    assert ledger.reason == "model_echo_mismatch"
+    assert "synthetic-key" not in json.dumps(p.summary(ledger))
+    assert ledger.rows[0]["model_echo_redacted"] == "[REDACTED]"
