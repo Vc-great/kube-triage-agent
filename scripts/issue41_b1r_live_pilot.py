@@ -155,10 +155,15 @@ class LiveAdapter:
                         "raw_usage": {}, "sdk_usage": "UNKNOWN", "usage_match": False,
                         "request_sha256": hashlib.sha256(request.content).hexdigest()}
                     budget.audit.append(audit)
+                    # Reject compression before httpx can decode a potentially
+                    # unbounded expansion. The approved wire contract is identity.
+                    request.headers["accept-encoding"] = "identity"
                     async with asyncio.timeout(min(60, budget.deadline - time.monotonic(),
                             budget.total.seconds - (time.monotonic() - budget.started))):
                         response = await inner.handle_async_request(request)
                         try:
+                            if response.headers.get("content-encoding", "identity").strip().lower() != "identity":
+                                budget.stop("response_encoding")
                             chunks = []
                             size = 0
                             async for chunk in response.aiter_bytes():

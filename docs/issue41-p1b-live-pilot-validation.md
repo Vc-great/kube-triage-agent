@@ -9,7 +9,7 @@
 - 新增 `scripts/issue41_b1r_live_pilot.py`，默认无 live flag 则 BLOCKED；复用原 Runner 的 `execute`、冻结输入、Mock Reader、原生 OFF/ON Deep Agents Graph、原始模型响应安全检查、评分与私有盲审导出。
 - 真实模型固定为 CPA `gpt-6-luna`，Chat Completions，输出上限 1024，SDK retry=0，无重定向/stream/隐式 reasoning 切换。精确目标采用计划中唯一已批准的 LAN 地址/端口/路径，不新增端点参数。
 - 每槽独立子进程、Thread 与一条父进程预连接 socket。子进程使用 P1-A 的 `sandbox-exec (deny network*)` 与冻结继承 Transport，不能重新连接。A/B 分别最多 4/10 次，四槽合计最多 28 次；每次发送前写入独占私有 reservation 文件。单请求 60 秒、单 Run 10 分钟、全任务 30 分钟；任何 STOP 终止后续槽位，不重跑。
-- 请求体上限 128 KiB、响应体上限 512 KiB；真实 Usage 与 SDK Usage 配对。没有可信的真实输入 Token/账单上界，均标 UNKNOWN，不使用 P0 合成费率或 Token 保留值冒充真实约束。
+- 请求体上限 128 KiB、响应体上限 512 KiB；仅接受 identity 编码，在读取/解码前拒绝压缩响应，避免解压放大绕过限制。真实 Usage 与 SDK Usage 配对。没有可信的真实输入 Token/账单上界，均标 UNKNOWN，不使用 P0 合成费率或 Token 保留值冒充真实约束。
 - 输出目录新建 0700、文件 0600，拒绝路径穿越/符号链接/覆盖；Key 仅进程内注入，子进程清空环境并关闭遥测。公开报告不包含模型原文、私有审计或密钥。
 
 ## 离线验证
@@ -18,12 +18,12 @@
 
 | 检查 | 状态 | 证据 |
 | --- | --- | --- |
-| P1-B 专项 | PASS | `uv run --frozen --offline pytest -q tests/test_issue41_b1r_live_pilot.py`：35 passed；含四槽实际 SDK/Graph、MockTransport、Mock Reader 回放共 12 次合成 HTTP |
+| P1-B 专项 | PASS | `uv run --frozen --offline pytest -q tests/test_issue41_b1r_live_pilot.py`：40 passed；含四槽实际 SDK/Graph、MockTransport、Mock Reader 回放共 12 次合成 HTTP，以及压缩响应解码前拒绝 |
 | P1-A / 原 Runner 回归 | PASS | 三个专项模块初次联合执行 153 passed；原有 OS 测试确认继承连接可发送、任何新连接均被拒绝；新测试确认 keep-alive 关闭后不重连 |
 | 失败与预算 | PASS | 302/307/403/429/500/503、超时/连接错误、Usage 缺失/错配、工具/Namespace 越权、发送前预算、墙钟到期、请求/响应体过大均停止，无自动重试 |
-| 完整 Python 回归 | PASS | `uv run --frozen --offline pytest -q`：714 passed，60.80 秒 |
+| 完整 Python 回归 | PASS | `uv run --frozen --offline pytest -q`：719 passed，51.93 秒（含压缩保护修复） |
 | Ruff / 差异检查 | PASS | `uv run --frozen --offline ruff check src tests ../scripts/issue41_b1r_live_pilot.py`、`git diff --check` |
-| 实施 PR CI / 独立 Review | NOT RUN | 待实施 Head 的远端证据 |
+| 实施 PR CI / 独立 Review | 进行中 | [Draft PR #63](https://github.com/Vc-great/kube-triage-agent/pull/63) 初始 Head CI 39425558251 全绿；独立 Reviewer 要求解码前拒绝压缩响应，已增加修复与 5 项负测，待最终 Head 复审 |
 
 ## 真实 Pilot
 

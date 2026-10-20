@@ -153,6 +153,25 @@ def test_response_bound_and_unknown_usage():
     assert row["usage_metadata"] is None
 
 
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd", "gzip, identity"])
+def test_compressed_response_rejected_before_read_or_decode(encoding):
+    seen = []
+
+    class Unreadable(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            pytest.fail("compressed bytes must not be read or decoded")
+            yield b"unreachable"
+
+    def handler(request):
+        assert request.headers["accept-encoding"] == "identity"
+        seen.append(request)
+        return httpx.Response(200, headers={"content-encoding": encoding}, stream=Unreadable())
+
+    row = run(httpx.MockTransport(handler))
+    assert row["error_code"] == "response_encoding"
+    assert row["client_http_attempts"] == len(seen) == 1
+
+
 @pytest.mark.parametrize("change", ["url", "body", "parallel"])
 def test_presend_route_size_and_parallel_checks(change):
     async def scenario():
