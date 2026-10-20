@@ -6,11 +6,11 @@
 > - 实施阶段：Issue #41 Phase B / B8 的 **P1-B 四槽真实 Planning OFF/ON Pilot**；实际 Runner、离线和真实执行证据见[验收报告](../issue41-p1b-live-pilot-validation.md)
 > - 计划批准状态：**Approved：PR #61 于 2026-10-20 合并至 main `4af1f9f`**。用户已授权本文 P1-B 运行范围；仍须满足最新主线 CI、Runner 安全负测等全部 Gate，不能以计划批准代替实施验收
 > - 适用版本：当前锁定的 `deepagents==0.7.28`、`aegra-cli==0.10.8` 及其锁文件依赖；实施时以最新 main 锁文件重新核对，不自行升级
-> - 当前核验基线（2026-10-20）：`origin/main=c7393c9c39348d993fe34e08655e5999cd092cbe`；原规划基线 `b944c85` 的失败保留在第 2 节。实施前重新 fetch 并核对最新主线 CI，不能固定沿用此 SHA
+> - 当前实施/main 基线（2026-10-20）：`origin/main=4af1f9fc0957416d3c21ab3eda202cd4c47babd7`（PR #61 合并提交）。`c7393c9` 仅为 CI-0 独立修复证据基线，原规划基线 `b944c85` 的失败保留在第 2 节。每次执行前重新 fetch 并核对最新主线 CI，不能固定沿用此 SHA
 > - 已合并基础：[B1-R 原实验设计](issue-41-deep-agents-real-llm-eval.md)、[P0/P1 安全设计](issue-41-b1r-real-provider-contract-pilot-gate.md)、[P1-A 合成 CPA 契约](issue-41-p1a-cpa-gpt6-luna-provider-contract.md)、[PR #59](https://github.com/Vc-great/kube-triage-agent/pull/59) 及[真实 P1-A 报告](../issue41-p1a-provider-contract-validation.md)
 > - **当前新增用户授权（2026-10-20）**：只允许 **P1-B：冻结 R05 和 R01 × Planning ON/OFF，共 4 Run，CPA + `gpt-6-luna` 真实模型；仅合成 Kubernetes Reader 数据出站**。用户明确表示模型资源充裕，无需以逐笔模型费用阻碍本次任务
 > - **不授权**：P2 Formal 剩余 20 Run、真实 Kubernetes Reader/Write、Repair/HITL、真实 Pod 日志/Secret 出站、Langfuse/其他云遥测、B2-A/B2-B、B3、修改正式 `agent` 或冻结评测集。B2-A 仍 BLOCKED，Issue #41 仍 Open
-> - **CI-0 当前 PASS（仅针对上述核验基线）**：[PR #62](https://github.com/Vc-great/kube-triage-agent/pull/62) 已合并为 `main=c7393c9`，Push CI [39421300790](https://github.com/Vc-great/kube-triage-agent/actions/runs/39421300790) 的 Python/Web/Compose 均 PASS。旧主线的 7 项失败已修复，不再作为当前阻断。**最新主线 CI 全绿的前置 Gate 仍保留**；规划未合并或 Runner/出口隔离负测未通过时，不得执行真实四槽 Pilot
+> - **CI-0 当前 PASS（仅针对上述实施基线）**：`main=4af1f9f` 的 Push CI [39424196960](https://github.com/Vc-great/kube-triage-agent/actions/runs/39424196960) Python/Web/Compose 均 PASS；其包含 [PR #62](https://github.com/Vc-great/kube-triage-agent/pull/62) 的 CI-0 修复，专项基线 `c7393c9` 的 CI [39421300790](https://github.com/Vc-great/kube-triage-agent/actions/runs/39421300790) 亦全绿。旧主线 7 项失败不再作为当前阻断。**最新主线 CI 全绿的前置 Gate 仍保留**；Runner/出口隔离负测未通过时，不得执行真实四槽 Pilot
 
 ## 1. 背景、已实现事实与目标
 
@@ -22,7 +22,9 @@
 
 ## 2. 主线 CI-0：当前证据与历史失败
 
-**当前核验（2026-10-20）**：重新 `git fetch origin` 后，`origin/main=c7393c9c39348d993fe34e08655e5999cd092cbe`。[独立 Bugfix PR #62](https://github.com/Vc-great/kube-triage-agent/pull/62) 已合并，主线 Push CI [39421300790](https://github.com/Vc-great/kube-triage-agent/actions/runs/39421300790) 的 Python、Web、Compose 均 PASS，故该基线的 **CI-0=PASS**。根因已确认：Profile 测试虽提供合成配置字典，`child_environments()` 仍会读取根目录 `.env` 的 Langfuse 配置，导致干净 CI 缺文件时失败，也使测试依赖开发机配置。修复仅为测试提供临时 `0600` 合成配置文件，并验证 OTEL 关闭、子进程无 Langfuse 字段；没有放宽产品安全校验、伪造凭据或跳过测试。本规划分支已同步该 main 修复。
+**当前实施核验（2026-10-20）**：重新 `git fetch origin` 后，`origin/main=4af1f9fc0957416d3c21ab3eda202cd4c47babd7`；PR #61 已合并，Push CI [39424196960](https://github.com/Vc-great/kube-triage-agent/actions/runs/39424196960) Python/Web/Compose 均 PASS，故当前实施基线 **CI-0=PASS**。
+
+**CI-0 专项修复证据基线**：[独立 Bugfix PR #62](https://github.com/Vc-great/kube-triage-agent/pull/62) 合并为 `c7393c9c39348d993fe34e08655e5999cd092cbe`，其主线 Push CI [39421300790](https://github.com/Vc-great/kube-triage-agent/actions/runs/39421300790) 的 Python、Web、Compose 均 PASS；这是修复证据，不是当前 main SHA。根因已确认：Profile 测试虽提供合成配置字典，`child_environments()` 仍会读取根目录 `.env` 的 Langfuse 配置，导致干净 CI 缺文件时失败，也使测试依赖开发机配置。修复仅为测试提供临时 `0600` 合成配置文件，并验证 OTEL 关闭、子进程无 Langfuse 字段；没有放宽产品安全校验、伪造凭据或跳过测试。当前实施基线包含该修复。
 
 **历史失败（保留，不代表当前状态）**：
 - 原规划基线 `main=b944c85425e69c56644fab19af64a83f1ac36fdf`；
