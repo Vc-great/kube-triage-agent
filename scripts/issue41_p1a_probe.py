@@ -353,8 +353,21 @@ def launch(target, output):
         raise Stop("remote_os_egress_unavailable")
     # One numeric destination is connected before sandbox activation. This sends
     # no HTTP/Key. The child inherits only this network socket and cannot reconnect.
-    with socket.create_connection((u.hostname, u.port), timeout=45) as connected:
-        fd = connected.fileno()
+    try:
+        connected = socket.create_connection((u.hostname, u.port), timeout=45)
+    except OSError as exc:
+        private = pilot.PrivateOutput(output)
+        try:
+            private.write("summary.json", json.dumps({"stage": "P1-A", "status": "BLOCKED",
+                "protocol_status": "NOT RUN", "client_http_attempts": 0,
+                "stop_reason": "tcp_preconnect_error", "error_class": type(exc).__name__,
+                "errno": exc.errno if type(exc.errno) is int else "UNKNOWN",
+                "billing": "UNKNOWN", "upstream_retries": "UNKNOWN", "B8": "NOT RUN"}))
+        finally:
+            private.close()
+        raise Stop("tcp_preconnect_error") from None
+    with connected as connection:
+        fd = connection.fileno()
         code = (f"import sys; sys.path.insert(0, {str(pilot.prep.ROOT / 'scripts')!r}); "
                 f"import issue41_p1a_probe as p; "
                 f"sys.exit(p.child({target!r}, {fd!r}, {output!r}, {started!r}))")

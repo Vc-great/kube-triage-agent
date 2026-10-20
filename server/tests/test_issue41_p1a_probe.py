@@ -430,3 +430,22 @@ def test_secret_echo_in_model_is_redacted():
     assert ledger.reason == "model_echo_mismatch"
     assert "synthetic-key" not in json.dumps(p.summary(ledger))
     assert ledger.rows[0]["model_echo_redacted"] == "[REDACTED]"
+
+
+def test_preconnect_failure_private_zero_http_audit(tmp_path, monkeypatch):
+    monkeypatch.setenv("CPA_API_KEY", "synthetic-key")
+    monkeypatch.setattr(p.sys, "platform", "darwin")
+    monkeypatch.setattr(p.shutil, "which", lambda name: "/usr/bin/sandbox-exec")
+    def fail(*args, **kwargs):
+        raise ConnectionRefusedError(61, "synthetic-secret-must-not-be-recorded")
+    monkeypatch.setattr(p.socket, "create_connection", fail)
+    output = tmp_path.resolve() / "failure"
+    with pytest.raises(p.Stop, match="tcp_preconnect_error"):
+        p.launch("http://127.0.0.1:8080/v1/chat/completions", str(output))
+    raw = (output / "summary.json").read_text()
+    audit = json.loads(raw)
+    assert audit["client_http_attempts"] == 0
+    assert audit["protocol_status"] == "NOT RUN"
+    assert audit["error_class"] == "ConnectionRefusedError"
+    assert audit["errno"] == 61
+    assert "synthetic-secret" not in raw
