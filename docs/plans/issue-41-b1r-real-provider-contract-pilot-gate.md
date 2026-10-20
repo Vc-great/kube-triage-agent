@@ -97,6 +97,8 @@ P0/P1 必须分别验证并披露以下三层：
 
 ## 4. 分阶段执行与人工授权清单
 
+> **2026-10-20 P1-A 专项决策（优先适用）**：P0 已由 [PR #57](https://github.com/Vc-great/kube-triage-agent/pull/57) 合并。用户现明确选择 **CPA + `gpt-6-luna`**，并表示 P1-A 真实**合成**契约探针不再以逐笔费用/精确请求次数为商业批准门槛。详见本次独立 [P1-A CPA 设计](issue-41-p1a-cpa-gpt6-luna-provider-contract.md)。**本节既有 P1-A 模型/费用/请求授权前置，现按该专项设计适用：允许有限的真实合成 CPA Probe，但仍必须具备唯一受信出口、受保护凭据及工程防失控熔断；不可假称硬费用上界。P1-B 四槽 Pilot、P2 Formal 和真实 Kubernetes 的独立批准条件不变。** 新增 P1-A 设计在 Planning PR 合并前不生效；原 P0 和历史状态保留。
+
 | 阶段 | 入口与当前许可 | 工作与交付 | 下阶段 GO |
 | --- | --- | --- | --- |
 | **Plan（本 PR）** | 仅设计，**不含外联授权** | 纯 Markdown Planning PR / Issue #41 `Refs`，不改业务代码 | 人工审阅并合并此 PR |
