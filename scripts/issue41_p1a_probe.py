@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -330,6 +331,7 @@ def child(target, fd, output, started):
     ledger.started = started
     private = pilot.PrivateOutput(output)
     try:
+        private.write("entered.json", '{"stage":"child_ready"}')
         with isolated_environment():
             asyncio.run(probes(target, key, inherited_transport(fd, target), ledger))
     except BaseException:  # noqa: BLE001 - never expose provider exceptions/secrets
@@ -342,6 +344,38 @@ def child(target, fd, output, started):
     return 0 if not ledger.reason else 1
 
 
+def child_progress(output):
+    """Only return bounded status/count fields; never copy private rows to stdout."""
+    unknown = {"client_http_attempts": "UNKNOWN", "protocol_status": "UNKNOWN"}
+    not_started = {"client_http_attempts": 0, "protocol_status": "NOT RUN"}
+    try:
+        fd = os.open(output, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return not_started
+    except OSError:
+        return unknown
+    try:
+        try:
+            marker = os.open("entered.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+        except FileNotFoundError:
+            return not_started
+        with os.fdopen(marker) as stream:
+            if json.loads(stream.read(1024)) != {"stage": "child_ready"}:
+                return unknown
+        report = os.open("summary.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+        with os.fdopen(report) as stream:
+            data = json.loads(stream.read(65536))
+        count = data.get("client_http_attempts")
+        status = data.get("protocol_status")
+        if type(count) is int and 0 <= count <= 24 and status in {"PASS", "FAIL", "BLOCKED"}:
+            return {"client_http_attempts": count, "protocol_status": status}
+        return unknown
+    except (OSError, ValueError, AttributeError):
+        return unknown
+    finally:
+        os.close(fd)
+
+
 def launch(target, output):
     started = time.monotonic()
     u = endpoint(target)
@@ -351,30 +385,53 @@ def launch(target, output):
         raise Stop("config_or_os_egress_unavailable")
     if u.hostname not in {"127.0.0.1", "::1"} and target != LAN_ENDPOINT:
         raise Stop("remote_os_egress_unavailable")
-    # One numeric destination is connected before sandbox activation. This sends
-    # no HTTP/Key. The child inherits only this network socket and cannot reconnect.
     try:
-        connected = socket.create_connection((u.hostname, u.port), timeout=45)
-    except OSError as exc:
-        private = pilot.PrivateOutput(output)
-        try:
-            private.write("summary.json", json.dumps({"stage": "P1-A", "status": "BLOCKED",
-                "protocol_status": "NOT RUN", "client_http_attempts": 0,
-                "stop_reason": "tcp_preconnect_error", "error_class": type(exc).__name__,
-                "errno": exc.errno if type(exc.errno) is int else "UNKNOWN",
-                "billing": "UNKNOWN", "upstream_retries": "UNKNOWN", "B8": "NOT RUN"}))
-        finally:
-            private.close()
-        raise Stop("tcp_preconnect_error") from None
-    with connected as connection:
-        fd = connection.fileno()
-        code = (f"import sys; sys.path.insert(0, {str(pilot.prep.ROOT / 'scripts')!r}); "
-                f"import issue41_p1a_probe as p; "
-                f"sys.exit(p.child({target!r}, {fd!r}, {output!r}, {started!r}))")
-        with isolated_environment(key):
-            return subprocess.run([executable, "-p", '(version 1)(allow default)(deny network*)',
-                sys.executable, "-I", "-c", code], pass_fds=(fd,), check=False,
-                timeout=max(1, 600 - (time.monotonic() - started))).returncode
+        os.lstat(output)
+    except FileNotFoundError:
+        pass
+    else:
+        raise Stop("output_exists")
+    # A separate private parent journal exists before TCP or child startup. Never
+    # overwrite a child report, and never retain/replay arbitrary bootstrap stderr.
+    journal = pilot.PrivateOutput(str(Path(output).with_name(Path(output).name + "-launch")))
+    audit = {"stage": "P1-A", "status": "BLOCKED", "phase": "tcp_preconnect",
+             "client_http_attempts": 0, "protocol_status": "NOT RUN",
+             "semantic_status": "UNKNOWN", "semantic_review": "NOT RUN",
+             "billing": "UNKNOWN", "upstream_retries": "UNKNOWN", "B8": "NOT RUN"}
+    result = 1
+    try:
+        # No HTTP/Key is sent before the OS-restricted child consumes this socket.
+        with socket.create_connection((u.hostname, u.port), timeout=45) as connected:
+            fd = connected.fileno()
+            code = (f"import sys; sys.path.insert(0, {str(pilot.prep.ROOT / 'scripts')!r}); "
+                    f"import issue41_p1a_probe as p; "
+                    f"sys.exit(p.child({target!r}, {fd!r}, {output!r}, {started!r}))")
+            audit["phase"] = "child_launch"
+            with isolated_environment(key):
+                child_result = subprocess.run([executable, "-p",
+                    '(version 1)(allow default)(deny network*)', sys.executable, "-I", "-c", code],
+                    pass_fds=(fd,), check=False, capture_output=True, text=True,
+                    timeout=max(1, 600 - (time.monotonic() - started)))
+            audit.update(child_progress(output))
+            audit["phase"] = "child_exit"
+            audit["exit_code"] = child_result.returncode
+            result = child_result.returncode
+            if result == 0 and audit["protocol_status"] == "PASS":
+                audit["status"] = "UNKNOWN"  # Semantic review is still NOT RUN.
+            elif result == 0:
+                result = 1  # Missing child evidence never implies protocol PASS.
+    except BaseException as exc:  # noqa: BLE001 - retain only safe class/errno, never messages
+        if audit["phase"] != "tcp_preconnect":
+            audit.update(child_progress(output))
+        audit["phase"] += "_timeout" if isinstance(exc, subprocess.TimeoutExpired) else "_error"
+        audit["error_class"] = type(exc).__name__
+        errno = getattr(exc, "errno", None)
+        audit["errno"] = errno if type(errno) is int else "UNKNOWN"
+    finally:
+        journal.write("launch.json", json.dumps(audit, ensure_ascii=False, indent=2))
+        journal.close()
+    print(json.dumps(audit, ensure_ascii=False))
+    return result
 
 
 def main():

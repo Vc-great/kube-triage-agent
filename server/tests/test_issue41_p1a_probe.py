@@ -224,7 +224,7 @@ def test_http_timeout_is_sticky(monkeypatch):
     assert ledger.reason == "transport_or_response_error"
 
 
-def test_launch_environment_and_policy(monkeypatch):
+def test_launch_environment_and_policy(monkeypatch, tmp_path):
     from types import SimpleNamespace
     monkeypatch.setenv("CPA_API_KEY", "synthetic-private-key")
     monkeypatch.setenv("HTTPS_PROXY", "http://unapproved.invalid")
@@ -233,7 +233,12 @@ def test_launch_environment_and_policy(monkeypatch):
     monkeypatch.setattr(p.sys, "platform", "darwin")
     monkeypatch.setattr(p.socket, "getaddrinfo", lambda *a, **k: [
         (2, 1, 6, "", ("1.1.1.1", 443))])
+    output = tmp_path.resolve() / "probe"
     def execute(cmd, **kw):
+        child = p.pilot.PrivateOutput(output)
+        child.write("entered.json", '{"stage":"child_ready"}')
+        child.write("summary.json", '{"client_http_attempts":3,"protocol_status":"PASS"}')
+        child.close()
         assert cmd[:2] == ["/usr/bin/sandbox-exec", "-p"]
         assert '(deny network*)' in cmd[2]
         assert 'allow network-outbound' not in cmd[2]
@@ -253,7 +258,7 @@ def test_launch_environment_and_policy(monkeypatch):
     monkeypatch.setattr(p.socket, "create_connection", connect)
     monkeypatch.setattr(p.subprocess, "run", execute)
     assert p.launch("http://127.0.0.1:8080/v1/chat/completions",
-                    "/private/tmp/synthetic-unused") == 0
+                    str(output)) == 0
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS OS egress policy verification")
@@ -440,12 +445,69 @@ def test_preconnect_failure_private_zero_http_audit(tmp_path, monkeypatch):
         raise ConnectionRefusedError(61, "synthetic-secret-must-not-be-recorded")
     monkeypatch.setattr(p.socket, "create_connection", fail)
     output = tmp_path.resolve() / "failure"
-    with pytest.raises(p.Stop, match="tcp_preconnect_error"):
-        p.launch("http://127.0.0.1:8080/v1/chat/completions", str(output))
-    raw = (output / "summary.json").read_text()
+    assert p.launch("http://127.0.0.1:8080/v1/chat/completions", str(output)) == 1
+    raw = (output.with_name("failure-launch") / "launch.json").read_text()
     audit = json.loads(raw)
     assert audit["client_http_attempts"] == 0
     assert audit["protocol_status"] == "NOT RUN"
     assert audit["error_class"] == "ConnectionRefusedError"
     assert audit["errno"] == 61
     assert "synthetic-secret" not in raw
+
+
+@pytest.mark.parametrize("failure", ["exit", "spawn", "timeout"])
+@pytest.mark.parametrize("entered", [False, True])
+def test_parent_fallback_audits_startup_failure(tmp_path, monkeypatch, capsys, failure, entered):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    monkeypatch.setenv("CPA_API_KEY", "synthetic-key")
+    monkeypatch.setattr(p.sys, "platform", "darwin")
+    monkeypatch.setattr(p.shutil, "which", lambda name: "/usr/bin/sandbox-exec")
+    output = tmp_path.resolve() / "probe"
+    @contextmanager
+    def connect(*args, **kwargs):
+        yield SimpleNamespace(fileno=lambda: 123)
+    def execute(*args, **kwargs):
+        if entered:
+            child = p.pilot.PrivateOutput(output)
+            child.write("entered.json", '{"stage":"child_ready"}')
+            child.close()
+        if failure == "spawn":
+            raise OSError(1, "synthetic-key must never appear")
+        if failure == "timeout":
+            raise p.subprocess.TimeoutExpired(["synthetic-key"], 600,
+                                             stderr="synthetic-key must never appear")
+        return SimpleNamespace(returncode=65, stderr="synthetic-key must never appear")
+    monkeypatch.setattr(p.socket, "create_connection", connect)
+    monkeypatch.setattr(p.subprocess, "run", execute)
+    assert p.launch("http://127.0.0.1:8080/v1/chat/completions", str(output)) != 0
+    raw = (output.with_name("probe-launch") / "launch.json").read_text()
+    audit = json.loads(raw)
+    assert audit["client_http_attempts"] == ("UNKNOWN" if entered else 0)
+    assert audit["phase"].startswith("child_")
+    assert "synthetic-key" not in raw + capsys.readouterr().out
+    assert output.with_name("probe-launch").stat().st_mode & 0o777 == 0o700
+    assert (output.with_name("probe-launch") / "launch.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_child_progress_retains_completed_count_and_handles_partial(tmp_path):
+    output = tmp_path.resolve() / "child"
+    private = p.pilot.PrivateOutput(output)
+    private.write("entered.json", '{"stage":"child_ready"}')
+    assert p.child_progress(output)["client_http_attempts"] == "UNKNOWN"
+    private.write("summary.json", '{"client_http_attempts":2,"protocol_status":"FAIL"}')
+    private.close()
+    assert p.child_progress(output) == {"client_http_attempts": 2, "protocol_status": "FAIL"}
+    (output / "summary.json").write_text('{"partial":')
+    assert p.child_progress(output)["client_http_attempts"] == "UNKNOWN"
+
+
+def test_existing_child_output_rejected_before_connect(tmp_path, monkeypatch):
+    output = tmp_path.resolve() / "exists"
+    output.mkdir()
+    monkeypatch.setenv("CPA_API_KEY", "synthetic-key")
+    monkeypatch.setattr(p.sys, "platform", "darwin")
+    monkeypatch.setattr(p.shutil, "which", lambda name: "/usr/bin/sandbox-exec")
+    monkeypatch.setattr(p.socket, "create_connection", lambda *a, **k: pytest.fail("connect"))
+    with pytest.raises(p.Stop, match="output_exists"):
+        p.launch("http://127.0.0.1:8080/v1/chat/completions", str(output))
