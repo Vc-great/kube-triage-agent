@@ -14,19 +14,21 @@
 
 **已发现的 OS 限制与设计偏差：**此机 macOS `sandbox-exec` 的 `(remote ip "数字IP:端口")` 实测报 `host must be * or localhost in network address`。不能将其降级为 `*:443`。因此当前 launcher 对远端 HTTPS 一律 BLOCKED；不 DNS 探测、不发送 Key。只实现已验证的 `localhost:明确端口` TCP OS 白名单，应用层再固定为批准的 `127.0.0.1` 或 `::1` 地址和完整路径；该 OS 规则本身覆盖两种 loopback 地址，**不是单地址 OS 防火墙**。loopback 网关的上游转发和账单仍不可观察。远端支持需要可核验的精确出口机制后再审查，不能通过额外配置字符串或确认开关绕过。
 
-私有输出复用 P0 `PrivateOutput`：全新目录 0700、独占文件 0600、拒绝符号链接和覆盖。只记录白名单 Usage、HTTP 状态、已知模型回显（不符记 MISMATCH 并保留摘要）、finish_reason、ID/请求 SHA256、脱敏合成回复、工具参数、SDK Usage 比对和延迟；不存原始 HTTP body、Authorization、任意响应头或错误内容。缺失 Usage 保持 UNKNOWN，不填 0；上游重试、模型实际版本、隐藏账单和成本始终 UNKNOWN。单进程限制不是费用上限，也不是跨多次人工启动的全局账本；本 Worker 没有执行真实重启或补跑。
+私有输出复用 P0 `PrivateOutput`：全新目录 0700、独占文件 0600、拒绝符号链接和覆盖。只记录白名单 Usage、HTTP 状态、已知模型回显（不符记 MISMATCH 并保留摘要）、finish_reason、ID/请求 SHA256、脱敏合成回复、工具参数、SDK Usage 比对和延迟；不存原始 HTTP body、Authorization、任意响应头或错误内容。stdout 仅输出状态、停止原因、计数与 UNKNOWN/NOT RUN 元数据；全部行级证据与回复正文只写私有文件。协议通过单列 `protocol_status=PASS`，语义状态始终 UNKNOWN、人审 NOT RUN，整体状态在无人审时为 UNKNOWN；固定短语检查不能证明自然语言语义正确，同义“故障已经解决”也不会获得语义 PASS。缺失 Usage 保持 UNKNOWN，不填 0；上游重试、模型实际版本、隐藏账单和成本始终 UNKNOWN。单进程限制不是费用上限，也不是跨多次人工启动的全局账本；本 Worker 没有执行真实重启或补跑。
 
 ## 实测证据
 
 环境：2026-10-20，macOS arm64，CPython 3.13.14。先核对 Host 已有 Runtime/缓存，再 `uv sync --frozen --offline --python 3.13`；没有下载、升级依赖，没有启动 Compose 或稳定环境。
 
 - Ruff：`server/.venv/bin/ruff check` 覆盖当前 CI Python 文件集，并新增 P1-A 脚本；PASS。
-- 专项：在 `server/` 执行 `.venv/bin/python -m pytest -q tests/test_issue41_p1a_probe.py`：47 passed。除显式 loopback OS 测试外均为 MockTransport；OS 子进程端到端仅连本测试新建的合成 HTTP 服务，3 次假响应，不是 CPA/真实模型。
+- 专项：在 `server/` 执行 `.venv/bin/python -m pytest -q tests/test_issue41_p1a_probe.py`：49 passed。除显式 loopback OS 测试外均为 MockTransport；OS 子进程端到端仅连本测试新建的合成 HTTP 服务，3 次假响应，不是 CPA/真实模型。
 - 负测：301/302/307/403/429/500/503、断连、超时、坏 JSON、模型回显不符、finish_reason、Usage 缺失、未知工具、跨 Namespace、其他 Pod、空 Tool ID、恶意正文附合法工具、24 次耗尽、并发、600 秒熔断、错误后 STOP、其他 URL/请求正文、默认 CLI/缺凭据零 DNS；PASS。
 - OS 出口：合成子进程允许指定 loopback TCP 端口，另一个本任务临时端口 EPERM；0700/0600 与 Key 不落盘检查 PASS。远端精确 IP 规则的首次实测 FAIL，已改为明确拒绝远端启动；不把这个 FAIL 隐藏为远端可用。
 - Manifest：`.venv/bin/python ../scripts/check_issue11_manifests.py`：3 个 Pod manifest PASS。`eval/`、正式 `server/src`、SDK lock、Graph 和旧脚本与基线无差异。
 - macOS OS `(deny network*)` 内执行原 `--dry-run`、`--offline-readiness --simulate-budget`、P0 `--offline-contract --simulate-budget`：全部 PASS；24 离线槽、4 离线槽/12 模拟 HTTP、4 离线槽/12 模拟 HTTP。P0 `live_gate=BLOCKED` 保持。相同 OS 禁网策略下新 CLI 默认 BLOCKED，零发送。
-- 全量 pytest：631 passed in 55.25s（46 项专项版本）；随后协议检查增补至 47 项，最终专项再次验证。CI 和独立 Reviewer 最终结果见 PR 正文；未取得结果前不宣称 PASS。
+- 全量 pytest：631 passed in 55.25s（46 项专项版本）；随后协议检查增补至 49 项，最终专项 49 passed in 3.39s；成功/失败子进程均验证 stdout 不包含回复和证据行。CI 和独立 Reviewer 最终结果见 PR 正文；未取得结果前不宣称 PASS。
+
+独立 Reviewer 首轮提出两项必改（无证据同义结论的 Gate 标注、私有证据打印 stdout），已分别修复并补充回归；最终 Head 的复审结论以 PR 正文为准。初始 Head CI Python/Web/Compose 全部 PASS，Python `630 passed, 2 skipped`；macOS 专项不适用于 Linux，不能把 skipped 当作 Linux PASS。
 
 ## Gate 与停止边界
 
@@ -34,7 +36,7 @@
 | --- | --- | --- |
 | #58 合并、实时基线、隔离范围 | PASS | merge SHA 等于实施时 main；只改新 CLI、专项测试、CI lint 文件集及本报告 |
 | L0 原离线行为 | PASS | OS 全禁网运行；原脚本不改，P0 仍 BLOCKED |
-| L5 Mock 负测与本机 loopback OS 策略 | PASS | 47 项专项；仅假 Provider，禁止解释为 CPA 合约证据 |
+| L5 Mock 负测与本机 loopback OS 策略 | PASS | 49 项专项；仅假 Provider，禁止解释为 CPA 合约证据 |
 | 远端精确 IP OS 白名单原型 | FAIL | Seatbelt 不接受该语法；launcher 对远端 fail closed |
 | 安全配置与唯一真实 CPA 出口 | BLOCKED | Host/Worker 均未发现 CPA/OpenAI/LLM 注入；用户尚未提供非秘密 endpoint/安全注入方式；远端 egress 机制不足 |
 | L1 文本 / L2 Tool Calling / L3 ToolMessage | BLOCKED | 真实模型请求 0；未收到任何 CPA HTTP 回包 |

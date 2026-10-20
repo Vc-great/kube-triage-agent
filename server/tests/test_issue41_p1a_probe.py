@@ -287,7 +287,8 @@ def test_remote_os_gate_no_dns(monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS isolated child smoke test")
-def test_loopback_synthetic_child_private_evidence(tmp_path, monkeypatch):
+@pytest.mark.parametrize("fail_last", [False, True])
+def test_loopback_synthetic_child_private_evidence(tmp_path, monkeypatch, capfd, fail_last):
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
     requests = []
@@ -298,7 +299,7 @@ def test_loopback_synthetic_child_private_evidence(tmp_path, monkeypatch):
         def do_POST(self):
             requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
             data = response(len(requests)).content
-            self.send_response(200)
+            self.send_response(500 if fail_last and len(requests) == 3 else 200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -315,10 +316,16 @@ def test_loopback_synthetic_child_private_evidence(tmp_path, monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
-    assert result == 0
+    assert result == (1 if fail_last else 0)
     assert len(requests) == 3
+    public = json.loads(capfd.readouterr().out)
+    assert "rows" not in public
+    assert "synthetic_reply_text" not in json.dumps(public)
+    assert "纯合成：当前状态未核验。" not in json.dumps(public, ensure_ascii=False)
     saved = (output / "summary.json").read_text()
-    assert json.loads(saved)["status"] == "PASS"
+    assert json.loads(saved)["status"] == ("FAIL" if fail_last else "UNKNOWN")
+    assert json.loads(saved)["protocol_status"] == ("FAIL" if fail_last else "PASS")
+    assert json.loads(saved)["rows"][0]["synthetic_reply_text"] == "纯合成：当前状态未核验。"
     assert "synthetic-child-key" not in saved
     assert output.stat().st_mode & 0o777 == 0o700
     assert (output / "summary.json").stat().st_mode & 0o777 == 0o600
@@ -343,3 +350,20 @@ def test_tool_finish_reason_must_match():
     ledger = run(handler)
     assert ledger.attempts == 2
     assert ledger.reason == "finish_message_mismatch"
+
+
+def test_synonym_claim_cannot_pass_semantic_gate():
+    n = 0
+    def handler(req):
+        nonlocal n
+        n += 1
+        data = response(n).json()
+        if n == 3:
+            data["choices"][0]["message"]["content"] = "该 Pod 运行正常，故障已经解决"
+        return httpx.Response(200, json=data)
+    ledger = run(handler)
+    assert ledger.reason is None
+    result = p.summary(ledger)
+    assert result["protocol_status"] == "PASS"
+    assert result["status"] == result["semantic_status"] == "UNKNOWN"
+    assert result["semantic_review"] == "NOT RUN"

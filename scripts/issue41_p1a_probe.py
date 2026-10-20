@@ -269,7 +269,10 @@ def isolated_environment(key=None):
 
 
 def summary(ledger):
-    return {"stage": "P1-A", "status": "PASS" if not ledger.reason else ("FAIL" if ledger.attempts else "BLOCKED"),
+    protocol = "PASS" if not ledger.reason else ("FAIL" if ledger.attempts else "BLOCKED")
+    return {"stage": "P1-A", "status": "UNKNOWN" if protocol == "PASS" else protocol,
+            "protocol_status": protocol, "semantic_status": "UNKNOWN",
+            "semantic_review": "NOT RUN",
             "stop_reason": ledger.reason, "client_http_attempts": ledger.attempts,
             "rows": ledger.rows, "upstream_retries": "UNKNOWN", "billing": "UNKNOWN",
             "B8": "NOT RUN", "P1-B": "NOT AUTHORIZED", "kubernetes_requests": 0}
@@ -302,7 +305,9 @@ def child(target, addresses, output):
         socket.getaddrinfo = original
         private.write("summary.json", json.dumps(summary(ledger), ensure_ascii=False, indent=2))
         private.close()
-    print(json.dumps(summary(ledger), ensure_ascii=False))
+    # stdout is routinely retained in AO/task logs. Private rows never leave the file.
+    public = {k: v for k, v in summary(ledger).items() if k != "rows"}
+    print(json.dumps(public, ensure_ascii=False))
     return 0 if not ledger.reason else 1
 
 
