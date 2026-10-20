@@ -11,7 +11,7 @@ values = {}
 for line in Path(".env").read_text().splitlines():
     if "=" in line and not line.lstrip().startswith("#"):
         key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        values[key.strip()] = value.strip().strip("\"'")
 
 failed = False
 owned = set()
