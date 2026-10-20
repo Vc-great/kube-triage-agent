@@ -2,11 +2,11 @@
 
 > - [Issue #41](https://github.com/Vc-great/kube-triage-agent/issues/41) 的 **Phase B 验收矩阵**是唯一权威验收标准；本计划只是 B8 真实 A/B Pilot 的执行协议，不另立验收真相
 > - 文档状态：**Proposed / Planning PR（文档提案，非代码或真实 Pilot 已完成证明）**
-> - 规划基线（2026-10-20）：`origin/main=b944c85425e69c56644fab19af64a83f1ac36fdf`；实施前重新 fetch，不能继续沿用此 SHA
+> - 当前核验基线（2026-10-20）：`origin/main=c7393c9c39348d993fe34e08655e5999cd092cbe`；原规划基线 `b944c85` 的失败保留在第 2 节。实施前重新 fetch 并核对最新主线 CI，不能固定沿用此 SHA
 > - 已合并基础：[B1-R 原实验设计](issue-41-deep-agents-real-llm-eval.md)、[P0/P1 安全设计](issue-41-b1r-real-provider-contract-pilot-gate.md)、[P1-A 合成 CPA 契约](issue-41-p1a-cpa-gpt6-luna-provider-contract.md)、[PR #59](https://github.com/Vc-great/kube-triage-agent/pull/59) 及[真实 P1-A 报告](../issue41-p1a-provider-contract-validation.md)
 > - **当前新增用户授权（2026-10-20）**：只允许 **P1-B：冻结 R05 和 R01 × Planning ON/OFF，共 4 Run，CPA + `gpt-6-luna` 真实模型；仅合成 Kubernetes Reader 数据出站**。用户明确表示模型资源充裕，无需以逐笔模型费用阻碍本次任务
 > - **不授权**：P2 Formal 剩余 20 Run、真实 Kubernetes Reader/Write、Repair/HITL、真实 Pod 日志/Secret 出站、Langfuse/其他云遥测、B2-A/B2-B、B3、修改正式 `agent` 或冻结评测集。B2-A 仍 BLOCKED，Issue #41 仍 Open
-> - **尚存已知 CI 阻断**：`main=b944c85` Push CI [39414301771](https://github.com/Vc-great/kube-triage-agent/actions/runs/39414301771) Python FAIL（`test_dev_profiles.py` 7 failed，`LANGFUSE_SOURCE_UNAVAILABLE`；其余 669 passed/3 skipped），web/compose PASS。前一 `main=cbc9e06` [39413831830](https://github.com/Vc-great/kube-triage-agent/actions/runs/39413831830) 同类 FAIL。必须先解决或用可追溯证据消除 **最新主线 CI FAIL** 才可执行真实四槽 Pilot
+> - **CI-0 当前 PASS（仅针对上述核验基线）**：[PR #62](https://github.com/Vc-great/kube-triage-agent/pull/62) 已合并为 `main=c7393c9`，Push CI [39421300790](https://github.com/Vc-great/kube-triage-agent/actions/runs/39421300790) 的 Python/Web/Compose 均 PASS。旧主线的 7 项失败已修复，不再作为当前阻断。**最新主线 CI 全绿的前置 Gate 仍保留**；规划未合并或 Runner/出口隔离负测未通过时，不得执行真实四槽 Pilot
 
 ## 1. 背景、已实现事实与目标
 
@@ -16,14 +16,16 @@
 
 **本次目标**：在**实际自主 Tool Calling** 下跑原有 4 个冻结 Slot，回答是否能正确引用 CrashLoop 证据、拒绝 R05 旧 UID 与工具日志中的提示注入，B 是否有真实计划/调整/停止行为，以及实际 Token、延迟、Reader/Todo 次数和失败原因。用户已批准真实 CPA 发送**冻结人工合成数据**，不必为本次增设模型费用价格查证门槛。
 
-## 2. 最新 Main CI 阻断必须先处理
+## 2. 主线 CI-0：当前证据与历史失败
 
-在 2026-10-20 核验：
-- `main=b944c85425e69c56644fab19af64a83f1ac36fdf`，无开放 PR；
+**当前核验（2026-10-20）**：重新 `git fetch origin` 后，`origin/main=c7393c9c39348d993fe34e08655e5999cd092cbe`。[独立 Bugfix PR #62](https://github.com/Vc-great/kube-triage-agent/pull/62) 已合并，主线 Push CI [39421300790](https://github.com/Vc-great/kube-triage-agent/actions/runs/39421300790) 的 Python、Web、Compose 均 PASS，故该基线的 **CI-0=PASS**。根因已确认：Profile 测试虽提供合成配置字典，`child_environments()` 仍会读取根目录 `.env` 的 Langfuse 配置，导致干净 CI 缺文件时失败，也使测试依赖开发机配置。修复仅为测试提供临时 `0600` 合成配置文件，并验证 OTEL 关闭、子进程无 Langfuse 字段；没有放宽产品安全校验、伪造凭据或跳过测试。本规划分支已同步该 main 修复。
+
+**历史失败（保留，不代表当前状态）**：
+- 原规划基线 `main=b944c85425e69c56644fab19af64a83f1ac36fdf`；
 - [CI 39414301771](https://github.com/Vc-great/kube-triage-agent/actions/runs/39414301771) 的 Python：**7 failed, 669 passed, 3 skipped**；全部是新增 `server/tests/test_dev_profiles.py::test_profile_preflight[...]` 参数化 7 案。可见的直接错误路径为 `scripts/dev.py:read_langfuse_env` 试图读取可选 Langfuse 来源后抛 `LANGFUSE_SOURCE_UNAVAILABLE`；测试构造的 `host`/`VALUES` 未明显提供有效来源。**这是初步定位，不把原因推断当成已确认根因**。
 - 近期 `main=cbc9e069...` [39413831830](https://github.com/Vc-great/kube-triage-agent/actions/runs/39413831830) 同样 7 failed；其他 Python 669 pass，Web/Compose PASS。新增 `.codex/config.toml` 的 `network_access=true` 只描述 Codex 会话权限，不代表测试子进程的网络出口自动安全。
 
-**Gate CI-0**：AO 先在独立 Worktree 复现并查清此独立问题，推荐**单独最小 Bugfix PR**（限定 `scripts/dev.py` / `test_dev_profiles.py` 等实际相关文件），不把无关修复混入 Issue #41 Pilot Implementation PR；不得修改 `.env` 或伪造 Langfuse 凭据、删除断言、跳过 7 项测试。以修复合并进 main、最新 main Python/Web/Compose CI 全绿为**开始 P1-B 真实调用的前置条件**。规划/离线 Runner 可并行开展，但不能绕过 CI-0。若 CI FAIL 是更深层安全缺陷，STOP 报告而不是自行放行。
+**Gate CI-0（持续保留）**：修复合并进 main、最新 main Python/Web/Compose CI 全绿是**开始 P1-B 真实调用的前置条件**。上述基线已满足；实施前必须重新核对，若最新主线 CI 未完成或失败则 BLOCKED，不得沿用旧 PASS。新增 CI 问题仍须独立定位、最小修复，不把无关修复混入 Issue #41 Pilot Implementation PR；不得修改 `.env` 或伪造 Langfuse 凭据、删除断言、跳过 7 项测试。规划/离线 Runner 不能绕过 CI-0。CI-0 PASS 不代表规划已获人工合并、Runner 安全负测或真实 Pilot 已通过；若 CI FAIL 是更深层安全缺陷，STOP 报告而不是自行放行。
 
 ## 3. 精确实验集与安全边界
 
@@ -81,7 +83,7 @@
 | 阶段 | 实施/证据 | 进入下一步 |
 | --- | --- | --- |
 | **Planning PR（本 PR）** | 纯文档、Review、人工合并，不写业务代码，不发模型请求 | 规划合并方可派 AO 实施 |
-| **Gate CI-0 主线修复** | 先定位 `test_dev_profiles.py` 的 7 FAIL，独立最小 Bugfix PR/实际 main CI；不改冻结评测、不可跳过测试 | 主线 CI PASS 才允许真实 P1-B 四槽 |
+| **Gate CI-0 主线修复** | 已通过独立 PR #62 修复；`main=c7393c9` 的 CI 39421300790 全绿，当前 PASS；历史 7 FAIL 保留，不改冻结评测、不可跳过测试 | 实施前重新确认最新 main CI PASS，且其他前置 Gate 均满足，才允许真实 P1-B 四槽 |
 | **P1-B Live Runner 离线开发** | 最新 main 独立 Worktree、冻结数据、MockTransport/FakeResponse + OS 出口 Mock、预算与记录安全负测、复用已有 Graph | 单测/代码安全 Gate；不能以此宣称真实模型 PASS |
 | **P1-B 已批准的真实四槽 Pilot** | 仅本文 4 Run；真实 CPA + 合成 Mock Reader；串行、真实 Usage、失败立即 STOP；报告 STOP/GO、Pair 完整性与安全证据 | 仅完整与有效 Pair 才能进行适当 A/B 比较 |
 | **Independent Review & CI** | Reviewer 对最终实现 Head/结果文档双审，适用 Ruff/pytest/CI；Draft Implementation PR | 用户审阅决定是否合并；Issue #41 仍 Open |
@@ -104,7 +106,7 @@
 
 - 仓库 `Vc-great/kube-triage-agent`，Issue `#41`；唯一批准阶段 **P1-B 4 Run Real Planning Pilot（含必要的离线 Runner 实施）**。
 - 首读 `AGENTS.md`、本计划 `docs/plans/issue-41-p1b-cpa-planning-real-pilot.md`、`docs/plans/issue-41-deep-agents-real-llm-eval.md`、PR #59/`scripts/issue41_p1a_probe.py`、`scripts/issue41_b1r_pilot.py`。
-- **先完成/等待 CI-0 恢复**；只可用单独最小 Bugfix PR 修复新近 7 个 `test_dev_profiles` 错误，不得跳过/掩盖；未达 main CI GREEN，真实四槽不得开始。
+- **重新核对 CI-0**：PR #62 已修复历史 7 个 `test_dev_profiles` 错误，`main=c7393c9` 的 CI 39421300790 全绿；若后续 main CI 未完成或失败，仍须等待/用独立最小 Bugfix PR 修复，不得跳过或掩盖，真实四槽不得开始。
 - 真实 CPA 入口采用用户已批准的精确 `192.168.31.110:8317/v1`、`gpt-6-luna` 和既有安全的私有密钥注入；本次用户批准发送仅冻结合成用例。
 - 工程硬熔断：**4 Run、28 HTTP 实际尝试、无 SDK retry、串行、60s/请求、10min/Run、30min/任务**；所有失败 STOP，无自动补跑。最小代码、Fake/Mock 负测后才真实调用。
 - 独立 Worktree/Reviewer、Draft Implementation PR、中文 Gate 报告/CI。**不得自动合并、关闭 Issue #41、进入 P2 20 Run / B2/B3、实际 K8s 或任何写权限扩大**。因安全或缺失配置无法执行，提交 BLOCKED 证据，不用“资源充裕”绕过边界。
@@ -112,3 +114,4 @@
 ## 8. 设计记录
 
 - 2026-10-20：基于 `main=b944c85`、冻结清单与 PR #59 真 CPA Wire 结果确定 P1-B 四槽受控实测。此设计创建时 `main` 的 Python CI **7 FAIL**，故 CI-0 前置，不伪称已修复。历史 P1-A L1/L2/L3 3 次成功不是 P1-B 结果。
+- 2026-10-20 CI 修复更新：PR #62 合并至 `main=c7393c9`，主线 CI 39421300790 的 Python/Web/Compose 全 PASS；本规划分支同步 main 并更新当前证据，保留上述历史失败。持续保留最新主线 CI 与其他安全 Gate，不把本次 CI 修复当作 P1-B 执行证明。
