@@ -1,66 +1,65 @@
-# Issue #41 P1-A CPA / gpt-6-luna Provider Contract Gate
+# Issue #41 P1-A CPA / gpt-6-luna Provider Wire Contract Gate
 
-对应 [P1-A 方案](plans/issue-41-p1a-cpa-gpt6-luna-provider-contract.md)，Planning PR [#58](https://github.com/Vc-great/kube-triage-agent/pull/58) 已合并。实施及本轮重新 fetch 的 `origin/main=371715551911f713df3ec2d6dce62eed51fcf6f4`；独立 Worktree `provider-contract-3`，分支 `ao/provider-contract-3/p1a`。最终交付 Head、CI、独立 Reviewer 以 [Draft PR #59](https://github.com/Vc-great/kube-triage-agent/pull/59) 正文为准。
+对应 [P1-A 权威方案](plans/issue-41-p1a-cpa-gpt6-luna-provider-contract.md)。Planning PR [#58](https://github.com/Vc-great/kube-triage-agent/pull/58) 已合并；实施/续作实时 `origin/main=371715551911f713df3ec2d6dce62eed51fcf6f4`。独立 Worktree `provider-contract-3`，分支 `ao/provider-contract-3/p1a`。最终交付 Head、CI 和独立 Reviewer 见 [Draft PR #59](https://github.com/Vc-great/kube-triage-agent/pull/59) 正文。
 
-**当前结果：已尝试启动一次真实 P1-A，但在协议子进程启动前失败；模型 HTTP 请求为 0，L1–L3 BLOCKED。不能判断 CPA 协议或 gpt-6-luna 能力，不能产生 P1-B GO。**
+**真实结果：宿主机直连 CPA 成功；L1 文本、L2 标准 Tool Calling、L3 配对 ToolMessage 续答的有限合成 Wire Contract 均 PASS。3 次客户端 HTTP 尝试全部 200，回显均为 `gpt-6-luna`，原始 Usage 与 SDK Usage 均 MATCH。** 这不是诊断语义质量或 P1-B GO；运行摘要仍保留整体/语义 UNKNOWN、人审 NOT RUN，B8 NOT RUN。
 
-## 本轮明确授权与范围
+## 授权与执行范围
 
-用户在初始任务后进一步明确：允许从现有 `.env` 使用 CPA endpoint/key；随后明确指定 `http://192.168.31.110:8317/v1` 为本轮测试地址。该指令优先于规划中“远端必须 HTTPS”的通用条件，构成**仅此 IP、8317 端口、`/v1/chat/completions` 路由的明文 HTTP 例外**。不推广到其他内网地址、路径、端口或任意 HTTP。
+用户后续明确允许从现有 `.env` 在进程内使用配置，并指定 `http://192.168.31.110:8317/v1`。该指令构成仅此 IP、8317 端口、`/v1/chat/completions` 路由的明文 HTTP 例外，不推广到其他远端 HTTP。最新用户确认宿主机可直接请求该地址，要求继续模型测试，本轮据此启动一个新的运行标识。未使用本机 7890 代理；中断前未提交的代理草稿已撤回，真实运行使用原已批准源码。
 
-本机进程只在内存解析用户授权 `.env` 的所需配置，确认 endpoint/key 存在、模型匹配；没有输出、复制、上传文件内容或 Key，也不修改 `.env`。仓库 CLI 不加载 dotenv；一次性执行加载器将 Key 传入私有环境。上游链路、代理内部重试和账单不可观察，保持 UNKNOWN。P1-B/P2、真实 Kubernetes、Repair、正式 Graph/HITL/Memory 和稳定部署均未授权、未运行。
+只解析 `.env` 所需配置，不输出、复制、上传文件内容或 Key，不修改 `.env`。加载器仅向父进程临时注入 `CPA_API_KEY`，保留 Host 的启动环境；SDK 子进程仍清空继承环境、禁 proxy/telemetry/tracing。没有放宽 SDK/Reader/正式 Graph，不运行冻结 R01/R05 四槽 A/B，不接触真实 Kubernetes、Repair/HITL/Memory/Checkpoint 或稳定部署。
 
-## 实现与出口隔离
+## 本轮真实证据
 
-独立 `scripts/issue41_p1a_probe.py` 固定三步人工合成序列：中文文本 → `pods_get(kube-triage-demo/p1a-synthetic-pod)` → 配对 ToolMessage（`p1a-fake-uid`）。不加载冻结 R01/R05，不运行 A/B，不执行 Reader。Schema 复用现有构造器；`validate_call` 后再限制为精确假 Pod。P0 Mock-only、`live_gate=BLOCKED`、旧 dry-run/readiness 及正式源码不改。
+日期：2026-10-20，macOS arm64 / CPython 3.13.14。真实运行源码 Head：`b1fc414fc967178a257aa464d1724eb9aa729a99`；工作树在运行时干净，使用仓库锁定环境，没有下载或升级。下表是私有合成轨迹的白名单元数据摘要，不含响应正文、Authorization、Key 或私有原始请求。
 
-锁定 `openai==3.29.0`、`langchain-openai==1.7.0`、`httpx==0.28.1`，继承连接适配额外核对冻结 `httpcore==1.0.9`、`anyio==4.15.1`；没有升级依赖。显式 Chat Completions、`use_responses_api=False`、`max_retries=0`、非流式、输出 1024；HTTP retries=0、trust_env=False、无 redirect。每个 HTTP 尝试前预约，最多 24 次、总 600 秒（含预连接）、单次 45 秒、串行；异常 STOP，不重连、不补跑、不自动切换协议或参数。计数不是费用上限。
+| Probe | HTTP / 模型回显 | finish_reason | 原始输入/输出/总 Tokens | reasoning / cached | SDK 对比 | HTTP 延迟 |
+| --- | --- | --- | --- | --- | --- | --- |
+| L1 合成中文文本 | 200 / gpt-6-luna | stop | 321 / 44 / 365 | 30 / 0 | MATCH | 5001 ms |
+| L2 合成 pods_get | 200 / gpt-6-luna | tool_calls | 423 / 34 / 457 | 0 / 0 | MATCH | 2202 ms |
+| L3 配对 ToolMessage 续答 | 200 / gpt-6-luna | stop | 437 / 54 / 491 | 0 / 0 | MATCH | 2852 ms |
 
-macOS Seatbelt 不支持任意数字远端 IP 的过滤规则（原型已 FAIL）；默认 Docker 与已有 OrbStack context 均不可连接，未启动/改变其服务。最终采用更小的受限机制：
+本 Worker 本轮及累计可观察的真实模型 HTTP 尝试均为 **3**；此前失败启动未发模型 HTTP。三个响应报告合计输入 **1181**、输出 **132**、总 **1313** Tokens，其中报告 reasoning **30**、cache **0**；reasoning 已包含在输出字段，不能再加进总数。客户端 HTTP 延迟合计 **10055 ms**，不代表完整任务墙钟或 CPA 上游独立处理时长。用户另述的其他 Codex 连通性测试不在本 Worker 的计数/账单可观察范围内。
 
-1. 父进程只向批准的数字 IP/明确端口预建立一条 TCP 连接，此时不发送 HTTP 或 Key。
-2. 通过 `pass_fds` 将该连接交给 `sandbox-exec` 的 `(deny network*)` 子进程，无网络 allow 规则。子进程无法新建 TCP、DNS、UDP 或额外出口。
-3. 冻结 httpcore/anyio 适配器检查 socket 的实际 peer，再把已有 socket 包装成 SDK transport。只允许消费一次连接；后续三步复用 keep-alive。CPA 关闭连接、另一地址/端口、Unix socket 或重连均 STOP。没有用 Python monkeypatch 冒充 OS 隔离。
-4. 子进程清空继承环境，仅保留必要配置；禁 proxy/telemetry/SDK tracing。HTTP body 与固定合成消息逐字典比较，拒绝其他模型、路径、正文或工具。
+L2 仅返回一个 `pods_get`，执行层检查参数为 `namespace=kube-triage-demo`、`name=p1a-synthetic-pod`；没有执行真实 Reader。Tool ID 非空合法，私有记录保留其 SHA256：`b40ef3bcfea8199bb7477ce42688ba19120b9b091ba1d9d5c7b0853e67be3422`。L3 请求体按该 ID 配对 ToolMessage，固定假 UID `p1a-fake-uid`，回执为 Unknown/纯合成无真实读取；wire guard 校验实际发送消息。最终自然语言语义未人工审阅，不能从字符串黑名单或协议成功推导语义 PASS。
 
-已用本任务临时合成 HTTP/1.1 服务实测：三步可在 OS 全禁网下复用连接，继承连接可读写；新建到相同服务或另一端口的连接均 EPERM。此机制不改变 CPA 服务、不创建隧道、不启动 Compose 或任何稳定环境。
+私有目录 0700、文件 0600 已核对；原始回复和行级证据不进 stdout、PR 或云 Trace。可核对摘要：
 
-私有输出复用 `PrivateOutput`：新建目录 0700、文件 0600，无覆盖/符号链接。父进程在 TCP 前另建 `<output>-launch` 私有目录，结束时独占写入 `launch.json` 启动审计；子进程先写 entered 标记再允许 HTTP。非零退出/启动异常/超时均保留脱敏父审计：标记前为 0 HTTP，标记后计数不完整为 UNKNOWN，有完整子报告时保留实际计数。子进程 stdout/stderr 被父进程捕获，不重放任意 bootstrap 错误；公开输出仅为父进程白名单状态。stdout 仅含状态/计数，私有回复与行级证据不进入任务日志。记录脱敏模型回显、HTTP 状态、finish_reason、ID/请求摘要、原始/SDK Usage、延迟；400/422 仅记录错误结构，不输出异常内容。协议通过与语义分开：`protocol_status` 可 PASS，整体/语义仍 UNKNOWN、人审 NOT RUN；固定短语不能证明语义正确。缺失 Usage、实际费用和 CPA 隐藏行为不填 0。
+- 私有 `summary.json` SHA256：`6226e9314c621a939ce83eb657ab0566d560adb0447a491e34cde72f86b7707a`。
+- 私有父进程 `launch.json` SHA256：`14374bcdd85fa692851c850e05c6a741c2f389ba1edd35de60acaedeb1050680`。
+- 父进程记录 `phase=child_exit`、`exit_code=0`、`client_http_attempts=3`、`protocol_status=PASS`；`status=UNKNOWN`、`semantic_status=UNKNOWN`、`semantic_review=NOT RUN` 刻意保持，不是协议失败。
 
-## 真实尝试与证据边界
+没有追加可选 L4，没有自动重跑或增加请求来追求更好输出。实际价格、失败计费、CPA 内部路由/重试/隐藏账单及真实底层模型版本依然 UNKNOWN；原始 Usage 是 CPA 声明值，SDK 一致不等于独立账单核验。
 
-2026-10-20，以源码 Head `821eb33192a4a3160a4da24305af15ea5b0484cb`、已批准地址与私有 Key 启动**一次**，没有补跑。加载器返回 `STOP / launch_or_timeout`；协议子进程的私有目录及 `summary.json` 均不存在。按源码调用顺序，HTTP 只可能在子进程创建私有目录之后发生，因此本次没有 HTTP/模型请求，没有任何 CPA HTTP 状态、Usage、模型回显或 Tool ID 回执。
+## 实现、安全出口与回归
 
-该版本的父进程异常包装未保留具体异常类别，因此**不能判定**是连接拒绝、超时、Host 防火墙还是其他启动原因；精确类别记 UNKNOWN，不把它写成模型失败。随后只读 Host 路由检查显示目标经 `en0`，这不能证明端口可达，未再发送 TCP/HTTP 探针。已按独立 Reviewer 后续要求补齐父进程 TCP 失败、子进程非零/启动异常/超时的私有审计（异常类型、数字 errno、已知计数或 UNKNOWN，不含异常消息）及合成回归；没有为验证修复重跑真实 CPA。
+独立 CLI 固定三步人工合成序列，Schema 复用现有构造器，`validate_call` 后再限制到精确假 Pod。P0 Mock-only、`live_gate=BLOCKED`、旧 dry-run/readiness、正式源码与冻结数据均不改。
 
-原始私有模型轨迹没有产生；本报告不附任何 Secret、`.env`、私有原始请求/响应或真实集群数据。未来若恢复，应由用户确认新的执行窗口/运行标识；不能以本次剩余计数自动补跑。
+冻结版本 `openai==3.29.0`、`langchain-openai==1.7.0`、`httpx==0.28.1`、`httpcore==1.0.9`、`anyio==4.15.1`。显式 Chat Completions / `use_responses_api=False`、`max_retries=0`、非流式、输出上限1024；HTTP retries=0、trust_env=False、无 redirect。每次 HTTP 前预约，最多24次/600秒（含预连接）/单次45秒/串行，异常 STOP，无重连或自动补跑；这不是费用硬上限。
 
-## 工程验证
+父进程只预连接批准的数字 IP/端口，此时不发送 HTTP/Key；通过 `pass_fds` 交给 macOS `(deny network*)` 子进程，无网络 allow 规则。冻结 httpcore/anyio backend 核对 socket 实际 peer，只消费一次连接，三步复用 keep-alive；第二地址、重连、Unix socket 均拒绝。合成 OS 测试已证实继承连接可读写，而新建到相同服务或另一端口的连接均 EPERM。没有用 Python monkeypatch 冒充 OS 隔离，没有启动隧道、服务、Compose 或容器。
 
-环境：macOS arm64、CPython 3.13.14；复用 Host Runtime 与 uv 离线缓存，`uv sync --frozen --offline --python 3.13`，没有依赖下载/升级。
+私有父日志目录在 TCP 前建立，结束时独占写 `launch.json`；子进程先写 entered 标记再允许 HTTP。TCP/子进程非零/启动异常/超时均有脱敏父回退审计：标记前0 HTTP，标记后计数不完整为 UNKNOWN，完整报告保留实际计数。子进程 stdout/stderr 被捕获、不重放任意 bootstrap 错误；公开输出仅白名单状态，不含私有回复。
 
-- PASS：在 `server/` 按当前 CI 文件集执行 `.venv/bin/ruff check ... ../scripts/issue41_p1a_probe.py`；`git diff --check`。
-- PASS：`.venv/bin/python ../scripts/check_issue11_manifests.py`，3 个 Pod manifest。
-- PASS：新增继承连接路径时全量 pytest `636 passed in 56.37s`；真实启动前最终专项 `54 passed in 3.78s`。补启动失败审计后最终全量 `640 passed in 57.26s`（当时含55项专项）；父进程回退审计增补后最终全量 `648 passed in 56.43s`（含63项专项），最终 CI/独立 Reviewer 以 PR 正文补充。
-- 负测覆盖：400/403/422/429/5xx、redirect、断连/超时、坏 JSON、回显模型不符/Key 回显脱敏、Usage 缺失、finish_reason、工具 ID/参数、未知工具/跨 Namespace/其他 Pod、无证据同义结论、24 次/600 秒/并发、另一地址/路径、默认零出站、精确 LAN 例外、socket peer/重连/Unix socket、OS 继承连接与全部新连接拒绝、成功/失败 stdout 不泄漏；父进程 TCP/子进程非零/启动异常/超时/进入前后/不完整计数/既有输出拒绝。
-- 旧 CLI 曾在 macOS OS 全禁网下验证：dry-run 24 槽；readiness/P0 各 4 离线槽、12 次模拟 HTTP，P0 live_gate=BLOCKED。旧脚本/冻结数据/生产源码与 main 无差异；不是实际 R01/R05 A/B。
-- 初始 Head 的两项 Reviewer 必改已修复（stdout 私有证据、协议/语义分离），旧 Head CI/复审均通过。**新增继承连接路径的独立 Review 和最终 CI 另见 PR 正文，未返回前不沿用旧批准。**
+验证：本机最终全量 `648 passed in 56.43s`（含63项专项），Ruff、`git diff --check`、3个 Pod manifest 检查 PASS；源码 Head 的 CI Python `645 passed, 3 skipped`（macOS专属实例在Linux跳过，本机覆盖）、Web/Compose PASS，独立 Reviewer approved。最终文档提交的 CI/复审见 PR 正文；纯文档更新不伪称重新做了模型调用或本机全量测试。
 
-## Gate
+负测覆盖400/403/422/429/5xx、redirect、断连/超时、坏JSON、模型回显不符/Key回显脱敏、Usage缺失、finish_reason、工具ID/参数、未知工具/跨Namespace/其他Pod、无证据同义结论、24次/600秒/并发、其他地址/路径、默认零出站、精确LAN例外、peer/重连/Unix socket、OS禁新连接、stdout私有证据及完整父启动审计。旧CLI曾在OS全禁网验证：dry-run24槽，readiness/P0各4离线槽/12模拟HTTP；不是实际A/B。
 
-| Gate | 状态 | 证据与限制 |
+## 历史失败与当前 Gate
+
+此前源码 `821eb33192a4a3160a4da24305af15ea5b0484cb` 启动一次，在协议子进程目录创建前 STOP，模型HTTP0，具体异常未保存，保持 UNKNOWN；不能把首次失败归因于服务或模型。本轮经用户新确认后用已审阅源码启动的新运行成功，不覆盖该历史失败。macOS任意数字IP Seatbelt过滤原型曾FAIL，默认Docker及OrbStack context不可连接；最终采用继承固定连接的OS全禁网机制，未改为通配端口规则。
+
+| Gate | 状态 | 证据/边界 |
 | --- | --- | --- |
-| #58 / 实时 main / 独立 Worktree / 阶段范围 | PASS | 实施及续作基线一致；仅 P1-A |
-| endpoint / Key / 明文 HTTP 特例授权 | PASS | 用户明确指令；安全内存加载，无秘密输出；不代表 TLS 存在 |
-| TLS（此次明确批准 HTTP） | NOT RUN | 此精确端点为明文例外，不伪称 TLS PASS；其他远端不放宽 |
-| 原离线边界 / Mock / 合成 OS 隔离 | PASS | 冻结回归、预连接 peer、OS 禁新连接、54/55 项专项 |
-| 远端 IP Seatbelt 原型 | FAIL | 平台不支持；最终未使用通配端口规则 |
-| 实际启动 | FAIL | 一次启动 STOP，未进入协议子进程，异常类别 UNKNOWN |
-| L1 文本 / L2 Tool Calling / L3 ToolMessage | BLOCKED | 模型 HTTP 0，无法判断 CPA 合约 |
-| L4 可选真实合成负测 | NOT RUN | L1–L3 未成功，不追加 |
-| CPA 状态/回显/Usage/延迟 | UNKNOWN | 没有 HTTP 响应，不填 0 或 Mock 值 |
-| TCP 失败具体原因 / CPA 上游重试 / 实际版本 / 账单 | UNKNOWN | Host 路由不证明端口可达；未重试 |
-| B8 / P1-B / P2 / 真实 K8s / 真人盲审 | NOT RUN | 没有 GO，不扩大授权 |
-| 最终 CI / 独立 Reviewer | 见 PR 正文 | 针对最终 Head 重新获取结论 |
+| #58 / main / Worktree / 仅P1-A | PASS | 实时基线、冻结源码、独立CLI |
+| 私有配置 / 指定HTTP例外 / 宿主机直连 | PASS | 用户明确授权，本轮真实3次HTTP200 |
+| TLS（精确HTTP例外） | NOT RUN | 不伪称TLS PASS，不放宽其他地址 |
+| L0离线边界 / L5负测 / OS出口 | PASS | 原代码/冻结文件无差异、63专项、本机648全量 |
+| L1文本 / L2 tools / L3 ToolMessage | PASS（有限合成wire） | 3次200、模型回显一致、ID配对、Usage MATCH |
+| 最终自然语言语义 / 独立账单 / CPA内部行为 | UNKNOWN | 人审NOT RUN；客户端不可独立观察上游 |
+| 首次启动 / Seatbelt远端IP原型 | FAIL（历史） | 本轮成功不抹除历史失败 |
+| L4可选负测 / B8 / P1-B / P2 / 真实K8s / 真人盲审 | NOT RUN | 不产生下一阶段GO，不追加模型请求 |
+| 最终交付CI / 独立Reviewer | 见PR正文 | 针对最终Head记录，不沿用过时批准 |
 
-回退只需退出独立 CLI 或回滚 PR；没有服务、数据库、Memory/Repair/Checkpoint 或部署迁移。Issue #41 保持 Open，PR 保持 Draft，不自动合并，B2/B3 和历史 FAIL 保持。
+回退为退出CLI或回滚PR；无部署、数据库、Memory/Repair/Checkpoint迁移。Issue #41保持Open，PR保持Draft，不自动合并；P1-B/P2、B2/B3及历史FAIL边界保持。
