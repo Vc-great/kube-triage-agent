@@ -2,6 +2,10 @@
 
 > - [Issue #41](https://github.com/Vc-great/kube-triage-agent/issues/41) 的 **Phase B 验收矩阵**是唯一权威验收标准；本计划只是 B8 真实 A/B Pilot 的执行协议，不另立验收真相
 > - 文档状态：**Proposed / Planning PR（文档提案，非代码或真实 Pilot 已完成证明）**
+> - 规划 PR：[PR #61](https://github.com/Vc-great/kube-triage-agent/pull/61)
+> - 实施阶段：Issue #41 Phase B / B8 的 **P1-B 四槽真实 Planning OFF/ON Pilot**；当前仅处于规划审阅与 CI 修复，Runner 实施及真实 Pilot 均未开始
+> - 计划批准状态：**尚未批准（规划 PR 未合并至 main）**。用户已授权本文 P1-B 运行范围；该运行授权不等于计划已经批准，须先人工审阅并合并本规划，再按全部 Gate 实施
+> - 适用版本：当前锁定的 `deepagents==0.7.28`、`aegra-cli==0.10.8` 及其锁文件依赖；实施时以最新 main 锁文件重新核对，不自行升级
 > - 当前核验基线（2026-10-20）：`origin/main=c7393c9c39348d993fe34e08655e5999cd092cbe`；原规划基线 `b944c85` 的失败保留在第 2 节。实施前重新 fetch 并核对最新主线 CI，不能固定沿用此 SHA
 > - 已合并基础：[B1-R 原实验设计](issue-41-deep-agents-real-llm-eval.md)、[P0/P1 安全设计](issue-41-b1r-real-provider-contract-pilot-gate.md)、[P1-A 合成 CPA 契约](issue-41-p1a-cpa-gpt6-luna-provider-contract.md)、[PR #59](https://github.com/Vc-great/kube-triage-agent/pull/59) 及[真实 P1-A 报告](../issue41-p1a-provider-contract-validation.md)
 > - **当前新增用户授权（2026-10-20）**：只允许 **P1-B：冻结 R05 和 R01 × Planning ON/OFF，共 4 Run，CPA + `gpt-6-luna` 真实模型；仅合成 Kubernetes Reader 数据出站**。用户明确表示模型资源充裕，无需以逐笔模型费用阻碍本次任务
