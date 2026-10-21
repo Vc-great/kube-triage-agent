@@ -41,6 +41,7 @@ import { useFileUpload } from "@/hooks/use-file-upload";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { AgentExecutionTimeline } from "./agent-execution-timeline";
 import { PlanningTodos } from "./planning-todos";
+import { DeepDemoControls } from "./deep-demo-controls";
 import {
   useArtifactOpen,
   ArtifactContent,
@@ -419,6 +420,7 @@ export function Thread() {
             </div>
           )}
 
+          <DeepDemoControls />
           <StickToBottom className="relative flex-1 overflow-hidden">
             <StickyToBottomContent
               className={cn(

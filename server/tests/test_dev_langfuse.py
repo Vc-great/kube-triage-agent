@@ -26,7 +26,7 @@ def source_file(tmp_path, content=None):
     return source
 
 
-@pytest.mark.parametrize("mode", list(dev.PROFILES))
+@pytest.mark.parametrize("mode", [mode for mode in dev.PROFILES if mode != "deep-demo"])
 def test_valid_keys_auto_enable_every_local_profile_only_in_api(tmp_path, monkeypatch, mode):
     source = source_file(tmp_path)
     monkeypatch.setattr(dev, "ENV_FILE", source)
@@ -61,7 +61,7 @@ def test_web_only_mode_delegates_to_remote_api_without_local_keys(monkeypatch, t
         assert "host-secret" not in child.values()
 
 
-@pytest.mark.parametrize("mode", list(dev.PROFILES))
+@pytest.mark.parametrize("mode", [mode for mode in dev.PROFILES if mode != "deep-demo"])
 def test_missing_keys_default_off_and_do_not_inherit_host_keys(monkeypatch, tmp_path, mode):
     monkeypatch.setattr(dev, "ENV_FILE", source_file(tmp_path, "OTHER_VALUE=ignored\n"))
     values = {**FAKE_VALUES, "INCIDENT_MEMORY_PROVENANCE_SECRET": "hmac-fake"}

@@ -1,6 +1,8 @@
 """Native developer scenario boundaries without starting external services."""
 
 import importlib.util
+import io
+import json
 import os
 import sys
 from pathlib import Path
@@ -113,3 +115,89 @@ def test_start_requires_explicit_stop_for_existing_supervisor(tmp_path, monkeypa
     monkeypatch.setattr(sys, "argv", ["dev.py", "start", "mock"])
     with pytest.raises(RuntimeError, match="先执行 make dev-stop"):
         DEV.main()
+
+
+def test_deep_demo_never_loads_trace_or_inherits_provider_overrides(monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("deep-demo must not read Langfuse credentials")
+
+    monkeypatch.setattr(DEV, "read_langfuse_env", forbidden)
+    host = {"PATH": "/usr/bin", "LANGFUSE_SECRET_KEY": "synthetic-trace-key",
+            "LANGSMITH_TRACING": "true", "LANGCHAIN_API_KEY": "synthetic-trace-key",
+            "OTEL_TARGETS": "LANGFUSE", "EVAL_LUNA_RESPONSES_HIGH": "true",
+            "DEEP_DIAGNOSIS_FAKE_MODEL": "true", "MCP_SERVER_URL": "http://real.invalid",
+            "HTTP_PROXY": "http://unapproved.invalid", "LLM_MODEL": "unapproved"}
+    values = {**VALUES, "LLM_BASE_URL": "http://192.168.31.110:8317/v1"}
+    envs = DEV.child_environments("deep-demo", values, host)
+    api = envs["api"]
+    assert api["TRIAGE_ENV"] == "test"
+    assert api["EVAL_LUNA_RESPONSES_HIGH"] == "false"
+    assert api["DEEP_DIAGNOSIS_ENABLE_PROVIDER"] == "true"
+    assert api["DEEP_DIAGNOSIS_FAKE_MODEL"] == "false"
+    assert api["AEGRA_CONFIG"] == "aegra.phase-b1.json"
+    assert api["MCP_SERVER_URL"] == "http://127.0.0.1:8000/mcp"
+    assert api["OTEL_TARGETS"] == ""
+    assert api["OTEL_SDK_DISABLED"] == "true"
+    assert api["WORKER_QUEUE_KEY"].startswith("deep-demo:")
+    assert api["REDIS_CHANNEL_PREFIX"].startswith("deep-demo:")
+    assert api["WORKER_QUEUE_KEY"] != "aegra:jobs"
+    assert api["REDIS_CHANNEL_PREFIX"] != "aegra:run:"
+    assert api["BG_JOB_TIMEOUT_SECS"] == "120"
+    assert api["BG_JOB_MAX_RETRIES"] == "0"
+    assert api["LANGSMITH_TRACING"] == api["LANGCHAIN_TRACING_V2"] == "false"
+    assert not any(key.startswith("LANGFUSE_") or key.endswith("PROXY") for key in api)
+    for key in ("REPAIR_ENABLED", "INCIDENT_MEMORY_ENABLED", "CONTEXT_WINDOW_ENABLED",
+                "CONTEXT_SUMMARY_ENABLED"):
+        assert api[key] == "false"
+    assert envs["web"]["NEXT_PUBLIC_ASSISTANT_ID"] == "deep_diagnosis_planning"
+    assert envs["web"]["NEXT_PUBLIC_DEEP_DEMO"] == "true"
+    assert envs["mock"]["TRIAGE_MOCK_DATASET"] == "memory-web"
+    assert DEV.profile_summary("deep-demo")["model"] == "real"
+    assert DEV.required_ports("deep-demo") == DEV.required_ports("mock")
+    for name in ("web", "mock", "tunnel"):
+        assert not (set(envs[name]) & DEV.PRIVATE_KEYS)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("LLM_MODEL", "gpt-other"),
+    ("LLM_BASE_URL", "https://unapproved.invalid/v1"),
+    ("LLM_BASE_URL", "http://192.168.31.110:8317/v1?redirect=1"),
+    ("LLM_BASE_URL", ""),
+])
+def test_deep_demo_refuses_unapproved_provider(field, value):
+    values = {**VALUES, "LLM_BASE_URL": "http://192.168.31.110:8317/v1", field: value}
+    with pytest.raises(RuntimeError, match="仅允许已批准 CPA"):
+        DEV.child_environments("deep-demo", values)
+
+
+def test_deep_demo_model_uses_chat_completions(monkeypatch):
+    from kube_triage import llm
+
+    envs = DEV.child_environments("deep-demo", {
+        **VALUES, "LLM_BASE_URL": "http://192.168.31.110:8317/v1"})
+    monkeypatch.setattr(os, "environ", envs["api"])
+    model = llm.chat_model()
+    assert model.model_name == "gpt-6-luna"
+    assert not model._use_responses_api({"messages": []})
+
+
+@pytest.mark.parametrize("name", ["server/.env", "apps/web/.env.local",
+                                 "apps/web/.env.development"])
+def test_deep_demo_rejects_secondary_dotenv(tmp_path, monkeypatch, name):
+    path = tmp_path / name
+    path.parent.mkdir(parents=True)
+    path.write_text("LANGSMITH_TRACING=true\n")
+    monkeypatch.setattr(DEV, "ROOT", tmp_path)
+    with pytest.raises(RuntimeError, match="拒绝 server/Web 本地 dotenv"):
+        DEV.validate_demo_files()
+
+
+@pytest.mark.parametrize("graphs,ready", [
+    (["deep_diagnosis", "deep_diagnosis_planning", "agent"], True),
+    (["deep_diagnosis"], False),
+])
+def test_deep_demo_readiness_requires_both_graphs(monkeypatch, graphs, ready):
+    response = io.BytesIO(json.dumps([{"graph_id": graph} for graph in graphs]).encode())
+    response.status = 200
+    monkeypatch.setattr(DEV.urllib.request, "urlopen", lambda *_args, **_kwargs: response)
+    assert DEV.api_ready({"DEMO_API_TOKEN": "synthetic", "AEGRA_CONFIG": "aegra.phase-b1.json"}) is ready

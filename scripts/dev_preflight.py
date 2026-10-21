@@ -141,7 +141,7 @@ async def main(mode):
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in {"real", "mock", "memory-write",
                                                "memory-read", "memory", "mock-window",
-                                               "mock-summary"}:
+                                               "mock-summary", "deep-demo"}:
         raise SystemExit("Unknown development scenario")
     try:
         asyncio.run(main(sys.argv[1]))

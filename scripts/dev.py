@@ -3,6 +3,7 @@
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -20,7 +21,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 DIRECTORY = ROOT / ".local" / "dev"
 STATE = DIRECTORY / "state.json"
-ENV_FILE = ROOT / ".env"
+ENV_FILE = Path(os.environ.get("DEV_ENV_FILE", ROOT / ".env"))
 SCRIPT = Path(__file__).resolve()
 STOP_REQUESTED = False
 PRIVATE_KEYS = frozenset({"POSTGRES_PASSWORD", "DEMO_API_TOKEN", "LLM_MODEL",
@@ -43,6 +44,8 @@ COMMON_HOST_KEYS = frozenset({"PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHEL
                               "UV_PYTHON_INSTALL_DIR", "PNPM_HOME", "COREPACK_HOME"})
 API_HOST_KEYS = frozenset({"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"})
 PROFILES = {
+    "deep-demo": {"mock": True, "read": False, "write": False,
+                  "window": False, "summary": False},
     "real": {"mock": False, "read": True, "write": True,
              "window": True, "summary": True},
     "mock": {"mock": True, "read": False, "write": False,
@@ -61,6 +64,8 @@ PROFILES = {
 
 
 def read_env():
+    if not ENV_FILE.is_absolute():
+        raise RuntimeError("DEV_ENV_FILE 须为绝对路径。")
     if ENV_FILE.is_symlink() or not ENV_FILE.is_file():
         raise RuntimeError("缺少 .env；按 .env.example 配置。")
     if ENV_FILE.stat().st_uid != os.getuid():
@@ -172,9 +177,13 @@ def profile_summary(mode):
     memory = ("read-write" if profile["read"] and profile["write"] else
               "read" if profile["read"] else "write" if profile["write"] else "off")
     context = "summary" if profile["summary"] else "window" if profile["window"] else "off"
-    return {"reader": "mock" if profile["mock"] else "real",
+    result = {"reader": "mock" if profile["mock"] else "real",
             "memory": memory, "context": context,
             "repair": "real" if mode == "real" else "off"}
+    if mode == "deep-demo":
+        result.update(model="real", protocol="chat-completions", langfuse="off",
+                      graphs="aegra.phase-b1.json")
+    return result
 
 
 def required_ports(mode):
@@ -196,6 +205,11 @@ def child_environments(mode, values, host_env=None):
     if mode == "web":
         return {"web": web_env}
     profile = PROFILES[mode]
+    if mode == "deep-demo":
+        validate_demo_files()
+    if mode == "deep-demo" and (values.get("LLM_MODEL") != "gpt-6-luna" or
+            values.get("LLM_BASE_URL") != "http://192.168.31.110:8317/v1"):
+        raise RuntimeError("deep-demo 仅允许已批准 CPA 端点与 gpt-6-luna；配置不匹配。")
     required = ("POSTGRES_PASSWORD", "DEMO_API_TOKEN", "LLM_MODEL", "LLM_API_KEY")
     if any(not values.get(key) for key in required):
         raise RuntimeError("开发数据库、API Token 和真实模型配置必须齐全。")
@@ -225,7 +239,7 @@ def child_environments(mode, values, host_env=None):
                "HTTPS_PROXY": "http://127.0.0.1:7890",
                "NO_PROXY": "localhost,127.0.0.1,::1,postgres,redis,k8s-mcp,mock-mcp,"
                            "mock-repair-mcp,repair-mcp,api,web"}
-    langfuse = read_langfuse_env(ENV_FILE, optional=True)
+    langfuse = {} if mode == "deep-demo" else read_langfuse_env(ENV_FILE, optional=True)
     if langfuse:
         api_env.update(langfuse)
         api_env.update(OTEL_TARGETS="LANGFUSE", OTEL_SERVICE_NAME=f"kube-triage-agent-{mode}")
@@ -243,7 +257,31 @@ def child_environments(mode, values, host_env=None):
                                                  else "false"))
         result["mock"] = {**common, "TRIAGE_ENV": "test",
                           "TRIAGE_MOCK_DATASET": "memory-web", "MOCK_MCP_HOST": "127.0.0.1"}
+    if mode == "deep-demo":
+        isolation = hashlib.sha256(str(ROOT).encode()).hexdigest()[:12]
+        api_env.update(AEGRA_CONFIG="aegra.phase-b1.json",
+                       DEEP_DIAGNOSIS_ENABLE_PROVIDER="true", DEEP_DIAGNOSIS_FAKE_MODEL="false",
+                       EVAL_LUNA_RESPONSES_HIGH="false", LANGSMITH_TRACING="false",
+                       LANGCHAIN_TRACING_V2="false", OTEL_SDK_DISABLED="true",
+                       WORKER_QUEUE_KEY=f"deep-demo:{isolation}:jobs",
+                       REDIS_CHANNEL_PREFIX=f"deep-demo:{isolation}:run:",
+                       BG_JOB_TIMEOUT_SECS="120", BG_JOB_MAX_RETRIES="0")
+        # CPA LAN HTTP is explicitly approved for this target only; no proxy/trace.
+        for key in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"):
+            api_env.pop(key, None)
+        web_env.update(NEXT_PUBLIC_ASSISTANT_ID="deep_diagnosis_planning",
+                       NEXT_PUBLIC_DEEP_DEMO="true")
     return result
+
+
+def validate_demo_files():
+    # aegra serve and Next.js auto-load local dotenv files after process creation.
+    # Refuse them rather than silently accepting a second configuration source.
+    paths = [ROOT / "server" / ".env"] + [
+        ROOT / "apps" / "web" / name for name in
+        (".env", ".env.local", ".env.development", ".env.development.local")]
+    if any(path.exists() or path.is_symlink() for path in paths):
+        raise RuntimeError("deep-demo 拒绝 server/Web 本地 dotenv；请使用仅含根目录配置的独立 Worktree。")
 
 
 def preflight_environment(api_env):
@@ -307,10 +345,16 @@ def http_ready(url):
 
 def api_ready(env):
     request = urllib.request.Request(
-        "http://127.0.0.1:12026/assistants/search", data=b'{"limit":1}',
+        "http://127.0.0.1:12026/assistants/search", data=b'{"limit":100}',
         headers={"X-Api-Key": env["DEMO_API_TOKEN"], "Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=2) as response:
-        return response.status == 200
+        if response.status != 200:
+            return False
+        if env["AEGRA_CONFIG"] == "aegra.phase-b1.json":
+            assistants = json.load(response)
+            return {"deep_diagnosis", "deep_diagnosis_planning"} <= {
+                item["graph_id"] for item in assistants}
+        return True
 
 
 def supervise(mode, token):
@@ -378,8 +422,9 @@ def supervise(mode, token):
                                     str(ROOT / "scripts" / "dev_preflight.py"), mode],
                                    cwd=ROOT / "server", env=preflight_environment(api_env),
                                    check=True, stdout=log, stderr=log)
-                launch("api", ["uv", "run", "--frozen", "--offline", "--no-sync", "aegra",
-                       "serve", "--host", "127.0.0.1", "--port", "12026"], ROOT / "server", api_env)
+                api_command = ["uv", "run", "--frozen", "--offline", "--no-sync", "aegra",
+                               "serve", "--host", "127.0.0.1", "--port", "12026"]
+                launch("api", api_command, ROOT / "server", api_env)
                 wait_for(lambda: api_ready(api_env), children)
                 target = "http://localhost:12026"
             else:
@@ -465,7 +510,9 @@ def main():
             state = state_read()
             if state and state.get("token") == token:
                 if state["status"] == "ready":
-                    print(f"Web: http://localhost:13000/?apiUrl={state['api_url']}")
+                    graph_query = ("&assistantId=deep_diagnosis_planning"
+                                   if args.mode == "deep-demo" else "")
+                    print(f"Web: http://localhost:13000/?apiUrl={state['api_url']}{graph_query}")
                     print(f"API: {state['api_url']}；场景: {args.mode} "
                           f"{json.dumps(state['scenario'], ensure_ascii=False)}；"
                           f"Langfuse: {state.get('langfuse_tracing', 'off')}；"
