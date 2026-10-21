@@ -1,5 +1,7 @@
 # Issue #41 · Deep Agents 最短 Demo 交付设计
 
+> **阶段更新（2026-10-21）**：P0 Core Demo 已通过 [PR #66](https://github.com/Vc-great/kube-triage-agent/pull/66) 合并至 main，最新主线 CI 全绿。用户现已同意进入 **P1 原生 Summarization** 的专项规划和后续单独 Implementation。P1 的现行技术范围、独立 Graph、SDK 证据与安全 STOP 以 [P1 专项设计](issue-41-p1-deepagents-native-summarization.md) 为准；本文件下方「P1 未批准」字样属于 **2026-10-21 P0 规划时的历史状态**，不可将其当作当前实施授权判断。P2 Filesystem 与 P3 仍需另行批准，Issue #41 B3/B8 历史 BLOCKED 不改变。
+
 > - Issue：[Issue #41](https://github.com/Vc-great/kube-triage-agent/issues/41)，原 Phase A/B Gate 仍是**唯一权威验收来源**；本设计调整优先级与分期，不将旧 FAIL/BLOCKED 改为 PASS。
 > - 状态：**Proposed / Planning PR，未实施**；规划基线 2026-10-21 `origin/main=3490d7e3bd211d1c8d52592f676705c7717d9ee6`。AO 实施前重新 fetch main。
 > - **本次批准的唯一实施阶段：P0 本地网页 Deep Agents Core Demo**。P1 原生 Summarization、P2 Filesystem、P3 最终收口只设计，必须后续分别批准。
