@@ -15,7 +15,9 @@ function isPlanningTodo(value: unknown): value is PlanningTodo {
 }
 
 export function PlanningTodos() {
-  const [assistantId] = useQueryState("assistantId");
+  const [assistantId] = useQueryState("assistantId", {
+    defaultValue: process.env.NEXT_PUBLIC_ASSISTANT_ID || "",
+  });
   const { values } = useStreamContext();
   if (assistantId !== "deep_diagnosis_planning" || !Array.isArray(values.todos)
     || values.todos.length === 0 || values.todos.length > 6

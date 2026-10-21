@@ -16,6 +16,9 @@ def chat_model():
         switch = os.getenv("EVAL_LUNA_RESPONSES_HIGH", "false")
         if switch not in {"true", "false"} or (switch == "true" and model != "gpt-6-luna"):
             raise ConfigurationError("test Luna High 配置与模型不匹配")
+        # Deep Agents applies provider defaults to unspecified model fields.
+        # An explicit False survives its OpenAI profile's Responses default.
+        options["use_responses_api"] = switch == "true"
     luna_high = (os.getenv("TRIAGE_ENV") == "development" or
                  (os.getenv("TRIAGE_ENV") == "test" and
                   os.getenv("EVAL_LUNA_RESPONSES_HIGH") == "true"))

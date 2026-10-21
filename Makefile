@@ -1,4 +1,4 @@
-.PHONY: up down logs ps check reset dev dev-web dev-mock dev-memory-write dev-memory-read dev-memory dev-mock-window dev-mock-summary dev-stop dev-status
+.PHONY: up down logs ps check reset dev dev-web dev-mock dev-deep-demo dev-memory-write dev-memory-read dev-memory dev-mock-window dev-mock-summary dev-stop dev-status
 up:
 	./scripts/start.sh
 down:
@@ -18,6 +18,8 @@ dev-web:
 	python3 scripts/dev.py start web
 dev-mock:
 	python3 scripts/dev.py start mock
+dev-deep-demo:
+	python3 scripts/dev.py start deep-demo
 dev-memory-write:
 	python3 scripts/dev.py start memory-write
 dev-memory-read:

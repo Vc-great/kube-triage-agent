@@ -118,6 +118,8 @@ const StreamSession = ({
     apiUrl,
     apiKey: apiKey ?? undefined,
     assistantId,
+    // The SDK uses this Run metadata for both reconnect and server cancellation.
+    reconnectOnMount: process.env.NEXT_PUBLIC_DEEP_DEMO === "true",
     ...(authScheme && {
       defaultHeaders: {
         "X-Auth-Scheme": authScheme,
@@ -363,6 +365,7 @@ const StreamProviderContent: React.FC<{ children: ReactNode }> = ({
 
   return (
     <StreamSession
+      key={`${finalApiUrl}:${finalAssistantId}`}
       apiKey={apiKey}
       apiUrl={finalApiUrl}
       assistantId={finalAssistantId}
