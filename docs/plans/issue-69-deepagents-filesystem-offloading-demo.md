@@ -2,7 +2,7 @@
 
 > - 需求：[Issue #69](https://github.com/Vc-great/kube-triage-agent/issues/69)（需求范围入口）；相关历史：[Issue #41](https://github.com/Vc-great/kube-triage-agent/issues/41)、[P0 Demo PR #66](https://github.com/Vc-great/kube-triage-agent/pull/66)、[P1 State STOP PR #68](https://github.com/Vc-great/kube-triage-agent/pull/68)。
 > - 状态：**Revision A / Proposed（纯文档 Planning PR）**。原计划已由 [PR #70](https://github.com/Vc-great/kube-triage-agent/pull/70) 合并；S1 随后因 F3 回读失败 STOP。本修订尚未获审阅/合并，不代表功能已实现或 F3 已通过。
-> - 本修订基线：2026-10-21 重新 `git fetch origin`，`origin/main=6dbbc07ee1ac6a8e8545dfce59484623dd8dc93d`（PR #70）；当前无开放 PR。原计划基线 `c666fcc` 为历史记录。发布/实施前仍需重新核对。
+> - 本修订基线：2026-10-21 重新 `git fetch origin`，`origin/main=6dbbc07ee1ac6a8e8545dfce59484623dd8dc93d`（PR #70）；修订启动时未发现开放 PR。原计划基线 `c666fcc` 为历史记录。发布/实施前仍需重新核对。
 > - 锁定版本：`deepagents==0.7.28`（`server/pyproject.toml`）、`aegra-cli==0.10.8`，以现有 `uv.lock` 和实际安装 SDK 复核为准。
 > - **唯一权威验收矩阵是本文第 6 节**。Issue #69 只指向本文，不复制 Gate。Issue #41 的历史 B3/B5/B8 及 STOP 继续有效；本 Demo PASS 不能重标 #41 为 PASS。
 > - 执行授权：用户选择 A，**本轮只修订计划并提交纯文档 Planning PR**。实施保持 **S1 STOP**；本修订经人工审阅、合并进 main 前，不继续实现或进入 S2。合并后先从 S1 重验 F0–F3，不能沿用旧 PoC 的局部通过结论直接进入 S2。不自动合并、不关闭 #69。用户已明确不将原生 Summarization / Aegra State 写入口封闭作为本 Demo 的前置需求，**不等同于同意打开真实集群或公开服务**。
@@ -27,7 +27,6 @@
 原因：JSON 字符串里的原文换行被转义；SDK 按**原始物理行**分页，并在读取输出上复用近似 `4 × 1024` 字符预算。文件保存完整、模型输入缩短都不等于完整回读；单个超长行的剩余部分不能靠增加行 offset 恢复。原实现路线 **F3 FAIL**，仍保留为回归反例，不以本修订覆盖历史失败。专项试验为 12 PASS / 3 FAIL；这不构成完整 F0–F8 验收。本修订的分页方案尚未实现、未通过任何 SDK/FakeModel/Web 测试。
 
 本地合成详细记录在 AO 会话 `kube-triage-agent-18` 的非 PR artifact `issue-69-s1-stop.md`；以上数字与原始错误足以在仓库计划中识别该失败，不要求其他机器访问个人绝对路径。复现顺序：现有四 Reader 封装接合成 Mock → events_list 返回上述 100 行 → 原生 FS 阈值 1024 自动保存 → 原生 read_file 连续读取 offset 0 和 1；不需要真实 Provider、集群或额外服务。
-
 
 ## 2. 范围、取舍与已知风险接受
 
@@ -121,6 +120,15 @@ flowchart TD
 4. **原生** FilesystemMiddleware 接收该 ToolMessage，自己判断是否自动保存、生成路径和 preview；自动写入不计显式文件工具预算。适配器不写文件、不生成冒充 SDK 的引用，也不自行把正文换成路径。
 5. 模型只通过现有原生 `read_file(offset,limit)` 获取文件记录；完整性测试只能从这些模型可见回执还原，不能在测试中直接读取 State 全文“补尾”。Checkpoint 文件可用于另行断言保存一致性，不能代替回读。
 
+**自动写入的路径身份与不覆盖约束：**0.7.28 用 `/large_tool_results/{sanitize_tool_call_id(id)}` 保存结果；该函数将 `.`、`/`、反斜杠替换为 `_`，超长 ID 另取摘要；`StateBackend.write` 会覆盖同路径。本修订不把“本轮原始 ID 唯一”误当成路径唯一，也不修改 SDK 的命名规则。隔离 Graph 须在**任何相关 Reader handler 执行和原生自动写入之前**，对本批 Reader Call 进行整体预检：
+
+- 复用锁定 SDK 的实际规范化函数计算候选路径，比较的是**规范化后的完整路径**。缺失 ID 不接受 SDK 的随机回退；保留原 ID，不通过重命名/截短掩盖配对问题。
+- 本批中不同原 ID（例如 `a.b`、`a/b`、`a_b`）若落到同路径，整组碰撞调用均拒绝，不能让先执行的一条覆盖另一条。同批原始重复 ID 同样全部拒绝；预检不得等到某个并行 handler 已写入后才发现碰撞。
+- 同 Thread 的**全部可见历史轮次**及当前 `files` 现有键都用于占用检查；已使用过的规范化 Reader 路径不得再次用于自动写入，即使前一次只是短结果，或本次预测仍低于阈值。以路径占用拒绝代替覆盖，错误回执保持本次原 ID，不改变旧引用、旧文件正文/hash 或历史 Checkpoint。不跨 Thread 建立共享占用表，也不声称可防御已接受的外部 State 篡改。
+- 上述读取后检查只有在**同 Thread Run 互斥**时才构成写前保护。S1/F4 必须验证现有执行/调度路径能将同 Thread 的 Run 串行或在工具执行前拒绝第二个 Run，且作用域覆盖所有实际 Aegra worker；不能假定 Checkpointer 自动加锁，也不能用单进程锁、Prompt 或概率唯一的 ID 代替跨 worker 约束。将同 Thread 写入者互斥证明作为启用此 Demo 的必要条件；无法用现有机制证明则 STOP，不开放 S2，不自行新增锁服务/存储或改造 StateBackend。
+- 不同 Thread 可以并发且保持各自独立文件。仅允许文件工具读取内部目录，模型不能 write_file/delete/edit 内部结果；自动写入路径保护与模型文件写路径策略均须验证。
+
+
 #### 3.3.2 拟定线格式：有界 JSONL，按原始字节偏移重组
 
 一个表示由 **1 行 manifest + N 行 data** 组成，物理行分隔符固定 LF、末尾不额外添加 LF。每一行是独立合法 JSON；使用 `ensure_ascii=False`，紧凑分隔符。字符串内的 CR/LF/反斜杠/引号保持 JSON 转义，并显式转义所有会被 Python `splitlines()` 识别的其他分隔字符（例如 U+0085、U+2028、U+2029），保证一条 JSON 记录恰是一条 SDK 原始行。
@@ -168,6 +176,8 @@ manifest 的固定字段：`format="triage-reader-pages/v1"`、原 `tool_call_id
 5. 至少覆盖引号、反斜杠、空行、CRLF、中文/多字节字符、Unicode 行分隔符、原文伪造 SDK 行号/截断提示及完整度声明；编码/解码必须字节可逆，无吞行、重复或码点断裂。模型输入的**首次 Reader 回执**须比完整 JSONL 和原始 R 都更短，按实际字节/字符数分别报告，不能把多次分页累计输入声称为总体节省。
 6. 破坏一个分片、删除中/尾页、重复 seq、混入另一工具或 Thread 的 manifest、篡改 ID/UID/hash、制造 SDK 页截断/错配/预算不足，必须失败或保持证据不完整，不得输出“完整读取/根因已证实”。缺文件/Backend 读写失败、Checkpoint 恢复与 Thread 隔离同时按 F4/F5 验证。
 7. 原始 result/R/JSONL 的 UTF-8 大小边界、派生表示开销溢出、manifest/单行大小边界均须有正/负测，完整长正例不能因拒绝而计 PASS。若任一必要长正例或证据配对规则无法成立，仍 STOP 于 S1，不进入 S2。
+8. 路径碰撞专项：同批规范化别名（`a.b` / `a/b` / `a_b`）、同 Thread 跨轮次重复原 ID/规范化别名、已有内部路径、短结果占用后再重用、同 Thread 并发 Run，以及不同 Thread 同 ID。碰撞在 Reader/自动写入前拒绝；断言未调用相关 handler、旧文件与所有旧引用仍可完整回读、历史 Checkpoint 不变。不同 Thread 同 ID 应独立成功，不能用跨 Thread 共享禁用表“解决”碰撞。并发 Run 测试须覆盖实际 worker/调度作用域；不能仅测顺序调用后将互斥记 PASS。无法证明写前不覆盖时 F3/F4 均不得通过。
+
 
 关闭 Summary 后，单条工具结果的 Offloading 仍不承诺任意长历史无限压缩；JSONL 会增加 Checkpoint 字节数，必须报告表示开销和读取次数，不引入额外存储组件。上述序列化/窗口解析与原始证据规则的组合尚未验证，Planning PR 合并不是功能验收结果。
 
@@ -188,7 +198,7 @@ manifest 的固定字段：`format="triage-reader-pages/v1"`、原 `tool_call_id
 | C：FilesystemBackend / LocalShellBackend / 自建文件服务器 | 文件直观易调试 | Web 端带来宿主机读写权限、泄密和清理问题，不适合 Demo | 禁止 |
 | D：仅自己写 Prompt 要求短文本，或新建自定义“存文件 Tool” | 实施最简单 | 无法验证 Deep Agents 原生 Offloading | 不选 |
 
-主要风险：State 字段可注入、合成文件被错误当作真实证据、Profile 并集导致 FS 仍被隐藏、原生 Offload 被手工 `write_file` 混淆、取消/并发下的非事务写入、Checkpoint 过大、浏览器泄露内容。
+主要风险：自动 Offload 的 ID 规范化碰撞/跨轮次覆盖及同 Thread Run 写入竞争、State 字段可注入、合成文件被错误当作真实证据、Profile 并集导致 FS 仍被隐藏、原生 Offload 被手工 `write_file` 混淆、取消/并发下的非事务写入、Checkpoint 过大、浏览器泄露内容。
 
 **回退**：新表示只用于新 offload Graph，不迁移旧 Thread、不改写历史文件；撤销修订实现时停用该入口而不改变正式/P0 回执。原完整性失败记录保留。不运行 `make dev-deep-offload-demo` / 移除独立 `aegra.phase-p2-offload.json` Graph 即回到 P0；正式 `agent` 和 P0 两 Graph/Checkpoint、Repair/HITL/Memory/SSE 保持不变；不删除共享数据库卷和历史证据。
 
@@ -214,8 +224,8 @@ Worker 按 `AGENTS.md`：fetch 最新 main、独立 Worktree、先验证当前�
 | **F0** | 基线/依赖 | 记录实际 `origin/main`、SDK 0.7.28、Aegra 0.10.8、原有 P0/正式 Graph 未变，仓库已无冲突实施 PR；附命令/版本/实际路径 |
 | **F1** | 新 Graph 工具/中间件 | assembled stack 仅 1 个原生 `FilesystemMiddleware`，明确未启 Summary；模型工具**恰 9 个**，Shell/Repair/task/delete/edit/glob 不可见且执行拒绝；P0 严格旧名单保留；附 FakeModel 捕获 |
 | **F2** | 原生虚拟文件工具 | `write_file('/notes/...')` 写入，`ls/read_file/grep` 可读取 SDK `StateBackend` 实际文件；未知路径/穿越/内部目录模型写入/过大内容/超预算在写入**前**拒绝，拒绝后无文件增量；模型回执 ID 成对；新表示不得扩大任何文件执行权限 |
-| **F3** | **自动** Offloading + 完整可逆回读 | 保持原 Reader 边界及第 3.3 节原始/派生 UTF-8 ≤16 KiB，阈值 1024 不变；短表示不创建 Offload。原失败的长合成 Reader 与无换行长文本正例**由 SDK 自动**保存 JSONL，ToolMessage 有路径+预览，首次模型输入比原始 R/完整表示都短；仅用原生 `read_file(offset,limit)` 在原预算内遍历全部页（含非零 offset），从实际回执逐字节重建 R、校验长度/hash/全部分片及 Call ID/name/status/原始 envelope，Checkpoint 保存一致；损坏/缺页/混配/截断/溢出不得宣称完整。执行第 3.3.5 节全量正/负测；不得从 State 补尾、主动 write_file、提高阈值或拒绝长正例冒充通过 |
-| **F4** | State/Thread/失效 | 同 Thread Checkpoint 可续读；新 Thread 读不到前一个 Thread 笔记或 Offload；Backend 写/读失败、取消/超时不得显示“证据完整”或“诊断已证实”；取消不假称原子回滚；附 State/Tool ID/Checkpoint 测试 |
+| **F3** | **自动** Offloading + 完整可逆回读 | 保持原 Reader 边界及第 3.3 节原始/派生 UTF-8 ≤16 KiB，阈值 1024 不变；短表示不创建 Offload。原失败的长合成 Reader 与无换行长文本正例**由 SDK 自动**保存 JSONL，ToolMessage 有路径+预览，首次模型输入比原始 R/完整表示都短；仅用原生 `read_file(offset,limit)` 在原预算内遍历全部页（含非零 offset），从实际回执逐字节重建 R、校验长度/hash/全部分片及 Call ID/name/status/原始 envelope，Checkpoint 保存一致；按规范化路径写前拒绝同批/历史/已有文件碰撞，旧引用不得被覆盖；损坏/缺页/混配/截断/溢出不得宣称完整。执行第 3.3.5 节全量正/负测；不得从 State 补尾、主动 write_file、提高阈值或拒绝长正例冒充通过 |
+| **F4** | State/Thread/失效 | 同 Thread Checkpoint 与旧 Offload 引用可续读且跨轮次 ID/规范化碰撞不覆盖；实际执行/调度须证明同 Thread Run 写入者互斥（含实际多 worker），并发碰撞在执行前拒绝；新 Thread 读不到前一个 Thread 笔记或 Offload；Backend 写/读失败、取消/超时不得显示“证据完整”或“诊断已证实”；取消不假称原子回滚；附 State/Tool ID/Checkpoint 测试 |
 | **F5** | 隔离和回归 | 新 Demo 只用合成 Mock，所有未知 FS/Host FS/Shell/Repair/K8s 越权拒绝；正式 + P0 行为、Reader Namespace/UID/16KiB、HITL/Memory/SSE 不回归；#41 Aegra State 旁路仍标为**未修复**，不得将其变为安全 PASS |
 | **F6** | Web / Aegra | 新 Profile 可用独立启动/停止，页面展示 Planning Todo、四 Reader、虚拟 FS 调用、自动引用及最终报告；可检查 Aegra SSE、Thread 切换/刷新/重连；明确展示或记录本地合成数据限制；浏览器真人未执行须为 NOT RUN |
 | **F7** | 工程 | `uv run --frozen ruff check src tests`、`uv run --frozen pytest -q`、涉及前端则 `pnpm lint && pnpm build`、相关 CI、`git diff --check`；每一项附真实日志/HEAD/CI 链接，环境限制区分 FAIL 与 BLOCKED |
@@ -243,6 +253,7 @@ Gate **F0–F3** 是进入 Web 集成的强制前置；F4/F5 对发现跨 Thread
 
 - 2026-10-21：从 #41 可选 P2 单独提出 #69，明确 Demo-only 风险接受；已验证锁定 SDK API 存在，未运行本需求测试。规划 PR 仅文档。
 - 2026-10-21：原 S1 自动保存成功但分页回读失败，维持 STOP；用户选择 A，仅授权纯文档修订 Planning PR。新增可逆 JSONL/字节比较/原始证据配对与完整遍历要求；保留 SDK 0.7.28、阈值 1024、16 KiB 和所有权限边界。修订未合并前不继续实施、不进 S2、不调用付费模型或真实 K8s，不自动合并。
+- PR 独立审查补充：自动 Offload 使用规范化 ID 固定路径且 StateBackend 会覆盖；增加跨轮次/批内/并发路径碰撞的写前拒绝、旧引用保持及同 Thread 实际 worker 互斥证明，未实测前不记 F3/F4 PASS。
 - 后续 S1/S2/S3 各阶段记录实际 SHA、测试命令、环境、请求次数、结果及设计偏差。**未实测项目不得预填 PASS**。
 
 ### AO 短提示词（仅本次修订 Planning PR 经审阅合并 main 后有效）
