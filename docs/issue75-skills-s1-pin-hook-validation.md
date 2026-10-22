@@ -3,6 +3,8 @@
 > 2026-10-22；基线 `origin/main=d057b1e715740786800d474d101f4be57a6050a8`。
 > [Planning PR #77](https://github.com/Vc-great/kube-triage-agent/pull/77) 已合并，权威 Gate 仍为[设计文档第 6 节](plans/issue-75-kubernetes-diagnosis-skills.md)的 S0–S9。
 > **S1 STOP，S0–S4 未全部通过；本 PR 为离线实施 PoC 与证据，不是可运行的 Web Skills 产品。**
+>
+> 审阅后补充：公开 `build_graph` 现已在 SDK 装配前无条件抛出 `NotImplementedError`；不返回可恢复或可被后续注入 Checkpointer 的图。不安全原生装配移至 `server/tests/skills_probe_helpers.py`，仅用于保留反例和正向探针，应用包不包含它。该收口不实现历史来源认证，S3/S4 仍 FAIL，不靠拒绝全部恢复声称通过 Gate。
 
 ## 1. 范围与环境
 
@@ -46,7 +48,7 @@
 1. 使用旧原生装配与真实 MemorySaver，在 `SkillsMiddleware.before_model` 前暂停。
 2. 用 SDK State 更新写入三项 pin；原生 hook 消费 pin，暂停在 `model` 前。
 3. 此时三条 `lc_source=pinned_skill` HumanMessage 已持久化，`pinned_skills=[]`，模型尚未执行，下一节点明确为 `model`。
-4. 在同一 MemorySaver 上重新构建 **新 pin-hook 装配**，执行 `ainvoke(None, config)`。
+4. 在同一 MemorySaver 上重新构建 **新 pin-hook 测试装配**，执行 `ainvoke(None, config)`；审阅后此装配仅存在于 tests，公开 builder 不再返回图。
 5. 新 hook 不会重跑已越过的 pin 节点；现有模型前检查仅看到 canonical metadata 和空 pin，放行旧正文。
 
 实际结果：
@@ -88,6 +90,9 @@ uv run --frozen --offline pytest -q tests/test_deep_diagnosis_skills.py -k resum
 - `uv build --offline --wheel --python 3.13 --out-dir /private/tmp/kta-issue75-s1-wheel`：PASS；随后用标准库ZipFile核验wheel内技能目录恰三份SKILL.md、无额外资源、与源码逐字节相同。包文件是本轮临时构建验证材料，未纳入PR。
 - `uv run --frozen --offline pytest -q`：**921 passed / 1 failed，312.56s**。原有859项全部无失败；新增63项中62项通过，唯一失败为`resume-consumed-pin`。这不是全量测试PASS，不具备进入S2或合并条件。
 - `git diff --check`：PASS。原失败子进程的AssertionError保持，当前新安全失败也保持；未移除测试降低Gate。新安全测试失败意味着远端Python CI也可能失败；不能以“只是PoC”为理由改断言、跳过测试或放宽CI。
+- 初始提交 `71e954d` 的[远端 CI run 39744552661](https://github.com/Vc-great/kube-triage-agent/actions/runs/39744552661)：FAIL。Web/Compose/Ruff/manifest检查PASS；pytest **918 passed / 1 failed / 3 skipped，406.97s**，唯一失败为相同的`resume-consumed-pin`，计数1模型/3pin/0read_file。
+- [AO独立审阅](https://github.com/Vc-great/kube-triage-agent/pull/80#pullrequestreview-5613036721)要求来源边界未实现前builder不得接受可恢复Checkpointer。采用最小Fail Closed收口而不搭建框架：公开builder拒绝所有构图；不安全装配移到tests，旧新反例与合法Resume/预算探针仍运行，新增公开入口零装配验证。最新结果以PR的提交/CI/复审链接为准，不能沿用初始提交的结果替代新head验证。
+- 审阅修正后针对两份Skills/Aegra测试运行：**63 passed / 1 failed，102.33s**；唯一失败仍为测试目录装配的`resume-consumed-pin`，禁止模型调用的断言未变。公开builder零装配测试通过；Ruff/diff检查通过。重新离线构建wheel，确认无`tests`/`skills_probe_helpers`，恰三份SKILL，应用模块无`create_deep_agent`调用。未重跑全量pytest，既有全量结果仍只归属于初始提交；S3/S4依然FAIL。
 
 ## 6. 最小替代方案与停止边界
 

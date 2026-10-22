@@ -19,7 +19,7 @@ SCENARIOS = [
     "forbidden", "not_found", "timeout", "uid", "injection", "oversize", "namespace",
     "reader-budget", "previous", "resume-cache", "threads",
     "resume-pin", "resume-clean", "resume-budget", "resume-nodes", "pin-hooks",
-    "resume-consumed-pin",
+    "resume-consumed-pin", "public-closed",
 ]
 
 
@@ -67,12 +67,20 @@ def probe(scenario):
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
     from langgraph.checkpoint.memory import MemorySaver
     from pydantic import Field
+    from skills_probe_helpers import build_probe_graph
 
     from kube_triage import deep_diagnosis_skills as skills
     from kube_triage.deep_diagnosis_fake import ProtocolFakeModel
 
     assert version("deepagents") == "0.7.28"
     assert version("aegra-cli") == "0.10.8"
+    if scenario == "public-closed":
+        # No model, SDK assembly, resource read or checkpointer use is needed.
+        with patch("deepagents.graph.create_agent", side_effect=denied):
+            for checkpoint in (None, MemorySaver()):
+                with pytest.raises(NotImplementedError, match="S1 STOP"):
+                    skills.build_graph(None, checkpointer=checkpoint)
+        return {"scenario": scenario, "graphs_returned": 0}
     skills.planning.baseline.call_tool = denied
     reader_scenarios = {"forbidden", "not_found", "timeout", "uid", "injection", "oversize",
                         "namespace", "reader-budget", "previous"}
@@ -171,10 +179,10 @@ def probe(scenario):
             # Recreate only the old assembly; production builder never exposes
             # an option to re-enable pin or a second unsafe graph entry.
             with patch.object(skills, "ReadOnlySkillsMiddleware", SkillsMiddleware):
-                graph = skills.build_graph(model, checkpointer=saver)
+                graph = build_probe_graph(model, checkpointer=saver)
         else:
             graph = (skills.planning.build_graph(model, checkpointer=saver) if scenario == "p0"
-                     else skills.build_graph(model, checkpointer=saver))
+                     else build_probe_graph(model, checkpointer=saver))
     if scenario != "p0":
         native = [m for m in assembled if isinstance(m, SkillsMiddleware)]
         assert len(native) == 1 and native[0].name == "SkillsMiddleware"
@@ -278,7 +286,7 @@ def probe(scenario):
             old = await graph.aget_state(config)
             assert not model.inputs and not old.values.get("pinned_skills")
             assert old.next == ("model",)
-            rebuilt = skills.build_graph(model, checkpointer=saver)
+            rebuilt = build_probe_graph(model, checkpointer=saver)
             try:
                 await rebuilt.ainvoke(None, config)
             except ValueError:

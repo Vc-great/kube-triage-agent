@@ -55,6 +55,7 @@ def probe(scenario):
     from langgraph_sdk import Auth
     from langgraph_sdk.runtime import ServerRuntime
     from pydantic import Field
+    from skills_probe_helpers import build_probe_graph
 
     from kube_triage import deep_diagnosis_skills as skills
     from kube_triage.deep_diagnosis_fake import ProtocolFakeModel
@@ -75,7 +76,7 @@ def probe(scenario):
         contexts.append(runtime.access_context)
         if runtime.access_context == "threads.update":
             raise HTTPException(403, "Skills Spike 禁止客户端 State 写入与派生")
-        return skills.build_graph(model)
+        return build_probe_graph(model)
 
     classify_factory(factory, graph_id)
     service = LangGraphService()
