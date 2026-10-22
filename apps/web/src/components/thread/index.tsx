@@ -166,7 +166,7 @@ export function Thread() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
-  const messages = stream.messages;
+  const messages = stream.displayMessages;
   const isLoading = stream.isLoading;
 
   const lastError = useRef<string | undefined>(undefined);
@@ -421,6 +421,16 @@ export function Thread() {
           )}
 
           <DeepDemoControls />
+          {stream.historyStatus && (
+            <div role="status" className="px-4 py-1 text-center text-xs text-muted-foreground">
+              {stream.historyStatus === "error" ? "历史尚未同步，正在显示实时消息。重新进入会话可重试。"
+                : stream.historyStatus === "legacy" ? "Legacy 会话：使用原 Thread 消息。"
+                : stream.isLoading ? "回复进行中；历史将在结束后同步。"
+                : stream.historyStatus === "syncing" ? "正在同步历史…"
+                : stream.historyStatus === "partial" ? "历史已保存（当前分支，含未完成回复）。"
+                : "历史已同步（当前分支）。"}
+            </div>
+          )}
           <StickToBottom className="relative flex-1 overflow-hidden">
             <StickyToBottomContent
               className={cn(

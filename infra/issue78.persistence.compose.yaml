@@ -1,0 +1,22 @@
+# Only a disposable, isolated test PostgreSQL. Never overlay stable Compose.
+name: kta-issue78-demo
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    labels:
+      ao.session: ${AO_SESSION_ID:-issue78-manual}
+    environment:
+      POSTGRES_USER: issue78
+      POSTGRES_PASSWORD: ${ISSUE78_PG_PASSWORD:?set an isolated test password}
+      POSTGRES_DB: issue78
+    ports:
+      - "127.0.0.1:${ISSUE78_PG_PORT:-15478}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "issue78", "-d", "issue78"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+volumes:
+  postgres_data: {}

@@ -1,0 +1,12 @@
+{
+  "graphs": {"agent": "./tests/issue78_demo.py:graph"},
+  "auth": {"path": "./src/kube_triage/auth.py:auth", "disable_studio_auth": true},
+  "http": {
+    "app": "./src/kube_triage/app_routes.py:app",
+    "enable_custom_route_auth": true,
+    "cors": {
+      "allow_origins": ["http://localhost:13078", "http://127.0.0.1:13078"],
+      "allow_credentials": false
+    }
+  }
+}
