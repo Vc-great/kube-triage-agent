@@ -19,7 +19,7 @@ export function PlanningTodos() {
     defaultValue: process.env.NEXT_PUBLIC_ASSISTANT_ID || "",
   });
   const { values } = useStreamContext();
-  if (assistantId !== "deep_diagnosis_planning" || !Array.isArray(values.todos)
+  if (!["deep_diagnosis_planning", "deep_diagnosis_skills"].includes(assistantId) || !Array.isArray(values.todos)
     || values.todos.length === 0 || values.todos.length > 6
     || !values.todos.every(isPlanningTodo)) return null;
 

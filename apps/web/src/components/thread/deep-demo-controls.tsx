@@ -10,10 +10,12 @@ export function DeepDemoControls() {
   if (process.env.NEXT_PUBLIC_DEEP_DEMO !== "true") return null;
 
   const planning = assistantId === "deep_diagnosis_planning";
+  const skills = assistantId === "deep_diagnosis_skills";
   const switchGraph = () => {
     // A full navigation unmounts the old stream and its Todo/artifact state.
     const target = new URL(window.location.href);
-    target.searchParams.set("assistantId", planning ? "deep_diagnosis" : "deep_diagnosis_planning");
+    target.searchParams.set("assistantId", skills ? "deep_diagnosis_skills"
+      : planning ? "deep_diagnosis" : "deep_diagnosis_planning");
     target.searchParams.delete("threadId");
     window.location.assign(target);
   };
@@ -21,11 +23,13 @@ export function DeepDemoControls() {
   return (
     <section aria-label="Deep Agents Demo" className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/50 px-4 py-2 text-sm">
       <div>
-        <p className="font-semibold">Mock Reader + Real LLM · gpt-6-luna</p>
-        <p className="text-muted-foreground">合成 Kubernetes 数据 · Planning {planning ? "ON" : "OFF"} · 切换会新建 Thread</p>
+        <p className="font-semibold">{skills ? "FakeModel + Mock Reader · 原生 Skills" : "Mock Reader + Real LLM · gpt-6-luna"}</p>
+        <p className="text-muted-foreground">{skills
+          ? "三份内置技能 · 正文按需 read_file · 仅新 Thread，不兼容旧 pin 中途恢复"
+          : `合成 Kubernetes 数据 · Planning ${planning ? "ON" : "OFF"} · 切换会新建 Thread`}</p>
       </div>
       <Button variant="outline" disabled={stream.isLoading} onClick={switchGraph}>
-        新 Thread · Planning {planning ? "OFF" : "ON"}
+        {skills ? "新 Skills Thread" : `新 Thread · Planning ${planning ? "OFF" : "ON"}`}
       </Button>
     </section>
   );

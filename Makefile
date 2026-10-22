@@ -20,6 +20,9 @@ dev-mock:
 	python3 scripts/dev.py start mock
 dev-deep-demo:
 	python3 scripts/dev.py start deep-demo
+.PHONY: dev-deep-skills-demo
+dev-deep-skills-demo:
+	python3 scripts/skills_demo.py
 dev-memory-write:
 	python3 scripts/dev.py start memory-write
 dev-memory-read:
