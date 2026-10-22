@@ -58,6 +58,37 @@ def test_manifest_authenticates_actual_receipt_and_keeps_candidate_untrusted():
     assert review.validate_review(output("SUPPORTS"), manifest).verdict == "SUPPORTS"
 
 
+@pytest.mark.parametrize("malformed", [
+    {"kind": "ConfigMap"},
+    {"kind": "Pod"},
+    {"kind": "Pod", "metadata": []},
+    {**pod(), "metadata": {"namespace": "kube-triage-demo", "name": "a"}},
+    {**pod(), "metadata": {"namespace": "kube-triage-demo", "name": "a", "uid": 42}},
+    {**pod(), "status": None},
+    {**pod(), "status": {"phase": ["Running"]}},
+])
+def test_manifest_validates_each_pod_receipt_before_later_valid_pod(malformed):
+    state, runtime = fixture()
+    first = state["messages"][-1]
+    first.content = json.dumps({"ok": True, "result": json.dumps(malformed)})
+    review._stamp(state["messages"][1].tool_calls[0], first, review._scope(state, runtime))
+    second_call = call(ident="read-2")
+    second = ToolMessage(name="pods_get", tool_call_id="read-2", content=json.dumps({
+        "ok": True, "result": json.dumps(pod())}))
+    review._stamp(second_call, second, review._scope(state, runtime))
+    state["messages"].extend([AIMessage(content="", tool_calls=[second_call]), second])
+
+    manifest = review.evidence_manifest(state, runtime, "合成候选")
+    invalid, valid = manifest["evidence"]
+    assert invalid["source_tool_call_id"] == "read-1"
+    assert invalid["status"] == "invalid" and invalid["pod_uid"] is None
+    assert invalid["usable_for_diagnosis"] is False
+    assert valid["source_tool_call_id"] == "read-2"
+    assert valid["pod_uid"] == "synthetic-uid-a" and valid["usable_for_diagnosis"] is True
+    with pytest.raises(ValueError, match="错误、过期"):
+        review.validate_review(output("SUPPORTS", ["read-2"]), manifest)
+
+
 @pytest.mark.parametrize("mutation", ["missing_mac", "wrong_id", "wrong_name", "tamper",
                                      "duplicate_call", "duplicate_reply", "wrong_namespace",
                                      "different_thread", "new_turn", "forged_history", "invalid_mac"])
@@ -212,7 +243,8 @@ def test_reviewer_execution_boundary_rejects_every_tool(name):
 @pytest.mark.parametrize("scenario", ["valid", "forged_claim", "no_task", "bad_json", "bad_ref",
                                      "forbidden", "timeout", "review_tool", "state_delta",
                                      "parallel", "duplicate", "unknown_type", "no_evidence",
-                                     "p0", "greeting", "cancel", "repeat", "provider_error"])
+                                     "p0", "greeting", "cancel", "repeat", "provider_error",
+                                     "malformed_then_pod", "malformed_no_task"])
 def test_native_review_graph(scenario):
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("LANGCHAIN_", "LANGSMITH_", "LANGFUSE_", "OTEL_"))}
@@ -237,6 +269,8 @@ def probe(scenario):
 
     async def reader(name, args, thread_id=None):
         reads.append((name, args))
+        if scenario in {"malformed_then_pod", "malformed_no_task"} and len(reads) == 1:
+            return {"ok": True, "result": json.dumps({"kind": "ConfigMap"})}
         if scenario == "forbidden":
             return {"ok": False, "error_type": "forbidden", "error": "synthetic 403"}
         return {"ok": True, "result": json.dumps(pod())}
@@ -280,7 +314,9 @@ def probe(scenario):
         tasks.append(deepcopy(task))
     replies = [] if scenario in {"greeting", "no_evidence"} else [
         AIMessage(content="", tool_calls=[call()])]
-    if scenario not in {"no_task", "p0", "greeting"}:
+    if scenario in {"malformed_then_pod", "malformed_no_task"}:
+        replies.append(AIMessage(content="", tool_calls=[call(ident="read-2")]))
+    if scenario not in {"no_task", "p0", "greeting", "malformed_no_task"}:
         replies.append(AIMessage(content="", tool_calls=tasks))
     if scenario == "repeat":
         replies.append(AIMessage(content="", tool_calls=[{**task, "id": "task-2"}]))
@@ -289,6 +325,8 @@ def probe(scenario):
     review_text = output("INSUFFICIENT", ["read-fake"] if scenario == "bad_ref" else None)
     if scenario == "bad_json":
         review_text = "PASS: 完全健康"
+    if scenario == "malformed_then_pod":
+        review_text = output("SUPPORTS", ["read-2"])
     reviewer_replies = [AIMessage(content=review_text)]
     if scenario == "review_tool":
         reviewer_replies.insert(0, AIMessage(content="", tool_calls=[call("write_file")]))
@@ -352,6 +390,17 @@ def probe(scenario):
             assert cancelled.is_set()
         if scenario in {"parallel", "duplicate", "unknown_type", "no_evidence", "no_task"}:
             assert not reviewer.inputs
+        if scenario in {"malformed_then_pod", "malformed_no_task"}:
+            assert len(reads) == 2
+            if scenario == "malformed_then_pod":
+                description = next(m.content for m in reviewer.inputs[0]
+                                   if isinstance(m, HumanMessage))
+                entries = json.loads(description)["evidence"]
+                assert entries[0]["status"] == "invalid" and entries[0]["pod_uid"] is None
+                assert entries[1]["pod_uid"] == "synthetic-uid-a"
+                assert "review_status=FAILED" in final
+            else:
+                assert not reviewer.inputs and "review_status=UNREVIEWED" in final
 
     asyncio.run(run())
 

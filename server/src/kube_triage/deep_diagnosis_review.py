@@ -78,6 +78,22 @@ def _clip(text: str, limit: int) -> str:
     return text.encode()[:limit].decode("utf-8", errors="ignore")
 
 
+def _pod_uid(value, target: str) -> str | None:
+    """Validate this receipt before applying whole-turn UID consistency checks."""
+    if not isinstance(value, dict) or value.get("kind") != "Pod":
+        return None
+    meta, status = value.get("metadata"), value.get("status")
+    if not isinstance(meta, dict) or not isinstance(status, dict):
+        return None
+    uid, phase = meta.get("uid"), status.get("phase")
+    if (meta.get("namespace") != NAMESPACE or meta.get("name") != target
+            or not isinstance(uid, str) or not baseline.memory.SAFE_UID.fullmatch(uid)
+            or not isinstance(phase, str)
+            or phase not in {"Pending", "Running", "Succeeded", "Failed", "Unknown"}):
+        return None
+    return uid
+
+
 def evidence_manifest(state, runtime, candidate: str) -> dict:
     """Only execution-signed, uniquely paired current-turn Reader receipts qualify."""
     turn = baseline._current(state.get("messages", []))
@@ -121,11 +137,12 @@ def evidence_manifest(state, runtime, candidate: str) -> dict:
             except yaml.YAMLError:
                 parsed = None
             if name == "pods_get":
-                valid, _ = baseline._target_evidence(turn, args.get("name"))
-                if valid and isinstance(parsed, dict):
-                    entry.update(pod_uid=parsed["metadata"]["uid"], usable_for_diagnosis=True)
-                else:
-                    entry["status"] = "invalid"
+                entry["status"] = "invalid"
+                uid = _pod_uid(parsed, args.get("name"))
+                if uid is not None:
+                    valid, _ = baseline._target_evidence(turn, args.get("name"))
+                    if valid:
+                        entry.update(status="success", pod_uid=uid, usable_for_diagnosis=True)
             elif name == "pods_list_in_namespace" and isinstance(parsed, dict):
                 items = parsed.get("items")
                 entry["usable_for_diagnosis"] = (

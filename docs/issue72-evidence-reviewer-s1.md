@@ -3,6 +3,8 @@
 本报告仅覆盖 [设计](plans/issue-72-evidence-reviewer-subagent.md) S1 / R0–R4。
 所有模型与 Reader 均为离线 FakeModel / 合成回执。不是 Aegra/Web 验收、真实模型质量评估或生产安全认证。
 
+> 当前仍为 STOP：初轮局部测试未覆盖独立审查发现，不能据此进入 S2。后续发现 R3 旧签记重放风险及 R5 Thread 作用域不一致；本次仅修复 PR #74 的逐回执 Pod 校验评论，整体 Gate 尚未通过。
+
 ## 基线与范围
 
 - 2026-10-22 `git fetch origin` 后 `origin/main=87f91cb746794542c6ff677795f85d691ab747aa`。
@@ -32,10 +34,11 @@ Manifest 输入最大 8 KiB、摘录单项 800 bytes，截断/丢项显式 `inco
 | R0 | PASS | 最新 main、Issue #72/#69、合并 PR #73、固定安装版本、独立干净 Worktree 已核对；#69 差异如上 |
 | R1 | PASS | `test_deep_diagnosis_review_spike.py` 实际 assembled `SubAgentMiddleware` 恰一，公开 `subagent_names` 唯一；父 FakeModel 实际六工具；原生 task/同 ID 回执；参数覆写实际到达 Reviewer；独立 P0 对照仍五工具 |
 | R2 | PASS（离线 S1） | Reviewer 实际模型工具为空；伪造 `pods_get/read_file/write_file/execute/task/repair` 均拒绝；父消息/files 哨兵不进入模型输入、不被改写；新 Thread 为空；直接执行边界同样拒绝。SDK 仍传播普通 files State，不能称完全 State 隔离 |
-| R3 | PASS（离线 S1） | 当前执行回执、缺/非法 MAC、错 ID/name、重复 ID/回执、篡改、伪造历史、其他 Thread/轮次、Namespace、旧 UID、403/timeout、注入日志、长证据和未知引用负测；模型自述不进入可信来源；State 修改使旧审查失效 |
-| R4 | PASS（离线 S1） | schema/枚举/大小/引用校验；task 一次、并行/重复/未知类型拒绝；父 12 / Reviewer 2 / Reader 6 预算；实际定时中断及外部取消传播；非法 JSON、Provider 故障、缺 task 或来源、非法工具与 State delta 均保持 UNKNOWN，不能显示根因已证实 |
-| R5–R8 | NOT RUN | S2/S3 尚未开始；没有持久化 Aegra/SSE/浏览器 Refresh/恢复、真人 Web 或 ON/OFF 质量评价证据 |
-| R9 | 待阶段检查 | 本阶段 Ruff/pytest、差异与独立审查结果见 PR；不将本地检查等同全部 CI/最终交付完成 |
+| R3 | FAIL | 独立审查指出相同 Thread/Human ID/内容可重放旧签记；初轮其他负测通过不能覆盖此缺口 |
+| R4 | 待复审 | 独立审查发现逐回执校验缺失可导致 KeyError；本次已修复并新增 9 个通过的回归场景，其余初轮输出/预算检查见 PR。不能据此宣布整体验收完成 |
+| R5 | FAIL（最小入口检查） | MemorySaver/Thread 下 task 为 COMPLETED/INSUFFICIENT，最终为 UNREVIEWED/UNKNOWN；本次未修复。其余恢复/Refresh/取消场景尚待 S2 |
+| R6–R8 | NOT RUN | 没有 Aegra/SSE/真人 Web 或 ON/OFF 质量评价证据 |
+| R9 | BLOCKED | 独立审查尚未整体通过；本地检查或 CI 通过不覆盖安全 Gate 失败 |
 
 本阶段命令：
 
@@ -49,6 +52,14 @@ git diff --check
 2026-10-22 本地实测：首轮专项 62 PASS；全量 pytest **829 PASS / 118.85 秒**；随后增加的非法 Unicode 签记参数负测 **1 PASS / 54 deselected**；最终全量 Ruff 与 `git diff --check` PASS。全量运行不包含随后新增的该一条参数负测，不能将其记作 830 项全量运行。
 
 远端 CI / 独立 Review 记录追加在阶段 PR。前端无变更，本地 lint/build NOT RUN；远端 CI 按既有流程运行，不能证明 S2 UI 已验收。
+
+### PR #74 逐回执 Pod 校验修复
+
+评论 [discussion_r4344018275](https://github.com/Vc-great/kube-triage-agent/pull/74#discussion_r4344018275)：`_target_evidence` 的全轮最新结果不能验证较早回执。本次在读取 UID 前独立检查每条 Pod 的 kind、metadata/status 类型、Namespace、名称、UID 格式和 phase，再保留全轮 UID 一致性检查；畸形条目保留为 invalid，不新增可信字段。
+
+先以 ConfigMap → 合法 Pod 序列复现 `KeyError: metadata`，修复后 `pytest -q tests/test_deep_diagnosis_review.py -k 'validates_each_pod_receipt or malformed'` 为 **9 PASS / 55 deselected**。覆盖缺 metadata、错误 metadata 类型、缺/非字符串 UID、错误 status/phase，以及原生 Graph 有 task/无 task 的最终回复路径。
+
+本次 `uv run --frozen --offline pytest -q` 完整运行 **839 PASS / 117.08 秒**，`uv run --frozen --offline ruff check src tests` 与 `git diff --check` PASS。独立复审和 CI 见 PR；R3/R5 保持 STOP，不继续 Aegra/Web。
 
 ## 限制、回退与后续 Gate
 
