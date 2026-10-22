@@ -960,12 +960,15 @@ source = { editable = "." }
 dependencies = [
     { name = "aegra-cli" },
     { name = "deepagents" },
+    { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-mcp-adapters" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langgraph-sdk" },
     { name = "mcp" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pyyaml" },
 ]
 
@@ -979,12 +982,15 @@ dev = [
 requires-dist = [
     { name = "aegra-cli", specifier = "==0.10.8" },
     { name = "deepagents", specifier = "==0.7.28" },
+    { name = "fastapi", specifier = ">=0.143,<1" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "langchain-core", specifier = ">=1.0,<2" },
     { name = "langchain-mcp-adapters", specifier = ">=0.1,<1" },
     { name = "langchain-openai", specifier = ">=1.0,<2" },
     { name = "langgraph", specifier = ">=1.0,<2" },
     { name = "langgraph-sdk", specifier = ">=0.3,<1" },
     { name = "mcp", specifier = ">=1.20,<2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3,<4" },
     { name = "pyyaml", specifier = ">=6,<7" },
 ]
 

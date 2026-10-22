@@ -32,6 +32,8 @@ API Key 为私有 `.env` 的 `DEMO_API_TOKEN`，只在本机 Web 输入。模型
 
 ## 可重复的离线测试
 
+Issue #78 的 [Conversation History / Evidence Store 离线 Demo](docs/issue78-demo.md) 使用测试专用 FakeModel、Mock MCP 和独立 PostgreSQL，提供显式迁移、Evidence ID 回查、Web 刷新历史与开关回退；[实测报告](docs/issue78-validation.md)逐项记录验收状态。新增业务持久化默认关闭，不改变正式 Reader/Repair/Memory 授权。
+
 本地 FakeModel 不影响正式 Agent 使用真实 LLM。FakeModel 验证标准 Tool Calling 协议、预算与策略；Mock 和 Fixtures 验证契约；Golden 保存合成评测的已知事实。
 
 ```bash

@@ -30,6 +30,7 @@ import { resolveApiUrl } from "@/lib/resolve-api-url";
 import { appendProgress, isAgentProgressEvent, type AgentProgressEvent } from "@/lib/agent-progress";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
+import { useConversationHistory } from "@/hooks/use-conversation-history";
 
 export type PlanningTodo = { content: string; status: "pending" | "in_progress" | "completed" };
 export type StateType = { messages: Message[]; ui?: UIMessage[]; todos?: PlanningTodo[] };
@@ -51,6 +52,8 @@ type StreamContextType = ReturnType<typeof useTypedStream> & {
   apiUrl: string;
   progressEvents: AgentProgressEvent[];
   clearProgress: () => void;
+  displayMessages: Message[];
+  historyStatus: "synced" | "partial" | "legacy" | "error" | "syncing" | null;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -119,7 +122,8 @@ const StreamSession = ({
     apiKey: apiKey ?? undefined,
     assistantId,
     // The SDK uses this Run metadata for both reconnect and server cancellation.
-    reconnectOnMount: process.env.NEXT_PUBLIC_DEEP_DEMO === "true",
+    reconnectOnMount: process.env.NEXT_PUBLIC_DEEP_DEMO === "true" ||
+      process.env.NEXT_PUBLIC_APP_HISTORY_ENABLED === "true",
     ...(authScheme && {
       defaultHeaders: {
         "X-Auth-Scheme": authScheme,
@@ -153,6 +157,8 @@ const StreamSession = ({
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
     },
   });
+  const history = useConversationHistory({ apiUrl, apiKey, authScheme, threadId,
+    isLoading: streamValue.isLoading, messages: streamValue.messages });
 
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
@@ -174,7 +180,7 @@ const StreamSession = ({
   }, [apiKey, apiUrl, authScheme, onInvalidKey]);
 
   return (
-    <StreamContext.Provider value={{ ...streamValue, apiUrl,
+    <StreamContext.Provider value={{ ...streamValue, ...history, apiUrl,
       progressEvents: threadId === progressThreadId ? progressEvents : [],
       clearProgress }}>
       {children}

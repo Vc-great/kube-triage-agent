@@ -7,6 +7,8 @@
     "disable_studio_auth": true
   },
   "http": {
+    "app": "./src/kube_triage/app_routes.py:app",
+    "enable_custom_route_auth": true,
     "cors": {
       "allow_origins": ["http://192.168.31.110:13000", "http://localhost:13000", "http://127.0.0.1:13000", "http://localhost:13001", "http://127.0.0.1:13001", "http://localhost:13002", "http://127.0.0.1:13002"],
       "allow_credentials": false

@@ -23,6 +23,7 @@ from kube_triage import incident_memory_flow as memory_flow
 from kube_triage import incident_memory_retrieval as memory_retrieval
 from kube_triage import repair
 from kube_triage.agent_progress import emit_progress, reset_progress_budget
+from kube_triage.app_storage import reader_context
 from kube_triage.config import (
     ConfigurationError,
     incident_memory_http_write_blocked,
@@ -211,7 +212,9 @@ async def _execute_tool(state: AgentState, config: RunnableConfig) -> dict:
         else:
             emit_progress("tool", "started", tool_name=call["name"], tool_call_id=call["id"])
             try:
-                response = await call_tool(call["name"], call["args"], thread_id)
+                with reader_context(graph_id="agent", tool_call_id=call["id"],
+                                    run_id=config.get("configurable", {}).get("run_id")):
+                    response = await call_tool(call["name"], call["args"], thread_id)
             except Exception:
                 emit_progress("tool", "failed", tool_name=call["name"], tool_call_id=call["id"])
                 raise

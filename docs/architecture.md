@@ -1,5 +1,7 @@
 # 当前架构：Real-by-default
 
+可选的 [Issue #78 业务持久化](issue78-demo.md) 在现有 Aegra FastAPI/同一 PostgreSQL 中增加独立 `app_*` 表：Host Reader 回执写 Evidence；服务端通过 Agent Protocol 回读 State、同步用户可见 History；Web 保留 `useStream` 并按消息 ID 合并历史。`APP_HISTORY_ENABLED` / `APP_EVIDENCE_ENABLED` 和 Web 构建开关默认关闭，迁移显式执行。History/Evidence 不参与 Repair 或 Memory 的授权判定，Aegra Checkpointer 不变。
+
 ```mermaid
 flowchart LR
   Web[Web / 中文报告与历史] -->|认证 Thread / Run / SSE| API[Aegra + LangGraph]

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from kube_triage.app_storage import persist_evidence
 from kube_triage.config import ConfigurationError, reader_url
 
 NAMESPACE = "kube-triage-demo"
@@ -144,6 +145,8 @@ def _display_result(result: object) -> str:
 async def call_tool(name: str, arguments: dict, thread_id: str | None = None) -> dict:
     start = time.monotonic()
     outcome, error_type = "success", None
+    safe_args, payload = None, None
+    truncated = False
     try:
         try:
             validate_call(name, arguments)
@@ -154,7 +157,10 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
         tools = await asyncio.wait_for(_allowed_tools(), MCP_TIMEOUT_SECONDS)
         safe_args = {**arguments, "tail": arguments.get("tail", 20)} if name == "pods_log" else arguments
         result = await asyncio.wait_for(tools[name].ainvoke(safe_args), MCP_TIMEOUT_SECONDS)
-        return {"ok": True, "result": _display_result(result)}
+        content = _display_result(result)
+        truncated = len(content) > MAX_RESULT_CHARS
+        payload = {"ok": True, "result": content}
+        return await persist_evidence(name, safe_args, thread_id, payload, truncated)
     except ConfigurationError:
         outcome, error_type = "failed", "configuration"
         raise
@@ -168,7 +174,10 @@ async def call_tool(name: str, arguments: dict, thread_id: str | None = None) ->
                              if isinstance(exc, BaseExceptionGroup) else []),
             "frames": [{"file": Path(frame.filename).name, "line": frame.lineno,
                         "function": frame.name} for frame in frames]}, ensure_ascii=False))
-        return {"ok": False, "error": message, "error_type": error_type}
+        payload = {"ok": False, "error": message, "error_type": error_type}
+        # A validation rejection is not an executed Reader. Store only actual
+        # discovery/execution failures with validated arguments.
+        return await persist_evidence(name, safe_args or arguments, thread_id, payload, False)
     finally:
         logger.info(json.dumps({"event": "mcp_tool_call", "thread_id": thread_id,
             "tool_name": name if name in ALLOWED_TOOLS else "<denied>",

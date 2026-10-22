@@ -39,6 +39,65 @@ jobs:
         working-directory: apps/web
       - run: pnpm build
         working-directory: apps/web
+      - run: pnpm exec playwright test tests/conversation-history.spec.ts --output "$RUNNER_TEMP/issue78-web-results"
+        working-directory: apps/web
+  persistence:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18-bookworm
+        env:
+          POSTGRES_USER: issue78
+          POSTGRES_PASSWORD: issue78-ci-placeholder
+          POSTGRES_DB: issue78
+        ports: ['15478:5432']
+        options: >-
+          --label ao.session=issue78-ci-${{ github.run_id }}
+          --health-cmd "pg_isready -U issue78 -d issue78"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://issue78:issue78-ci-placeholder@127.0.0.1:15478/issue78
+      ISSUE78_TEST_DATABASE_URL: postgresql://issue78:issue78-ci-placeholder@127.0.0.1:15478/issue78
+      ISSUE78_TEST_API_URL: http://127.0.0.1:12079
+      DEMO_API_TOKEN: issue78-ci-placeholder
+      TRIAGE_ENV: test
+      AUTH_TYPE: custom
+      MCP_SERVER_URL: http://127.0.0.1:8000/mcp
+      MOCK_MCP_HOST: 127.0.0.1
+      APP_HISTORY_ENABLED: 'true'
+      APP_EVIDENCE_ENABLED: 'true'
+      OTEL_TARGETS: ''
+      OTEL_CONSOLE_EXPORT: 'false'
+      LANGSMITH_TRACING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --python 3.13
+        working-directory: server
+      - name: FakeModel / Mock MCP / PostgreSQL protocol integration
+        working-directory: server
+        run: |
+          set -euo pipefail
+          uv run --frozen python -m kube_triage.app_storage
+          uv run --frozen python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue78-mock.log" 2>&1 &
+          mock_pid=$!
+          uv run --frozen aegra serve --config aegra.issue78-demo.json --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" "$mock_pid" 2>/dev/null || true' EXIT
+          uv run --frozen python - <<'PY'
+          import time
+          import httpx
+          for _ in range(120):
+              try:
+                  if httpx.get("http://127.0.0.1:12079/health", timeout=1).status_code == 200:
+                      break
+              except httpx.HTTPError:
+                  pass
+              time.sleep(.25)
+          else:
+              raise SystemExit("isolated Aegra did not start")
+          PY
+          uv run --frozen pytest -q tests/test_app_persistence.py tests/test_app_protocol.py
   compose:
     runs-on: ubuntu-latest
     steps:
