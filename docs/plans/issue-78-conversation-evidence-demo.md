@@ -2,7 +2,7 @@
 
 > - 需求：[Issue #78](https://github.com/Vc-great/kube-triage-agent/issues/78)
 > - 状态：**Proposed / 纯文档 Planning PR**；本文未合并、未获实施验收。
-> - 规划分支：`docs/issue-78-conversation-evidence-demo`；Planning PR：创建后由 PR 链接反向关联本文。
+> - 规划分支：`docs/issue-78-conversation-evidence-demo`；[Planning PR #79](https://github.com/Vc-great/kube-triage-agent/pull/79)（Draft）。
 > - 设计基线：2026-10-22 `origin/main=b791cffaec0e8f0d665872bdb75ef00e3b9f2029`。实施前重新 fetch；不要沿用本 SHA 当运行基线。
 > - 依赖基线：`aegra-cli==0.10.8`，`deepagents==0.7.28`，`server/uv.lock` 以真实锁文件为准。
 > - 已批准：**仅本次 Demo-first 设计取向**（用户允许合理重构、希望尽快跑通、不做攻击测试）；代码阶段在设计合并至 main 前不得启动。
