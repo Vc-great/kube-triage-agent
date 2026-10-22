@@ -19,7 +19,7 @@ SCENARIOS = [
     "forbidden", "not_found", "timeout", "uid", "injection", "oversize", "namespace",
     "reader-budget", "previous", "resume-cache", "threads",
     "resume-pin", "resume-clean", "resume-budget", "resume-nodes", "pin-hooks",
-    "resume-consumed-pin", "public-closed",
+    "public-reject-consumed-pin", "public-closed",
 ]
 
 
@@ -47,6 +47,17 @@ def test_legacy_resume_pin_still_fails_safety_assertion():
     assert observed["model_calls"] == 1 and observed["pinned_messages"] == 3
     assert observed["native_read_file_calls"] == 0
     assert "AssertionError: 客户端 pinned_skills" in result.stderr
+
+
+def test_probe_consumed_pin_still_fails_safety_assertion():
+    """测试目录的未认证装配仍不安全；保留原子进程安全断言和实测计数。"""
+    result = _run_probe("resume-consumed-pin")
+    assert result.returncode == 1, result.stdout + result.stderr
+    observed = json.loads(result.stdout.splitlines()[0])
+    assert observed == {"scenario": "resume-consumed-pin", "model_calls": 1,
+                        "pinned_messages": 3, "pin_field_empty": True,
+                        "native_read_file_calls": 0}
+    assert "AssertionError: 已消费 pin 的旧 Checkpoint" in result.stderr
 
 
 def probe(scenario):
@@ -175,7 +186,7 @@ def probe(scenario):
         return original(*args, **kwargs)
 
     with patch.object(sdk_graph, "create_agent", capture):
-        if scenario in {"legacy-resume-pin", "resume-consumed-pin"}:
+        if scenario in {"legacy-resume-pin", "resume-consumed-pin", "public-reject-consumed-pin"}:
             # Recreate only the old assembly; production builder never exposes
             # an option to re-enable pin or a second unsafe graph entry.
             with patch.object(skills, "ReadOnlySkillsMiddleware", SkillsMiddleware):
@@ -186,7 +197,7 @@ def probe(scenario):
     if scenario != "p0":
         native = [m for m in assembled if isinstance(m, SkillsMiddleware)]
         assert len(native) == 1 and native[0].name == "SkillsMiddleware"
-        if scenario not in {"legacy-resume-pin", "resume-consumed-pin"}:
+        if scenario not in {"legacy-resume-pin", "resume-consumed-pin", "public-reject-consumed-pin"}:
             assert type(native[0]) is skills.ReadOnlySkillsMiddleware
             assert type(native[0]).abefore_agent is SkillsMiddleware.abefore_agent
             assert type(native[0]).modify_request is SkillsMiddleware.modify_request
@@ -276,7 +287,7 @@ def probe(scenario):
                              ensure_ascii=False))
             assert not model.inputs, "客户端 pinned_skills 在恢复点绕过边界，使模型接收全部正文"
             return
-        if scenario == "resume-consumed-pin":
+        if scenario in {"resume-consumed-pin", "public-reject-consumed-pin"}:
             # A real old native hook consumes pin and persists HumanMessages.
             # Rebuild the new native subclass on this actual same checkpoint;
             # never fabricate success ToolMessages or read body from State.
@@ -286,6 +297,17 @@ def probe(scenario):
             old = await graph.aget_state(config)
             assert not model.inputs and not old.values.get("pinned_skills")
             assert old.next == ("model",)
+            assert sum(isinstance(m, HumanMessage) and
+                       m.additional_kwargs.get("lc_source") == "pinned_skill"
+                       for m in old.values["messages"]) == 3
+            if scenario == "public-reject-consumed-pin":
+                with patch("deepagents.graph.create_agent", side_effect=denied), \
+                     pytest.raises(NotImplementedError, match="S1 STOP"):
+                    skills.build_graph(model, checkpointer=saver)
+                assert not model.inputs
+                after = await graph.aget_state(config)
+                assert after.values == old.values and after.config == old.config
+                return
             rebuilt = build_probe_graph(model, checkpointer=saver)
             try:
                 await rebuilt.ainvoke(None, config)

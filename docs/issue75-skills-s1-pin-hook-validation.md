@@ -5,6 +5,8 @@
 > **S1 STOP，S0–S4 未全部通过；本 PR 为离线实施 PoC 与证据，不是可运行的 Web Skills 产品。**
 >
 > 审阅后补充：公开 `build_graph` 现已在 SDK 装配前无条件抛出 `NotImplementedError`；不返回可恢复或可被后续注入 Checkpointer 的图。不安全原生装配移至 `server/tests/skills_probe_helpers.py`，仅用于保留反例和正向探针，应用包不包含它。该收口不实现历史来源认证，S3/S4 仍 FAIL，不靠拒绝全部恢复声称通过 Gate。
+>
+> CI修复补充：旧、新pin反例均由测试子进程执行原始安全断言并真实失败，父测试核对非零退出、精确计数和具体AssertionError；与公开builder的Fail Closed回归分开。测试套件通过表示“反例被保留且公开入口已关闭”，不表示不安全测试装配已满足S3/S4。历史失败结果不改写。
 
 ## 1. 范围与环境
 
@@ -59,13 +61,15 @@
 
 安全断言 `assert not model.inputs` 失败，未 skip、xfail 或改成“允许旧历史”。没有手工编造 read_file 成功消息或从 State 补全正文；pin HumanMessage 来自旧原生 hook 的实际执行。
 
+公开入口关闭后，该未认证测试装配被归为显式历史characterization：`test_probe_consumed_pin_still_fails_safety_assertion` 要求子进程以该断言失败，并核对上述完整JSON。断言本身保留在`resume-consumed-pin`子进程；直接执行本节复现命令的子进程仍为失败。另有`public-reject-consumed-pin`用同一旧原生hook真实生成旧历史后调用公开builder，验证它抛出S1 STOP、无SDK装配/模型调用且head/State不变。不能以父characterization成功推断历史认证已修复。
+
 复现（`server/`）：
 
 ```sh
-uv run --frozen --offline pytest -q tests/test_deep_diagnosis_skills.py -k resume-consumed-pin
+uv run --frozen --offline python tests/test_deep_diagnosis_skills.py resume-consumed-pin
 ```
 
-单独执行结果：**1 failed / 49 deselected，2.09s**。这是离线 Checkpoint 兼容/来源失败，不等于证明真实 HTTP 仍可绕过已测403的 factory，也不证明 SDK 必然无法实现最终方案。正确结论是 **最小 hook 替换单独不足以通过原 Gate**。
+历史单独pytest执行结果：**1 failed / 49 deselected，2.09s**。上面的直接子进程命令在当前代码中保留同一失败。该证据是离线 Checkpoint 兼容/来源失败，不等于证明真实 HTTP 仍可绕过已测403的 factory，也不证明 SDK 必然无法实现最终方案。正确结论是 **最小 hook 替换单独不足以通过原 Gate**。
 
 ## 4. 逐 Gate 状态
 
@@ -93,6 +97,8 @@ uv run --frozen --offline pytest -q tests/test_deep_diagnosis_skills.py -k resum
 - 初始提交 `71e954d` 的[远端 CI run 39744552661](https://github.com/Vc-great/kube-triage-agent/actions/runs/39744552661)：FAIL。Web/Compose/Ruff/manifest检查PASS；pytest **918 passed / 1 failed / 3 skipped，406.97s**，唯一失败为相同的`resume-consumed-pin`，计数1模型/3pin/0read_file。
 - [AO独立审阅](https://github.com/Vc-great/kube-triage-agent/pull/80#pullrequestreview-5613036721)要求来源边界未实现前builder不得接受可恢复Checkpointer。采用最小Fail Closed收口而不搭建框架：公开builder拒绝所有构图；不安全装配移到tests，旧新反例与合法Resume/预算探针仍运行，新增公开入口零装配验证。最新结果以PR的提交/CI/复审链接为准，不能沿用初始提交的结果替代新head验证。
 - 审阅修正后针对两份Skills/Aegra测试运行：**63 passed / 1 failed，102.33s**；唯一失败仍为测试目录装配的`resume-consumed-pin`，禁止模型调用的断言未变。公开builder零装配测试通过；Ruff/diff检查通过。重新离线构建wheel，确认无`tests`/`skills_probe_helpers`，恰三份SKILL，应用模块无`create_deep_agent`调用。未重跑全量pytest，既有全量结果仍只归属于初始提交；S3/S4依然FAIL。
+- CI修复后的核心专项：`uv run --frozen --offline pytest -q tests/test_deep_diagnosis_skills.py -k 'consumed or public or legacy'`：**4 passed / 48 deselected，7.84s**。两个子进程反例仍真实触发原断言失败，两个公开入口检查证明构图拒绝；没有skip/xfail、弱化原子进程断言或修改CI配置。全量结果在PR描述按当前提交单独报告；CI绿灯不解除S1 STOP。
+- CI修复后的完整本地回归：`uv run --frozen --offline pytest -q`：**924 passed，255.59s**；`uv run --frozen --offline ruff check src tests`、`git diff --check` PASS。测试套件验证历史反例仍失败、当前公开入口已关闭；S3/S4所要求的可用安全恢复图未实现，相关Gate FAIL及S1 STOP不改写。
 
 ## 6. 最小替代方案与停止边界
 
