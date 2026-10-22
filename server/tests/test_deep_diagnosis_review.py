@@ -18,6 +18,16 @@ from langgraph.types import Command
 from kube_triage import deep_diagnosis_review as review
 
 
+@pytest.fixture(autouse=True)
+def trusted_unit_execution():
+    """Unit helpers simulate a Host entry; Graph tests mint their own identity."""
+    token = review._EXECUTION.set(review._Execution("synthetic-a"))
+    try:
+        yield
+    finally:
+        review._EXECUTION.reset(token)
+
+
 def call(name="pods_get", ident="read-1", **args):
     return {"name": name, "id": ident, "type": "tool_call",
             "args": args or {"namespace": "kube-triage-demo", "name": "a"}}
@@ -56,6 +66,61 @@ def test_manifest_authenticates_actual_receipt_and_keeps_candidate_untrusted():
     assert manifest["evidence"][0]["usable_for_diagnosis"] is True
     assert manifest["evidence"][0]["source_hash"].startswith("sha256:")
     assert review.validate_review(output("SUPPORTS"), manifest).verdict == "SUPPORTS"
+
+
+@pytest.mark.parametrize("replay", ["identical_input", "copied_messages", "injected_state",
+                                  "injected_config", "missing_context", "closed_context"])
+def test_identical_human_and_signed_receipt_cannot_restore_execution(replay):
+    state, runtime = fixture()
+    previous_scope = review._scope(state, runtime)
+    old_execution = review._EXECUTION.get()
+    if replay == "copied_messages":
+        state = deepcopy(state)  # Same Thread/Human ID/content, call ID and MAC.
+    if replay == "injected_state":
+        state.update(turn_id=previous_scope["turn_id"], _execution_nonce=old_execution.nonce,
+                     _review_scope=previous_scope)
+    if replay == "injected_config":
+        runtime.config["configurable"].update(
+            turn_id=previous_scope["turn_id"], _execution_nonce=old_execution.nonce)
+    next_execution = review._Execution("synthetic-a", active=replay != "closed_context")
+    token = review._EXECUTION.set(None if replay == "missing_context" else next_execution)
+    try:
+        current_scope = review._scope(state, runtime)
+        assert current_scope != previous_scope
+        manifest = review.evidence_manifest(state, runtime, "旧证据不属于新执行")
+        assert manifest["evidence"] == [] and manifest["incomplete"]
+    finally:
+        review._EXECUTION.reset(token)
+
+
+def test_no_execution_context_refuses_tools_before_handler():
+    async def run():
+        state, runtime = fixture()
+        token = review._EXECUTION.set(None)
+        try:
+            async def denied(request):
+                pytest.fail("没有 Host 执行上下文不能执行 Reader 或 task")
+            for item in [call(), call("task", "task-1", description="旧证据",
+                                      subagent_type="evidence-reviewer")]:
+                with pytest.raises(review.ReviewFailure, match="受信执行轮次"):
+                    await review.ReviewBoundary().awrap_tool_call(ToolCallRequest(
+                        tool_call=item, tool=None, state=state, runtime=runtime), denied)
+        finally:
+            review._EXECUTION.reset(token)
+    asyncio.run(run())
+
+
+def test_receipt_signing_and_authentication_require_live_execution():
+    state, runtime = fixture()
+    scope = review._scope(state, runtime)
+    item, reply = state["messages"][1].tool_calls[0], state["messages"][2]
+    token = review._EXECUTION.set(None)
+    try:
+        assert not review._authentic(item, reply, scope)
+        with pytest.raises(review.ReviewFailure, match="受信执行轮次"):
+            review._stamp(item, deepcopy(reply), scope)
+    finally:
+        review._EXECUTION.reset(token)
 
 
 @pytest.mark.parametrize("malformed", [
@@ -350,6 +415,8 @@ def probe(scenario):
             assert cancelled.is_set()
             return
         if scenario == "state_delta":
+            # This branch directly invokes the boundary rather than the Host Graph entry.
+            review._EXECUTION.set(review._Execution("synthetic-a"))
             state, runtime = fixture()
             state["messages"].append(AIMessage(content="", tool_calls=[task]))
             request = ToolCallRequest(tool_call=task, tool=None, state=state, runtime=runtime)

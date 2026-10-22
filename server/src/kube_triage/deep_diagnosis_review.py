@@ -11,6 +11,9 @@ import hashlib
 import hmac
 import json
 import secrets
+from contextlib import aclosing
+from contextvars import ContextVar, copy_context
+from dataclasses import dataclass, field
 from typing import Literal
 
 import yaml
@@ -23,6 +26,8 @@ from deepagents import (
 from deepagents.backends import StateBackend
 from langchain.agents.middleware import AgentMiddleware, TodoListMiddleware
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import Runnable
+from langchain_core.runnables.config import ensure_config
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,18 +45,109 @@ _KEY = secrets.token_bytes(32)
 _RECEIPT = "evidence_review_receipt_v1"
 
 
+@dataclass
+class _Execution:
+    thread_id: str
+    nonce: str = field(default_factory=lambda: secrets.token_hex(32))
+    active: bool = True
+
+
+_EXECUTION: ContextVar[_Execution | None] = ContextVar("evidence_review_execution", default=None)
+
+
+class _ReviewGraph(Runnable):
+    """Host entry: fresh, nonpersistent execution identity for every async call.
+
+    The copied context belongs to child tasks, never to the caller's context or
+    client-controlled State/config. Checkpoint inspection/update delegates to the
+    native graph; its receipts cannot restore an execution identity on Resume.
+    """
+
+    def __init__(self, graph):
+        self._graph = graph
+
+    def __getattr__(self, name):
+        return getattr(self._graph, name)
+
+    def get_input_schema(self, config=None):
+        return self._graph.get_input_schema(config)
+
+    def get_output_schema(self, config=None):
+        return self._graph.get_output_schema(config)
+
+    def get_graph(self, config=None):
+        return self._graph.get_graph(config)
+
+    @property
+    def config_specs(self):
+        return self._graph.config_specs
+
+    @staticmethod
+    def _context(config):
+        config = ensure_config(config)
+        execution = _Execution(str(config.get("configurable", {}).get("thread_id", "unpersisted")))
+        context = copy_context()
+        context.run(_EXECUTION.set, execution)
+        return config, context, execution
+
+    def invoke(self, input, config=None, **kwargs):
+        raise NotImplementedError("Evidence Reviewer S1 只提供受控异步调用入口")
+
+    async def ainvoke(self, input, config=None, **kwargs):
+        config, context, execution = self._context(config)
+        try:
+            return await asyncio.create_task(self._graph.ainvoke(input, config, **kwargs),
+                                             context=context)
+        finally:
+            execution.active = False
+
+    async def _stream(self, method, input, config, **kwargs):
+        config, context, execution = self._context(config)
+        iterator = method(input, config, **kwargs)
+        try:
+            while True:
+                try:
+                    chunk = await asyncio.create_task(anext(iterator), context=context)
+                except StopAsyncIteration:
+                    break
+                yield chunk
+        finally:
+            execution.active = False
+            await asyncio.create_task(iterator.aclose(), context=context)
+
+    async def astream(self, input, config=None, **kwargs):
+        async with aclosing(self._stream(self._graph.astream, input, config, **kwargs)) as stream:
+            async for chunk in stream:
+                yield chunk
+
+    async def astream_events(self, input, config=None, **kwargs):
+        if kwargs.get("version", "v2") not in {"v1", "v2"}:
+            raise NotImplementedError("Evidence Reviewer S1 仅支持 v1/v2 异步事件迭代入口")
+        async with aclosing(self._stream(self._graph.astream_events, input, config, **kwargs)) as stream:
+            async for event in stream:
+                yield event
+
+
 def _json(value) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _scope(state, runtime) -> dict:
+def _scope(state, runtime) -> dict | None:
+    execution = _EXECUTION.get()
+    if execution is None or not execution.active:
+        return None
     turn = baseline._current(state.get("messages", []))
     user = turn[0] if turn and isinstance(turn[0], HumanMessage) else None
     config = getattr(runtime, "config", {}) or {}
-    thread = str(config.get("configurable", {}).get("thread_id", "unpersisted"))
+    thread = config.get("configurable", {}).get("thread_id")
+    if thread is None:
+        thread = getattr(getattr(runtime, "execution_info", None), "thread_id", None)
+    if thread is not None and str(thread) != execution.thread_id:
+        return None
+    thread = execution.thread_id
     return {"namespace": NAMESPACE, "thread_id": thread[:128],
             "turn_id": hashlib.sha256(_json([
-                thread, user.id if user else None, user.content if user else None,
+                execution.nonce, thread, user.id if user else None, user.content if user else None,
             ]).encode()).hexdigest()}
 
 
@@ -61,13 +157,18 @@ def _mac(call, reply, scope) -> str:
 
 
 def _stamp(call, reply, scope):
+    execution = _EXECUTION.get()
+    if scope is None or execution is None or not execution.active:
+        raise ReviewFailure("缺少受信执行轮次；拒绝签记")
     reply.additional_kwargs = {**reply.additional_kwargs, _RECEIPT: _mac(call, reply, scope)}
     return reply
 
 
 def _authentic(call, reply, scope) -> bool:
+    execution = _EXECUTION.get()
     signature = reply.additional_kwargs.get(_RECEIPT)
-    return (isinstance(signature, str) and len(signature) == 64
+    return (execution is not None and execution.active and scope is not None
+            and isinstance(signature, str) and len(signature) == 64
             and all(char in "0123456789abcdef" for char in signature)
             and reply.tool_call_id == call.get("id")
             and reply.name == call.get("name")
@@ -100,6 +201,9 @@ def evidence_manifest(state, runtime, candidate: str) -> dict:
     scope = _scope(state, runtime)
     manifest = {"scope": scope, "candidate_claim": {"text": candidate, "trusted": False},
                 "evidence": [], "incomplete": False}
+    if scope is None:
+        manifest["incomplete"] = True
+        return manifest
     calls = [c for m in turn if isinstance(m, AIMessage) for c in m.tool_calls]
     for call in calls:
         name, ident, args = call.get("name"), call.get("id"), call.get("args")
@@ -233,6 +337,8 @@ class ReviewBoundary(planning.PlanningBoundary):
     """P0 Reader/Todo implementation stays intact; review is advisory only."""
 
     async def awrap_model_call(self, request, handler):
+        if _scope(request.state, getattr(request, "runtime", None)) is None:
+            raise ReviewFailure("缺少受信执行轮次；拒绝模型调用")
         turn = baseline._current(request.state.get("messages", []))
         if sum(isinstance(m, AIMessage) for m in turn) >= MAX_DECISIONS:
             return AIMessage(content="本轮决策预算已用尽；当前状态与根因未核验。")
@@ -243,6 +349,8 @@ class ReviewBoundary(planning.PlanningBoundary):
 
     async def awrap_tool_call(self, request, handler):
         call, scope = request.tool_call, _scope(request.state, request.runtime)
+        if scope is None:
+            raise ReviewFailure("缺少受信执行轮次；拒绝工具调用")
         name, ident = call.get("name"), call.get("id")
         if name != "task":
             result = await super().awrap_tool_call(request, handler)
@@ -337,7 +445,7 @@ def build_graph(model, reviewer_model, *, checkpointer=None):
     )
     register_harness_profile("openai", profile)
     register_harness_profile("protocol_fake", profile)
-    return create_deep_agent(
+    return _ReviewGraph(create_deep_agent(
         model=model, tools=baseline._reader_tools(), backend=StateBackend(),
         middleware=[TodoListMiddleware(), ReviewBoundary()],
         subagents=[{"name": "evidence-reviewer", "description": "核对候选与有界本轮证据；无工具",
@@ -351,4 +459,4 @@ def build_graph(model, reviewer_model, *, checkpointer=None):
             "使用一次 task 委派 evidence-reviewer，description 写候选而非自造证据。"
             "Reviewer 是咨询意见，不是审批。观察/推断/未知分开。",
         name="deep_diagnosis_review",
-    )
+    ))
