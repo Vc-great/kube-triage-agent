@@ -52,10 +52,11 @@ async def migrate():
 
 
 @contextmanager
-def reader_context(*, graph_id: str, tool_call_id: str, run_id: str | None = None):
+def reader_context(*, graph_id: str, tool_call_id: str, run_id: str | None = None,
+                   thread_id: str | None = None):
     """Host execution metadata only; never reconstruct it from model output."""
     token = _reader_context.set({"graph_id": graph_id, "tool_call_id": tool_call_id,
-                                 "run_id": run_id})
+                                 "run_id": run_id, "thread_id": thread_id})
     try:
         yield
     finally:
@@ -69,6 +70,7 @@ async def persist_evidence(name: str, arguments: dict, thread_id: str | None,
     ident = str(uuid4())
     observed_at = datetime.now(UTC)
     context = _reader_context.get() or {}
+    thread_id = thread_id if thread_id is not None else context.get("thread_id")
     try:
         async with asyncio.timeout(STORAGE_TIMEOUT):
             async with await connect() as conn:

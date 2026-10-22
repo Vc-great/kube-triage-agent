@@ -20,6 +20,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from kube_triage import incident_memory as memory
+from kube_triage.app_storage import reader_context
 from kube_triage.incident_memory_retrieval import target_pod
 from kube_triage.llm import chat_model
 from kube_triage.mcp_client import ALLOWED_TOOLS, NAMESPACE, POD_NAME, call_tool
@@ -144,6 +145,17 @@ def _safe_target_answer(error_type: str | None) -> str:
 class ReaderBoundary(AgentMiddleware):
     """执行层拒绝 Harness 工具，并按当前用户轮次计算预算。"""
 
+    graph_id = "deep_diagnosis"
+
+    async def _execute_reader(self, request, handler):
+        # SDK ToolRuntime.config is execution config, not model tool arguments.
+        # Keep unavailable IDs NULL; do not infer a run from a checkpoint/task ID.
+        runtime = getattr(request, "runtime", None)
+        config = runtime.config.get("configurable", {}) if runtime else {}
+        with reader_context(graph_id=self.graph_id, tool_call_id=request.tool_call["id"],
+                            thread_id=config.get("thread_id"), run_id=config.get("run_id")):
+            return await handler(request)
+
     async def abefore_agent(self, state, runtime):
         # Aegra accepts client-supplied message arrays. A new run may only
         # start from a Human turn; otherwise AI/Tool messages could spoof reads.
@@ -190,7 +202,7 @@ class ReaderBoundary(AgentMiddleware):
         if not ident or len(indices) != 1 or used + indices[0] >= MAX_READS:
             return ToolMessage(content="本轮 Reader 预算已用尽或 Tool Call ID 无效。",
                                name=name, tool_call_id=ident, status="error")
-        result = await handler(request)
+        result = await self._execute_reader(request, handler)
         if not isinstance(result, ToolMessage) or result.tool_call_id != ident:
             return ToolMessage(content="Reader 回执 ID 错配；当前状态未核验。",
                                name=name, tool_call_id=ident, status="error")

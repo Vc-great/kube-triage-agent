@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "pgvector/pgvector:0.8.7-pg18-bookworm"
 
 
-def environments(api_port, db_port):
+def environments(api_port, db_port, *, persistence=False):
     # Do not inherit real model keys, tracing, database URLs or proxy settings.
     host = {key: value for key, value in os.environ.items() if key in {
         "PATH", "HOME", "TMPDIR", "USER", "LANG", "PNPM_HOME", "UV_CACHE_DIR",
@@ -37,6 +37,9 @@ def environments(api_port, db_port):
     web = {**host, "NEXT_PUBLIC_API_URL": f"http://127.0.0.1:{api_port}",
            "NEXT_PUBLIC_ASSISTANT_ID": "deep_diagnosis_skills", "NEXT_TELEMETRY_DISABLED": "1",
            "NEXT_PUBLIC_DEEP_DEMO": "true", "NEXT_PUBLIC_APP_HISTORY_ENABLED": "false"}
+    if persistence:
+        api.update(APP_HISTORY_ENABLED="true", APP_EVIDENCE_ENABLED="true")
+        web["NEXT_PUBLIC_APP_HISTORY_ENABLED"] = "true"
     return common, api, web
 
 
@@ -66,12 +69,14 @@ def main():
     parser.add_argument("--web-port", type=int, default=13075)
     parser.add_argument("--db-port", type=int, default=15475)
     parser.add_argument("--no-web", action="store_true")
+    parser.add_argument("--persistence", action="store_true",
+                        help="显式迁移隔离 PG 并打开现有 History/Evidence 路由与 Web 开关")
     args = parser.parse_args()
     ports = [8000, args.api_port, args.db_port] + ([] if args.no_web else [args.web_port])
     if len(set(ports)) != len(ports) or any(not 1024 <= p <= 65535 for p in ports):
         parser.error("端口须互异且在 1024..65535")
     preflight(ports, web=not args.no_web)
-    common, api, web = environments(args.api_port, args.db_port)
+    common, api, web = environments(args.api_port, args.db_port, persistence=args.persistence)
     name = "kta-skills-" + uuid4().hex[:12]
     processes = []
     logs = Path(tempfile.mkdtemp(prefix="kta-skills-logs-"))
@@ -95,7 +100,10 @@ def main():
             "-e", "POSTGRES_PASSWORD=skills-demo-local-only", "-e", "POSTGRES_DB=skills", IMAGE],
             check=True, stdout=subprocess.DEVNULL)
         for _ in range(60):
-            ready = subprocess.run(["docker", "exec", name, "pg_isready", "-U", "skills"],
+            # The image's temporary init server accepts Unix sockets before
+            # the final TCP server is ready for the Host migration/API.
+            ready = subprocess.run(["docker", "exec", name, "pg_isready", "-h", "127.0.0.1",
+                                    "-U", "skills"],
                                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if ready.returncode == 0:
                 break
@@ -103,6 +111,9 @@ def main():
         else:
             raise RuntimeError("独立 PostgreSQL 启动超时")
         python = str(ROOT / "server/.venv/bin/python")
+        if args.persistence:
+            subprocess.run([python, "-m", "kube_triage.app_storage"], cwd=ROOT / "server",
+                           env=api, check=True)
         launch("mock", [python, "-m", "kube_triage.mock_mcp"], ROOT / "server",
                {**common, "MOCK_MCP_HOST": "127.0.0.1"})
         launch("api", [str(ROOT / "server/.venv/bin/aegra"), "serve", "--config",

@@ -57,6 +57,28 @@ def fixture():
     return state, runtime
 
 
+@pytest.mark.parametrize("archive", [{"evidence_id": "synthetic-db-id", "evidence_persisted": True},
+                                    {"evidence_persisted": False}])
+@pytest.mark.parametrize("failure", [None, "forbidden", "timeout"])
+@pytest.mark.parametrize("signed", [True, False])
+def test_persistent_receipt_metadata_does_not_replace_s1_signature(archive, failure, signed):
+    state, runtime = fixture()
+    reply = state["messages"][-1]
+    payload = ({"ok": False, "error_type": failure, "error": "synthetic failure"}
+               if failure else json.loads(reply.content))
+    reply.content = json.dumps({**payload, **archive})
+    reply.status = "error" if failure else "success"
+    reply.additional_kwargs.clear()
+    if signed:
+        review._stamp(state["messages"][1].tool_calls[0], reply, review._scope(state, runtime))
+    manifest = review.evidence_manifest(state, runtime, "合成候选")
+    if signed:
+        assert len(manifest["evidence"]) == 1
+        assert manifest["evidence"][0]["usable_for_diagnosis"] is (failure is None)
+    else:
+        assert manifest["evidence"] == [] and manifest["incomplete"]
+
+
 def test_manifest_authenticates_actual_receipt_and_keeps_candidate_untrusted():
     state, runtime = fixture()
     manifest = review.evidence_manifest(state, runtime, "untrusted claim")

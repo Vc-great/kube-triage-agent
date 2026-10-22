@@ -12,7 +12,7 @@ from deepagents import (
     register_harness_profile,
 )
 from deepagents.backends import StateBackend
-from langchain.agents.middleware import AgentMiddleware, TodoListMiddleware
+from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.types import Command
@@ -63,8 +63,10 @@ def _reader_attempts_before_latest(turn: list, latest: AIMessage, ident: str) ->
     return earlier + parallel_before if found else None
 
 
-class PlanningBoundary(AgentMiddleware):
+class PlanningBoundary(baseline.ReaderBoundary):
     """严格分离 Reader 与本地 Todo，并独立计算三类 B1 预算。"""
+
+    graph_id = "deep_diagnosis_planning"
 
     async def abefore_agent(self, state, runtime):
         turn = _turn(state.get("messages", []))
@@ -106,7 +108,7 @@ class PlanningBoundary(AgentMiddleware):
             if slot is None or slot >= MAX_READS:
                 return ToolMessage(content="本轮 Reader 预算已用尽或 Tool Call ID 无效。",
                                    name=name, tool_call_id=ident, status="error")
-            result = await handler(request)
+            result = await self._execute_reader(request, handler)
             if not isinstance(result, ToolMessage) or result.tool_call_id != ident:
                 return ToolMessage(content="Reader 回执 ID 错配；当前状态未核验。",
                                    name=name, tool_call_id=ident, status="error")

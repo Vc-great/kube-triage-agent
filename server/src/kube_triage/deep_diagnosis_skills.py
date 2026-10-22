@@ -133,6 +133,8 @@ class SkillSnapshot(BackendProtocol):
 class SkillsBoundary(planning.PlanningBoundary):
     """新轮刷新元数据并限制六工具与预算；不认证旧 Checkpoint 历史。"""
 
+    graph_id = "deep_diagnosis_skills"
+
     def __init__(self, metadata):
         self._metadata = metadata
 

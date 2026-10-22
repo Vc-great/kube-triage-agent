@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           uv run --frozen python -m kube_triage.app_storage
-          uv run --frozen python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue78-mock.log" 2>&1 &
+          TRIAGE_MOCK_DATASET=memory-web uv run --frozen python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue78-mock.log" 2>&1 &
           mock_pid=$!
           uv run --frozen aegra serve --config aegra.issue78-demo.json --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-api.log" 2>&1 &
           api_pid=$!
@@ -97,7 +97,32 @@ jobs:
           else:
               raise SystemExit("isolated Aegra did not start")
           PY
-          uv run --frozen pytest -q tests/test_app_persistence.py tests/test_app_protocol.py
+          uv run --frozen pytest -q tests/test_app_persistence.py tests/test_app_protocol.py tests/test_phase3_persistence.py tests/test_phase3_agent_pg.py
+          kill "$api_pid"
+          wait "$api_pid" || true
+          for profile in b1 skills; do
+            config="aegra.phase-b1.json"
+            if [ "$profile" = skills ]; then config="aegra.phase-skills.json"; fi
+            DEEP_DIAGNOSIS_FAKE_MODEL=true TRIAGE_MOCK_DATASET=memory-web \
+              uv run --frozen aegra serve --config "$config" --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-$profile.log" 2>&1 &
+            api_pid=$!
+            uv run --frozen python - <<'PYWAIT'
+          import time
+          import httpx
+          for _ in range(120):
+              try:
+                  if httpx.get("http://127.0.0.1:12079/health", timeout=1).status_code == 200:
+                      break
+              except httpx.HTTPError:
+                  pass
+              time.sleep(.25)
+          else:
+              raise SystemExit("isolated experiment Aegra did not start")
+          PYWAIT
+            ISSUE78_PHASE3_PROFILE="$profile" uv run --frozen pytest -q tests/test_phase3_protocol.py
+            kill "$api_pid"
+            wait "$api_pid" || true
+          done
   skills:
     runs-on: ubuntu-latest
     services:
