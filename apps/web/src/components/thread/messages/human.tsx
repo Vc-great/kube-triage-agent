@@ -50,6 +50,7 @@ export function HumanMessage({
   const contentString = getContentString(message.content);
 
   const handleSubmitEdit = () => {
+    if (!meta?.firstSeenState) return;
     setIsEditing(false);
 
     const newMessage: Message = { type: "human", content: value };
@@ -134,6 +135,7 @@ export function HumanMessage({
           <CommandBar
             isLoading={isLoading}
             content={contentString}
+            disableEdit={!meta?.firstSeenState}
             isEditing={isEditing}
             setIsEditing={(c) => {
               if (c) {

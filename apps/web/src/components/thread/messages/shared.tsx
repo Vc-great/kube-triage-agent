@@ -124,6 +124,7 @@ export function CommandBar({
   handleSubmitEdit,
   handleRegenerate,
   isLoading,
+  disableEdit = false,
 }: {
   content: string;
   isHumanMessage?: boolean;
@@ -133,6 +134,7 @@ export function CommandBar({
   handleSubmitEdit?: () => void;
   handleRegenerate?: () => void;
   isLoading: boolean;
+  disableEdit?: boolean;
 }) {
   if (isHumanMessage && isAiMessage) {
     throw new Error(
@@ -159,6 +161,7 @@ export function CommandBar({
 
   const showEdit =
     isHumanMessage &&
+    !disableEdit &&
     isEditing !== undefined &&
     !!setIsEditing &&
     !!handleSubmitEdit;

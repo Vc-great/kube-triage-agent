@@ -55,7 +55,7 @@ curl --fail -H "X-Api-Key: $DEMO_API_TOKEN" \
 ```
 
 6. 关闭 API 后刷新，或让自定义 History API 不可用，确认页面明确提示“历史尚未同步/实时消息”，不宣称保存成功；恢复 API 后重新进入 Thread 应能补同步。API 完全离线时，原连接检测可能要求重新填写 Key。
-7. 发送 `/fake-slow` 后刷新以观察 SDK reconnect；发送 `/fake-fail` 验证失败 Run 的已知消息可保留，不标为完成。完整历史分支树不在本期；重生成显示当前分支，旧版本仍在业务表。
+7. 发送 `/fake-slow` 后刷新以观察 SDK reconnect；发送 `/fake-fail` 验证失败 Run 的已知消息可保留，不标为完成。完整历史分支树不在本期；重生成显示当前分支，旧版本仍在业务表。仅有 DB 历史、缺少 SDK 父 checkpoint 的回复不提供重新生成，保留复制。
 8. 重启**本项目**的 PostgreSQL，再查询原 ID；重复迁移不删除数据。记录真人的实际结果与环境后，才能将设计中的 M5 标为 PASS。
 
 ## 自动验证与关闭

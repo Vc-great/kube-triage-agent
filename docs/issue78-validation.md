@@ -19,7 +19,7 @@ macOS arm64；Python 3.14.6；仓库 frozen lock：Aegra API/CLI 0.10.8、Deep A
 | M6 | PASS（Mock） | 3 项真实协议测试通过：两轮 SSE；fail/cancel/checkpoint regenerate；原生 interrupt_before→携原 checkpoint Resume、SSE join 重连。静态暂停虽 Run=success 但 State.next 非空时仍标 interrupted；失败 Run 保留 failed。History 不把半截输出标完成，旧完成轮不降级。 |
 | M7 | PASS（Mock） | 后端全量 867 PASS / 3 SKIP（协议测试需启动 API 后单独执行，3 PASS）；双开关开启时 Mock Repair/HITL/Memory/Deep 定向 96 PASS。Aegra checkpoint 重生成和原生 interrupt/Resume 通过。真实 K8s 写入 NOT RUN。 |
 | M8 | PASS | 双开关默认关闭、原 Reader response 不变且不连接业务 DB；幂等迁移两次；本任务 PG stop/start 后原四条 History 和 Evidence ID 仍可查询。 |
-| M9 | 本地 PASS，CI 待运行 | Ruff 通过；Web lint 0 error、18 个既有 warning；生产 `pnpm build`/TypeScript 通过；前端合并 3 PASS；`git diff --check` 通过。PR/CI 与最终复核见后续补记。 |
+| M9 | 本地 PASS，CI 待运行 | Ruff 通过；Web lint 0 error、18 个既有 warning；生产 `pnpm build`/TypeScript 通过；前端合并/动作 5 PASS；`git diff --check` 通过。PR/CI 与最终复核见后续补记。 |
 
 命令：
 
@@ -37,7 +37,7 @@ server/: ISSUE78_TEST_API_URL=http://127.0.0.1:12079 DEMO_API_TOKEN=<local-test-
 apps/web/: pnpm lint
 apps/web/: NEXT_PUBLIC_APP_HISTORY_ENABLED=true pnpm build
 apps/web/: pnpm exec playwright test tests/conversation-history.spec.ts --output <tmp-dir>
-  3 passed
+  最终 5 passed（含History独有消息的动作渲染断言）
 git diff --check
 ```
 
@@ -50,4 +50,6 @@ git diff --check
 - 同应用 ASGITransport 是 S0 实测后的受控协议适配：无网络自请求死锁、无外部 Token、沿用原认证；不开第二服务。自定义路由对外与原 API 使用同一认证。
 - Evidence 为一次实际调用一行，不承诺跨进程 exactly-once；不会因归档失败重打 Reader。历史版本按 `(thread_id, source_message_id, content_sha256)` 保留，当前分支投影不会覆盖旧正文。
 - 早于首次同步且已丢失的流式 chunk 无法凭空恢复；只能保存 Aegra State 实际持有的内容。无法确认完成的 Assistant 保守标 partial。旧 Thread 不做批量迁移，空记录标 legacy。
+- 首轮 AO 审阅要求修复 History 独有 Assistant 的重新生成入口：已改为仅有 SDK 的有效父 checkpoint 才显示动作，提交处也拒绝缺失 checkpoint；不会把数据库消息当成新的执行输入。
+- CI 增加独立 `persistence` job，使用 PG18 + FakeModel/Mock MCP 实际运行全部 11 项 SQL/协议测试；Web job 纳入 5 项合并/动作测试。初次 CI [run 39767676411](https://github.com/Vc-great/kube-triage-agent/actions/runs/39767676411) 的 Python/Web/Compose 全部通过，后续 head 结果以 [PR #81](https://github.com/Vc-great/kube-triage-agent/pull/81) 检查区为准。History 独有 Human 同样隐藏缺少 SDK 状态快照的编辑入口。
 - 未做攻击测试、真实 Kubernetes 写入、RBAC 修改、付费模型调用或敏感日志外传。没有将 Mock 成功解释为真实 Repair 或集群验收，也不关闭 #78。
