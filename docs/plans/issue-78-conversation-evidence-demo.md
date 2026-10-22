@@ -1,6 +1,7 @@
 # Issue #78：Conversation History + Kubernetes Evidence Store — 快速落地 Demo Design
 
 > - 需求：[Issue #78](https://github.com/Vc-great/kube-triage-agent/issues/78)
+> - **阶段状态更新（2026-10-22）**：Phase 1/2 的核心功能已由 [PR #81](https://github.com/Vc-great/kube-triage-agent/pull/81) 合并（正式 Graph 的 Evidence Store/History）。此文件 M0–M9 继续作为当时的原始设计与 Gate；**剩余 Phase 3 的唯一权威增量设计是 [issue-78-phase3-integration.md](issue-78-phase3-integration.md) 的 P3-G0～P3-G7**。当前文内 Proposed/规划未合并/S0→S3 的说法均属历史规划，不代表最新实施状态；人工 M5 在原验收报告中仍 NOT RUN。
 > - 状态：**Proposed / 纯文档 Planning PR**；本文未合并、未获实施验收。
 > - 规划分支：`docs/issue-78-conversation-evidence-demo`；[Planning PR #79](https://github.com/Vc-great/kube-triage-agent/pull/79)（Draft）。
 > - 设计基线：2026-10-22 `origin/main=b791cffaec0e8f0d665872bdb75ef00e3b9f2029`。实施前重新 fetch；不要沿用本 SHA 当运行基线。
