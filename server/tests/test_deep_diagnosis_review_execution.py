@@ -33,6 +33,34 @@ class InspectGraph(Runnable):
         return review._scope(input, SimpleNamespace(config=config))
 
 
+def test_aegra_copy_preserves_wrapper_scope_and_graph_config():
+    class Copyable(InspectGraph):
+        def __init__(self):
+            super().__init__()
+            self.config = {"recursion_limit": 100}
+
+        def copy(self, *, update=None):
+            result = Copyable()
+            for key, value in (update or {}).items():
+                setattr(result, key, value)
+            return result
+
+    async def run():
+        original = review._ReviewGraph(Copyable())
+        copied = original.copy(update={"checkpointer": "synthetic-pg"})
+        assert isinstance(copied, review._ReviewGraph)
+        assert copied.checkpointer == "synthetic-pg"
+        assert not hasattr(original._graph, "checkpointer")
+        assert copied._context({})[0]["recursion_limit"] == 100
+        assert copied._context({"recursion_limit": 20})[0]["recursion_limit"] == 20
+        state = {"messages": [HumanMessage(content="你好")]}
+        await copied.ainvoke(state, {"configurable": {"thread_id": "copy-test"}})
+        assert len(copied._graph.executions) == 1
+        assert not copied._graph.executions[0].active
+        assert review._EXECUTION.get() is None
+    asyncio.run(run())
+
+
 def test_host_entry_ignores_client_nonce_and_keeps_caller_context_private():
     async def run():
         native = InspectGraph()

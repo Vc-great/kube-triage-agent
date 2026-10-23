@@ -63,11 +63,11 @@ def preflight(ports, *, web):
     subprocess.run(["docker", "image", "inspect", IMAGE], check=True, stdout=subprocess.DEVNULL)
 
 
-def main():
+def main(*, reviewer=False):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--api-port", type=int, default=12075)
-    parser.add_argument("--web-port", type=int, default=13075)
-    parser.add_argument("--db-port", type=int, default=15475)
+    parser.add_argument("--api-port", type=int, default=12072 if reviewer else 12075)
+    parser.add_argument("--web-port", type=int, default=13072 if reviewer else 13075)
+    parser.add_argument("--db-port", type=int, default=15472 if reviewer else 15475)
     parser.add_argument("--no-web", action="store_true")
     parser.add_argument("--persistence", action="store_true",
                         help="显式迁移隔离 PG 并打开现有 History/Evidence 路由与 Web 开关")
@@ -77,7 +77,12 @@ def main():
         parser.error("端口须互异且在 1024..65535")
     preflight(ports, web=not args.no_web)
     common, api, web = environments(args.api_port, args.db_port, persistence=args.persistence)
-    name = "kta-skills-" + uuid4().hex[:12]
+    if reviewer:
+        api["AEGRA_CONFIG"] = "aegra.phase-review.json"
+        common["TRIAGE_MOCK_DATASET"] = api["TRIAGE_MOCK_DATASET"] = "review-web"
+        web["NEXT_PUBLIC_ASSISTANT_ID"] = "deep_diagnosis_review"
+    name = "kta-review-" if reviewer else "kta-skills-"
+    name = name + uuid4().hex[:12]
     processes = []
     logs = Path(tempfile.mkdtemp(prefix="kta-skills-logs-"))
     handles = []
@@ -117,7 +122,7 @@ def main():
         launch("mock", [python, "-m", "kube_triage.mock_mcp"], ROOT / "server",
                {**common, "MOCK_MCP_HOST": "127.0.0.1"})
         launch("api", [str(ROOT / "server/.venv/bin/aegra"), "serve", "--config",
-               "aegra.phase-skills.json", "--host", "127.0.0.1", "--port", str(args.api_port)],
+               api["AEGRA_CONFIG"], "--host", "127.0.0.1", "--port", str(args.api_port)],
                ROOT / "server", api)
         for _ in range(120):
             if any(p.poll() is not None for p in processes):
@@ -132,10 +137,10 @@ def main():
         if not args.no_web:
             launch("web", ["pnpm", "dev", "--hostname", "127.0.0.1", "--port", str(args.web_port)],
                    ROOT / "apps/web", web)
-        print(f"Skills Fake/Mock API: http://127.0.0.1:{args.api_port}", flush=True)
+        print(f"{'Reviewer' if reviewer else 'Skills'} Fake/Mock API: http://127.0.0.1:{args.api_port}", flush=True)
         if not args.no_web:
             print(f"Web: http://127.0.0.1:{args.web_port}；API Key: skills-demo-local-only", flush=True)
-        print(f"仅新 Skills Thread；不导入旧 pin checkpoint。日志：{logs}；Ctrl-C 清理本次资源。", flush=True)
+        print(f"仅新实验 Thread；不导入旧 pin checkpoint。日志：{logs}；Ctrl-C 清理本次资源。", flush=True)
         while all(p.poll() is None for p in processes):
             time.sleep(1)
         raise RuntimeError(f"子进程退出，日志：{logs}")

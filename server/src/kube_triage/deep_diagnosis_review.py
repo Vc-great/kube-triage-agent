@@ -69,6 +69,10 @@ class _ReviewGraph(Runnable):
     def __getattr__(self, name):
         return getattr(self._graph, name)
 
+    def copy(self, *, update=None):
+        """Aegra injects PG/store by copying; retain the controlled entry."""
+        return type(self)(self._graph.copy(update=update))
+
     def get_input_schema(self, config=None):
         return self._graph.get_input_schema(config)
 
@@ -82,9 +86,10 @@ class _ReviewGraph(Runnable):
     def config_specs(self):
         return self._graph.config_specs
 
-    @staticmethod
-    def _context(config):
-        config = ensure_config(config)
+    def _context(self, config):
+        # Runnable.ensure_config inserts 25 before Pregel can merge its defaults.
+        config = ensure_config({**(getattr(self._graph, "config", None) or {}),
+                                **(config or {})})
         execution = _Execution(str(config.get("configurable", {}).get("thread_id", "unpersisted")))
         context = copy_context()
         context.run(_EXECUTION.set, execution)
@@ -403,8 +408,8 @@ class ReviewBoundary(planning.PlanningBoundary):
         if not isinstance(latest, AIMessage) or latest.tool_calls:
             return None
         user = turn[0] if turn else None
-        if (isinstance(user, HumanMessage) and isinstance(user.content, str)
-                and user.content in {"你好", "hello", "hi"}):
+        if (isinstance(user, HumanMessage)
+                and user.text in {"你好", "hello", "hi"}):
             return {"messages": [AIMessage(id=latest.id, content="你好，我可以协助只读诊断。"
                                             "\nreview_status=SKIPPED；verdict=UNKNOWN")]}
         status, verdict, refs = "UNREVIEWED", "UNKNOWN", []
@@ -421,17 +426,38 @@ class ReviewBoundary(planning.PlanningBoundary):
                 if status == "COMPLETED" and payload["evidence_digest"] != _manifest_digest(bound):
                     status, verdict, refs = "UNREVIEWED", "UNKNOWN", []
         manifest = evidence_manifest(state, runtime, "")
-        target = baseline._explicit_target(user.content) if isinstance(user, HumanMessage) else None
+        target = baseline._explicit_target(user.text) if isinstance(user, HumanMessage) else None
         verified, error_type = baseline._target_evidence(turn, target) if target else (True, None)
         trusted_target = not target or any(e["target"] == target and e["usable_for_diagnosis"]
                                           for e in manifest["evidence"])
         observation = (f"本轮受控 Reader 回执 {len(manifest['evidence'])} 项；"
                        "错误回执、日志和历史事件均不能证明当前 Pod 健康或根因。")
+        for entry in manifest["evidence"]:
+            if entry["tool"] != "pods_get" or not entry["usable_for_diagnosis"]:
+                continue
+            receipt = next(m for m in turn if isinstance(m, ToolMessage)
+                           and m.tool_call_id == entry["source_tool_call_id"])
+            pod = yaml.safe_load(json.loads(receipt.content)["result"])
+            details = {"namespace": pod["metadata"]["namespace"],
+                       "pod": pod["metadata"]["name"], "UID": entry["pod_uid"],
+                       "phase": pod["status"]["phase"]}
+            statuses = pod["status"].get("containerStatuses")
+            if isinstance(statuses, list) and statuses and isinstance(statuses[0], dict):
+                container = statuses[0]
+                count = container.get("restartCount")
+                if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                    details["restartCount"] = count
+                waiting = (container.get("state") or {})
+                if isinstance(waiting, dict) and isinstance(waiting.get("waiting"), dict):
+                    reason = waiting["waiting"].get("reason")
+                    if isinstance(reason, str):
+                        details["waiting_reason"] = _clip(reason, 80)
+            observation += " 本轮 Pod 详情：" + _json(details)
         if target and not (verified and trusted_target):
             observation = baseline._safe_target_answer(error_type)
         content = (f"观察：{observation}\n推断：Reviewer 第二意见仅供咨询，不构成已证实根因或修复授权。"
                    f"\n未知：当前根因仍需进一步核验。\nreview_status={status}；verdict={verdict}"
-                   f"\n引用：{', '.join(refs) if refs else '无有效审查引用'}")
+                   f"\nevidence_refs（引用）：{', '.join(refs) if refs else '无有效审查引用'}")
         return {"messages": [AIMessage(id=latest.id, content=content)]}
 
 

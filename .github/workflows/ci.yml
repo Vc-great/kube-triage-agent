@@ -216,6 +216,70 @@ jobs:
               raise SystemExit("Skills Aegra did not start")
           PY
           uv run --frozen pytest -q tests/test_deep_diagnosis_skills.py tests/test_skills_protocol.py
+  reviewer:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18-bookworm
+        env:
+          POSTGRES_USER: skills
+          POSTGRES_PASSWORD: skills-demo-local-only
+          POSTGRES_DB: skills
+        ports: ['15472:5432']
+        options: >-
+          --label ao.session=issue72-ci-${{ github.run_id }}
+          --health-cmd "pg_isready -U skills -d skills"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: '15472'
+      POSTGRES_USER: skills
+      POSTGRES_PASSWORD: skills-demo-local-only
+      POSTGRES_DB: skills
+      ISSUE72_TEST_API_URL: http://127.0.0.1:12072
+      SERVER_URL: http://127.0.0.1:12072
+      DEMO_API_TOKEN: skills-demo-local-only
+      TRIAGE_ENV: test
+      TRIAGE_MOCK_DATASET: review-web
+      AUTH_TYPE: custom
+      MCP_SERVER_URL: http://127.0.0.1:8000/mcp
+      MOCK_MCP_HOST: 127.0.0.1
+      DEEP_DIAGNOSIS_FAKE_MODEL: 'true'
+      REDIS_BROKER_ENABLED: 'false'
+      APP_HISTORY_ENABLED: 'false'
+      APP_EVIDENCE_ENABLED: 'false'
+      OTEL_TARGETS: ''
+      OTEL_SDK_DISABLED: 'true'
+      LANGSMITH_TRACING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --python 3.13
+        working-directory: server
+      - name: Native Reviewer / FakeModel / Mock MCP / Aegra SSE
+        working-directory: server
+        run: |
+          set -euo pipefail
+          uv run --frozen ruff check src tests ../scripts/skills_demo.py ../scripts/review_demo.py
+          uv run --frozen python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue72-mock.log" 2>&1 &
+          mock_pid=$!
+          uv run --frozen aegra serve --config aegra.phase-review.json --host 127.0.0.1 --port 12072 > "$RUNNER_TEMP/issue72-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" "$mock_pid" 2>/dev/null || true' EXIT
+          uv run --frozen python - <<'PY'
+          import time
+          import httpx
+          for _ in range(120):
+              try:
+                  if httpx.get("http://127.0.0.1:12072/health", timeout=1).status_code == 200:
+                      break
+              except httpx.HTTPError:
+                  pass
+              time.sleep(.25)
+          else:
+              raise SystemExit("Reviewer Aegra did not start")
+          PY
+          uv run --frozen pytest -q -s tests/test_review_protocol.py
   compose:
     runs-on: ubuntu-latest
     steps:
