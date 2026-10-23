@@ -14,7 +14,8 @@ def api():
     url = os.getenv("ISSUE78_TEST_API_URL")
     if not url:
         pytest.skip("requires local issue78 FakeModel Aegra profile")
-    if url not in {"http://127.0.0.1:12079", "http://localhost:12079"}:
+    if url not in {"http://127.0.0.1:12079", "http://localhost:12079",
+                   "http://127.0.0.1:12089", "http://localhost:12089"}:
         pytest.fail("Issue #78 protocol tests require the dedicated local endpoint")
     with httpx.Client(base_url=url, headers={"x-api-key": os.environ["DEMO_API_TOKEN"]},
                       timeout=30) as client:

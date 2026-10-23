@@ -59,6 +59,11 @@ def test_skills_http_sse_and_completed_thread_history():
                 assert "UNKNOWN" in messages[-1]["content"] and "UID=" in messages[-1]["content"]
             else:
                 assert not calls
+            if os.getenv("APP_EVIDENCE_ENABLED", "false") == "false":
+                assert all("evidence_persisted" not in m["content"] for m in tools)
+                assert client.get("/app/evidence/00000000-0000-0000-0000-000000000001").status_code == 404
+            if os.getenv("APP_HISTORY_ENABLED", "false") == "false":
+                assert client.post("/app/history/sync", json={"thread_id": thread}).status_code == 404
             # Ordinary new Human run from a completed checkpoint, never pending-run Resume.
             response = client.post(f"/threads/{thread}/runs/wait", json={
                 "assistant_id": "deep_diagnosis_skills", "input": {"messages": [

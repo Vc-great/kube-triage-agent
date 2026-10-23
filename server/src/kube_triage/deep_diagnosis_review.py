@@ -336,6 +336,8 @@ def _task_reply(call, scope, status="FAILED", verdict="UNKNOWN", refs=(), digest
 class ReviewBoundary(planning.PlanningBoundary):
     """P0 Reader/Todo implementation stays intact; review is advisory only."""
 
+    graph_id = "deep_diagnosis_review"
+
     async def awrap_model_call(self, request, handler):
         if _scope(request.state, getattr(request, "runtime", None)) is None:
             raise ReviewFailure("缺少受信执行轮次；拒绝模型调用")

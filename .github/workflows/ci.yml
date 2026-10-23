@@ -79,11 +79,12 @@ jobs:
         run: |
           set -euo pipefail
           uv run --frozen python -m kube_triage.app_storage
-          uv run --frozen python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue78-mock.log" 2>&1 &
+          TRIAGE_MOCK_DATASET=memory-web setsid .venv/bin/python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue78-mock.log" 2>&1 &
           mock_pid=$!
-          uv run --frozen aegra serve --config aegra.issue78-demo.json --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-api.log" 2>&1 &
+          api_log="$RUNNER_TEMP/issue78-api.log"
+          setsid .venv/bin/aegra serve --config aegra.issue78-demo.json --host 127.0.0.1 --port 12079 > "$api_log" 2>&1 &
           api_pid=$!
-          trap 'kill "$api_pid" "$mock_pid" 2>/dev/null || true' EXIT
+          trap 'if [ "$?" -ne 0 ]; then tail -n 60 "$api_log"; fi; kill -- -"$api_pid" 2>/dev/null || true; kill -- -"$mock_pid" 2>/dev/null || true' EXIT
           uv run --frozen python - <<'PY'
           import time
           import httpx
@@ -97,7 +98,60 @@ jobs:
           else:
               raise SystemExit("isolated Aegra did not start")
           PY
-          uv run --frozen pytest -q tests/test_app_persistence.py tests/test_app_protocol.py
+          uv run --frozen pytest -q tests/test_app_persistence.py tests/test_app_protocol.py tests/test_phase3_persistence.py tests/test_phase3_agent_pg.py
+          stop_api() {
+            kill -- -"$api_pid" 2>/dev/null || true
+            wait "$api_pid" || true
+            uv run --frozen python - <<'PYSTOP'
+          import socket
+          import time
+          for _ in range(100):
+              try:
+                  with socket.create_connection(("127.0.0.1", 12079), timeout=.2):
+                      pass
+              except OSError:
+                  break
+              time.sleep(.1)
+          else:
+              raise SystemExit("previous isolated Aegra still owns port 12079")
+          PYSTOP
+          }
+          stop_api
+          for profile in b1 skills; do
+            config="aegra.phase-b1.json"
+            if [ "$profile" = skills ]; then config="aegra.phase-skills.json"; fi
+            api_log="$RUNNER_TEMP/issue78-$profile.log"
+            DEEP_DIAGNOSIS_FAKE_MODEL=true TRIAGE_MOCK_DATASET=memory-web \
+              setsid .venv/bin/aegra serve --config "$config" --host 127.0.0.1 --port 12079 > "$api_log" 2>&1 &
+            api_pid=$!
+            ISSUE78_PHASE3_PROFILE="$profile" uv run --frozen python - <<'PYWAIT'
+          import os
+          import time
+          import httpx
+          expected = ({"deep_diagnosis_skills"} if os.environ["ISSUE78_PHASE3_PROFILE"] == "skills"
+                      else {"deep_diagnosis", "deep_diagnosis_planning"})
+          observed, last_status = set(), None
+          for _ in range(120):
+              try:
+                  response = httpx.get("http://127.0.0.1:12079/assistants", timeout=1,
+                                      headers={"x-api-key": os.environ["DEMO_API_TOKEN"]})
+                  last_status = response.status_code
+                  # Assistants from earlier profiles remain in the shared PG.
+                  if last_status == 200:
+                      observed = {a["graph_id"] for a in response.json()["assistants"]}
+                      if expected <= observed:
+                          break
+              except httpx.HTTPError:
+                  pass
+              time.sleep(.25)
+          else:
+              print("profile readiness:", "status=", last_status,
+                    "expected=", sorted(expected), "observed=", sorted(observed))
+              raise SystemExit("isolated experiment Aegra profile did not become ready")
+          PYWAIT
+            ISSUE78_PHASE3_PROFILE="$profile" uv run --frozen pytest -q tests/test_phase3_protocol.py
+            stop_api
+          done
   skills:
     runs-on: ubuntu-latest
     services:
