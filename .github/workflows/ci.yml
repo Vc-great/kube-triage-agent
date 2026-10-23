@@ -132,8 +132,9 @@ jobs:
               try:
                   response = httpx.get("http://127.0.0.1:12079/assistants", timeout=1,
                                       headers={"x-api-key": os.environ["DEMO_API_TOKEN"]})
-                  if response.status_code == 200 and {
-                      a["graph_id"] for a in response.json()["assistants"]} == expected:
+                  # Assistants from earlier profiles remain in the shared PG.
+                  if response.status_code == 200 and expected <= {
+                      a["graph_id"] for a in response.json()["assistants"]}:
                       break
               except httpx.HTTPError:
                   pass

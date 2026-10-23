@@ -77,3 +77,5 @@ git diff --check
 - Implementation Draft PR：[#85](https://github.com/Vc-great/kube-triage-agent/pull/85)，初始实现 `757eaf7`；保留真人 NOT RUN 和浏览器控件 UNKNOWN，不关闭 #78。
 - 首次 CI [run 39875223606](https://github.com/Vc-great/kube-triage-agent/actions/runs/39875223606)：Web/Skills/Compose 通过；persistence 前 21 项 PG/正式协议测试通过，切 B1 后 Graph 请求 404，**该 job FAIL**。根因是仅杀 `uv`/Aegra 启动 PID，没有结束 `aegra serve` 派生的 Uvicorn，健康检查命中了旧正式 Profile。
 - 最小 CI 修复：用独立进程组启动/退出每个 API；实验就绪检查除服务可用外，核对认证后的 `/assistants` Graph 集合。未改应用 Graph/Checkpointer；本机先前 HTTP Matrix 使用进程组整体退出已通过。新 head 的 CI 和独立 Review 结果待追加。
+
+- 第二轮 CI [run 39876177880](https://github.com/Vc-great/kube-triage-agent/actions/runs/39876177880)：正式/PG 21 项再次通过，旧端口已释放；实验就绪检查 FAIL。独立 B1 HTTP 探针证实 `/assistants` 会返回共享 PG 中之前 Profile 的持久记录（Agent/Deep/Planning/Skills），因此严格集合相等误判。修正为包含预期 Graph，随后仍执行真实 Run 与 SQL 来源验证；不是降低执行 Gate。
