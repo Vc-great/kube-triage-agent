@@ -55,6 +55,7 @@ git diff --check
 ```
 
 - Ruff PASS；全量首轮 **884 PASS / 40 SKIPPED，178.78 秒**，此轮早于新增 copy 回归及最终 text-block 修复，不声称覆盖最终全部变更。
+- 最终代码全量 **885 PASS / 44 SKIPPED，168.27 秒**；未启动的 HTTP 集成集显式 SKIP，真实 Reviewer 协议另行运行如下。
 - 最终 Reviewer 专项 **105 PASS，76.26 秒**（含 copy/config、执行作用域和 S1 负测）。
 - 最终真实 HTTP/SSE/PG **23 PASS，31.04 秒**：11 冻结案例 OFF/ON + 三轮/刷新/隔离，使用 Web 同款 text-block 输入和 `stream_subgraphs=true`；未用 MemorySaver 代替 PG。
 - Web lint PASS（18 条既有 warning，0 error），build PASS；构建有既有 Tailwind 模块格式 warning。
@@ -91,12 +92,12 @@ OFF 所有 verdict=UNKNOWN。`task.status=success` 仅表示工具协议执行�
 | V2-R4 | PASS | AO 自动浏览器可见 Reader/Todo/task/完整报告；完成轮次多轮、问候、刷新和新 Thread；侧栏选择历史 Thread 后可读完整报告；新 Thread 无旧消息。真人测试 NOT RUN（#86） |
 | V2-R5 | PASS | 首轮全量和最终 Reviewer 专项通过；正式 Graph/Memory/HITL/Repair 未改；独立 Profile 可停止，既有启动器默认路径不变。旧 task 中途 Resume NOT RUN/不支持 |
 | V2-R6 | PASS | 11 案例 OFF/ON，23 真协议测试；次数/配对/状态/耗时见表；真实模型质量/Token 为 NOT RUN/UNKNOWN |
-| V2-R7 | BLOCKED | 本地检查已通过；Implementation PR、最终 CI 和独立 AO Review 待补链接与结论，不提前判 PASS |
+| V2-R7 | PASS（代码 Head） | [Implementation PR #88](https://github.com/Vc-great/kube-triage-agent/pull/88)，`Refs #72`；[CI 39911733178](https://github.com/Vc-great/kube-triage-agent/actions/runs/39911733178) 的 python/web/persistence/skills/reviewer/compose 全部成功；[独立 AO Review](https://github.com/Vc-great/kube-triage-agent/pull/88#pullrequestreview-5624745108) approved（代码 `2ae781e`）。最终纯文档收口 Head 的 CI/复审以 PR 最新记录为准 |
 
 ## 未执行与边界
 
 真人浏览器、真实 Provider 效果评估留 [#86](https://github.com/Vc-great/kube-triage-agent/issues/86)：NOT RUN。真实 Kubernetes 读写、付费模型、敏感日志/Trace 出站：NOT RUN。旧中断 task Resume、跨进程 nonce、生产 State 认证：不支持/NOT RUN。可选业务持久化模式：NOT RUN。
 
-AO 浏览器曾过早读取到空白最终气泡；等待 run 完成后与重开 Thread 均显示完整报告，未修改 Web 流合并逻辑。侧栏选择另一条诊断 Thread 时等待 SKIPPED 超时，核对后其实际 COMPLETED 报告正常；测试期间重建临时 PG 后访问旧 Thread 的 404 记录保留，不能称跨重启恢复 PASS。
+AO 浏览器曾过早读取到空白最终气泡；等待 run 完成后与重开 Thread 均显示完整报告，未修改 Web 流合并逻辑。侧栏首次选择另一条诊断 Thread 时等待 SKIPPED 超时；后续多次点击视口外历史项没有正确导航，曾怀疑 URL 更新竞态并试加导航补丁，但证据不足，已撤回。改为显式滚动至目标再点击后核对恢复，不修改现有历史入口。测试期间重建临时 PG 后访问旧 Thread 的 404 记录保留，不能称跨重启恢复 PASS。
 
 没有新增证据表、History API、第二服务器或复杂 UI。Reader Namespace/8s/16KiB/参数校验与 Repair/HITL 审批边界不变。未合并 Implementation PR，未关闭 #72；S1 历史失败和其他 Issue 的未修复缺陷不因本次 PASS 消失。
