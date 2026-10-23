@@ -81,9 +81,9 @@ jobs:
           uv run --frozen python -m kube_triage.app_storage
           TRIAGE_MOCK_DATASET=memory-web uv run --frozen python -m kube_triage.mock_mcp > "$RUNNER_TEMP/issue78-mock.log" 2>&1 &
           mock_pid=$!
-          uv run --frozen aegra serve --config aegra.issue78-demo.json --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-api.log" 2>&1 &
+          setsid .venv/bin/aegra serve --config aegra.issue78-demo.json --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-api.log" 2>&1 &
           api_pid=$!
-          trap 'kill "$api_pid" "$mock_pid" 2>/dev/null || true' EXIT
+          trap 'kill -- -"$api_pid" 2>/dev/null || true; kill "$mock_pid" 2>/dev/null || true' EXIT
           uv run --frozen python - <<'PY'
           import time
           import httpx
@@ -98,29 +98,35 @@ jobs:
               raise SystemExit("isolated Aegra did not start")
           PY
           uv run --frozen pytest -q tests/test_app_persistence.py tests/test_app_protocol.py tests/test_phase3_persistence.py tests/test_phase3_agent_pg.py
-          kill "$api_pid"
+          kill -- -"$api_pid"
           wait "$api_pid" || true
           for profile in b1 skills; do
             config="aegra.phase-b1.json"
             if [ "$profile" = skills ]; then config="aegra.phase-skills.json"; fi
             DEEP_DIAGNOSIS_FAKE_MODEL=true TRIAGE_MOCK_DATASET=memory-web \
-              uv run --frozen aegra serve --config "$config" --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-$profile.log" 2>&1 &
+              setsid .venv/bin/aegra serve --config "$config" --host 127.0.0.1 --port 12079 > "$RUNNER_TEMP/issue78-$profile.log" 2>&1 &
             api_pid=$!
-            uv run --frozen python - <<'PYWAIT'
+            ISSUE78_PHASE3_PROFILE="$profile" uv run --frozen python - <<'PYWAIT'
+          import os
           import time
           import httpx
+          expected = ({"deep_diagnosis_skills"} if os.environ["ISSUE78_PHASE3_PROFILE"] == "skills"
+                      else {"deep_diagnosis", "deep_diagnosis_planning"})
           for _ in range(120):
               try:
-                  if httpx.get("http://127.0.0.1:12079/health", timeout=1).status_code == 200:
+                  response = httpx.get("http://127.0.0.1:12079/assistants", timeout=1,
+                                      headers={"x-api-key": os.environ["DEMO_API_TOKEN"]})
+                  if response.status_code == 200 and {
+                      a["graph_id"] for a in response.json()["assistants"]} == expected:
                       break
               except httpx.HTTPError:
                   pass
               time.sleep(.25)
           else:
-              raise SystemExit("isolated experiment Aegra did not start")
+              raise SystemExit("isolated experiment Aegra profile did not become ready")
           PYWAIT
             ISSUE78_PHASE3_PROFILE="$profile" uv run --frozen pytest -q tests/test_phase3_protocol.py
-            kill "$api_pid"
+            kill -- -"$api_pid"
             wait "$api_pid" || true
           done
   skills:

@@ -71,3 +71,9 @@ git diff --check
 - 第一版 PG Memory 测试使用非系统身份，被既有单用户规则正确拒绝。修正为原 `demo-user` 和精确审批字段后通过；未放宽身份/审批校验。
 - AO Browser 首轮完成后观察到 `read_file`、四 Reader 及 Evidence ID，第二轮普通历史/刷新后可回查四条业务消息。某些 AO 辅助命令出现 `get text` 缺参、`--state` 被工具拒绝；新 Thread 的 click/focus/Enter 后快照未确认导航，后续问候等待超时。没有足够证据认定这些交互完成或定位到产品缺陷，保留 UNKNOWN，交给真人步骤复核；未为了制造 PASS 修改 Hook。
 - 真人 M5、真实模型质量、真实 Kubernetes、旧 Skills pin Checkpoint Resume 均未执行/不在本次自动回归结论内。Issue #78 保持 Open，PR 不自动合并。
+
+## PR / CI / Review 补记
+
+- Implementation Draft PR：[#85](https://github.com/Vc-great/kube-triage-agent/pull/85)，初始实现 `757eaf7`；保留真人 NOT RUN 和浏览器控件 UNKNOWN，不关闭 #78。
+- 首次 CI [run 39875223606](https://github.com/Vc-great/kube-triage-agent/actions/runs/39875223606)：Web/Skills/Compose 通过；persistence 前 21 项 PG/正式协议测试通过，切 B1 后 Graph 请求 404，**该 job FAIL**。根因是仅杀 `uv`/Aegra 启动 PID，没有结束 `aegra serve` 派生的 Uvicorn，健康检查命中了旧正式 Profile。
+- 最小 CI 修复：用独立进程组启动/退出每个 API；实验就绪检查除服务可用外，核对认证后的 `/assistants` Graph 集合。未改应用 Graph/Checkpointer；本机先前 HTTP Matrix 使用进程组整体退出已通过。新 head 的 CI 和独立 Review 结果待追加。
