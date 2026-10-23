@@ -2,7 +2,7 @@
 
 可选的 [Issue #78 业务持久化](issue78-demo.md) 在现有 Aegra FastAPI/同一 PostgreSQL 中增加独立 `app_*` 表：Host Reader 回执写 Evidence；服务端通过 Agent Protocol 回读 State、同步用户可见 History；Web 保留 `useStream` 并按消息 ID 合并历史。`APP_HISTORY_ENABLED` / `APP_EVIDENCE_ENABLED` 和 Web 构建开关默认关闭，迁移显式执行。History/Evidence 不参与 Repair 或 Memory 的授权判定，Aegra Checkpointer 不变。
 
-Phase 3 增量（本 PR 待合并）让隔离的 Core Deep / Planning / Skills 通过同一 `reader_context` → Evidence Writer 保存可信执行上下文中的 `graph_id/thread_id/tool_call_id`；Graph ID 固定于 Host 边界类，缺失 Run ID 保持 NULL。两个实验 Profile 挂载同一个 `app_routes.py:app`，沿用原认证和默认关闭开关。无新 schema、存储服务或 History Hook；实现及未运行项见 [Phase 3 报告](issue78-phase3-validation.md)。Evidence ID 只证明归档成功，不能代替当前轮来源签记；Reviewer 仍是 #72 S1 离线 PoC。
+Phase 3 增量（本 PR 待合并）让隔离的 Core Deep / Planning / Skills 通过同一 `reader_context` → Evidence Writer 保存可信执行上下文中的 `graph_id/thread_id/tool_call_id`；Graph ID 固定于 Host 边界类，缺失 Run ID 保持 NULL。两个实验 Profile 挂载同一个 `app_routes.py:app`，沿用原认证和默认关闭开关。无新 schema、存储服务或 History Hook；实现及未运行项见 [Phase 3 报告](issue78-phase3-validation.md)。Evidence ID 只证明归档成功，不能代替当前轮来源签记；本 PR 增加独立 `deep_diagnosis_review` FakeModel/Mock Profile，复用 S1 原生 SubAgent/task 和当前轮校验；Aegra PG/Thread/SSE 与现有 Web 直接接入，默认不启用业务持久化。详见 [Reviewer V2 验收](issue72-reviewer-demo-v2.md)。正式 Graph、Reader 与 Repair/HITL 授权不变。
 
 ```mermaid
 flowchart LR

@@ -1,0 +1,90 @@
+[
+  {
+    "id": "crashloop",
+    "prompt": "诊断 crashloop-pod CrashLoopBackOff",
+    "status": "COMPLETED",
+    "verdict": "SUPPORTS",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "imagepull",
+    "prompt": "诊断 imagepull-pod ImagePullBackOff",
+    "status": "COMPLETED",
+    "verdict": "SUPPORTS",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "oom",
+    "prompt": "诊断 oom-pod OOMKilled",
+    "status": "COMPLETED",
+    "verdict": "SUPPORTS",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "missing",
+    "prompt": "缺证据",
+    "status": "UNREVIEWED",
+    "verdict": "UNKNOWN",
+    "readers": 0,
+    "task": 0
+  },
+  {
+    "id": "forbidden",
+    "prompt": "诊断 forbidden-pod 403",
+    "status": "COMPLETED",
+    "verdict": "INSUFFICIENT",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "timeout",
+    "prompt": "诊断 timeout-pod timeout",
+    "status": "COMPLETED",
+    "verdict": "INSUFFICIENT",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "greeting",
+    "prompt": "你好",
+    "status": "SKIPPED",
+    "verdict": "UNKNOWN",
+    "readers": 0,
+    "task": 0
+  },
+  {
+    "id": "contradicts",
+    "prompt": "诊断 crashloop-pod 矛盾",
+    "status": "COMPLETED",
+    "verdict": "CONTRADICTS",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "reviewer-failure",
+    "prompt": "诊断 crashloop-pod Reviewer失败",
+    "status": "FAILED",
+    "verdict": "UNKNOWN",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "malformed",
+    "prompt": "诊断 malformed-pod 错误证据",
+    "status": "COMPLETED",
+    "verdict": "INSUFFICIENT",
+    "readers": 4,
+    "task": 1
+  },
+  {
+    "id": "invalid-ref",
+    "prompt": "诊断 crashloop-pod 错误引用",
+    "status": "FAILED",
+    "verdict": "UNKNOWN",
+    "readers": 4,
+    "task": 1
+  }
+]

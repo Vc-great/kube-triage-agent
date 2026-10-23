@@ -4,6 +4,8 @@ dev01 完整部署与 Mac 原生开发见 [部署与开发指南](docs/dev01-dep
 
 `make dev-deep-demo` 启动隔离的 [Deep Agents Core Demo](docs/issue41-p0-demo.md)：真实 CPA `gpt-6-luna` + 合成 Mock Reader、Planning ON/OFF，固定 Chat Completions，默认关闭 Trace。它直连已批准的 CPA LAN 目标，不经过 7890 代理。
 
+`make dev-deep-review-demo` 启动独立的 [Evidence Reviewer Demo](docs/issue72-reviewer-demo-v2.md)：双 FakeModel + 合成 Mock Reader → 原生 `task(evidence-reviewer)` → 中文第二意见；仅测试环境，默认端口 Web 13072 / API 12072 / PG 15472。
+
 其余 API 模式的模型请求均通过所在宿主机 7890 代理；Compose 容器统一使用 `host.docker.internal:7890`。Langfuse Trace 见 [Issue #39 配置与隐私说明](docs/issue39-langfuse-observability.md)和[验收记录](docs/issue39-langfuse-validation.md)。对应机器根目录 `.env` 中有完整有效 Key 时自动开启，导出也走同一代理；真实 Reader、Memory 和 dev01 模式可能向云端发送 Kubernetes 或会话数据。
 
 单用户 AI 全栈学习与面试 Demo：Aegra Thread/Run/SSE/Checkpoint + LangGraph + 原生 Reader MCP。正式自然语言诊断恒走真实 OpenAI 兼容 LLM → 四个只读 MCP 工具 → Kubernetes API，Namespace 固定为 `kube-triage-demo`。缺配置、未批准 Reader URL 和生产模拟配置均 Fail Closed；无 Echo、固定命令或 Mock 回退。

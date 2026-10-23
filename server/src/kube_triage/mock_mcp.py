@@ -18,7 +18,7 @@ def load_pods() -> dict:
     dataset = os.getenv("TRIAGE_MOCK_DATASET", "phase3a")
     if dataset == "phase3a":
         paths = sorted(FIXTURES.glob("*.json"))
-    elif dataset == "memory-web" and os.getenv("TRIAGE_ENV") == "test":
+    elif dataset in {"memory-web", "review-web"} and os.getenv("TRIAGE_ENV") == "test":
         paths = sorted((FIXTURES / "memory-web").glob("*.json"))
         if {path.name for path in paths} != {
                 "crashloop.json", "healthy.json", "imagepull.json", "oomkilled.json"}:
@@ -49,6 +49,10 @@ def check_namespace(namespace: str) -> None:
 
 
 def check_pod(name: str) -> None:
+    if (os.getenv("TRIAGE_ENV") == "test"
+            and os.getenv("TRIAGE_MOCK_DATASET") == "review-web"
+            and name in {"forbidden-pod", "timeout-pod", "malformed-pod"}):
+        return
     if name not in PODS:
         raise ValueError("Unknown or empty demo pod name")
 
@@ -66,7 +70,20 @@ def pods_get(namespace: str, name: str) -> dict:
     """Return a static Pod detail."""
     check_namespace(namespace)
     check_pod(name)
+    if os.getenv("TRIAGE_MOCK_DATASET") == "review-web":
+        if name == "malformed-pod":
+            return {"kind": "ConfigMap", "metadata": {"name": name, "namespace": namespace}}
+        if name == "forbidden-pod":
+            raise ValueError("Synthetic 403 Forbidden")
+        if name == "timeout-pod":
+            import time
+            time.sleep(8.2)  # Exercise the real Reader's existing 8s deadline.
+            raise TimeoutError("Synthetic delayed Reader timeout")
     item = PODS[name]
+    if os.getenv("TRIAGE_MOCK_DATASET") == "review-web":
+        return {"kind": "Pod", "metadata": {"namespace": namespace, "name": name,
+                "uid": item["uid"]}, "status": {"phase": item["phase"],
+                "containerStatuses": item["containerStatuses"]}}
     return {"mock": True, "source": "static-fixture", "kind": "Pod",
             "namespace": namespace, "name": name,
             "metadata": {"namespace": namespace, "name": name,
@@ -80,6 +97,8 @@ def events_list(namespace: str) -> dict:
     check_namespace(namespace)
     events = []
     for item in PODS.values():
+        if os.getenv("TRIAGE_MOCK_DATASET") == "review-web" and item["name"] != "crashloop-pod":
+            continue
         if "events" in item:
             for event in item["events"]:
                 event = {**event, "involvedObject": {
@@ -107,7 +126,7 @@ def pods_log(namespace: str, name: str, tail: int = 20, container: str | None = 
         raise ValueError("tail must be an integer from 1 to 100")
     if container is not None and container != "app":
         raise ValueError("Unknown demo container")
-    fixture = PODS[name]["log"]
+    fixture = PODS.get(name, {"log": None})["log"]
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
             "name": name, "container": container or "app", "available": fixture is not None,
             "logs": "\n".join(fixture.splitlines()[-tail:]) if fixture is not None else None,

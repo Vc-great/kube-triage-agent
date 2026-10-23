@@ -37,3 +37,7 @@ dev-stop:
 	python3 scripts/dev.py stop
 dev-status:
 	python3 scripts/dev.py status
+
+.PHONY: dev-deep-review-demo
+dev-deep-review-demo:
+	python3 scripts/review_demo.py
