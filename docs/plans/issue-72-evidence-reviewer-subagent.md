@@ -1,6 +1,6 @@
 # Issue #72 — Evidence Reviewer Subagent：Demo-first V2 可运行 Web 集成
 
-> - Issue：[ #72](https://github.com/Vc-great/kube-triage-agent/issues/72)；仓库 `Vc-great/kube-triage-agent`。
+> - Issue：[#72](https://github.com/Vc-great/kube-triage-agent/issues/72)；仓库 `Vc-great/kube-triage-agent`。
 > - 状态：**Proposed / 仅规划**。本版仅经本 Planning PR 审阅并合入 `main` 后生效；**尚无 V2 实施或任何 V2 Gate PASS**。
 > - 规划基线：2026-10-23，`main=bea40f31964eb68125c827197f772c6018923f88`（[#85](https://github.com/Vc-great/kube-triage-agent/pull/85) 已合并）；实施前重新 fetch，不锁死 SHA。
 > - 已有：[Planning #73](https://github.com/Vc-great/kube-triage-agent/pull/73)、[S1 Implementation #74](https://github.com/Vc-great/kube-triage-agent/pull/74) 已合并；`docs/issue72-evidence-reviewer-s1.md` 是历史 S1 真实证据。
