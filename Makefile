@@ -41,3 +41,7 @@ dev-status:
 .PHONY: dev-deep-review-demo
 dev-deep-review-demo:
 	python3 scripts/review_demo.py
+
+.PHONY: dev-deep-notes-demo
+dev-deep-notes-demo:
+	python3 scripts/offload_demo.py
