@@ -5,10 +5,11 @@
 ## 基线与环境
 
 - 2026-10-24 fetch 后 `origin/main=7b3a9bd8a507145a95fe39e5b47f173a9673d48e`；Planning PR #89 实际已合并（Issue 和设计中的“待合并”文字是历史状态）。
+- 已读取 #69、#41，并核实 #68 已合并；#41 中旧依赖描述仅作历史，实际版本以当前锁文件和wheel为准。
 - 独立 Worktree `/private/tmp/kta-issue69-phase-a`，分支 `ao/vc-great-kube/phase-a`，无主工作树 dotenv；不改正式/B1/Skills/Reviewer Graph、Reader 白名单/Namespace/16KiB/8s、HITL/Memory/Repair。
 - macOS arm64，Python 3.13.14；`uv.lock`：Deep Agents 0.7.28、Aegra 0.10.8、LangChain 1.4.6、LangGraph 1.2.14；Python/Web 依赖从本机缓存离线建立，锁文件未改。
 - 复用已有 `pgvector/pgvector:0.8.7-pg18-bookworm` 镜像，独立临时容器、PG 数据、API/Web 端口和 AO session 标签；不读取真实日志/Secret，不调用真实模型或真实 Kubernetes。
-- 代码 SHA 以本报告所在 PR 的 head 为准；CI 和独立 Review 针对该 head，后续文档提交不改变功能代码。
+- 功能提交 `d10bf861d0b7476b44f8a079ab645c3d0b196a69`；下述首轮完整CI/独立Review针对该SHA。后续仅报告收尾；最终head的检查与Review可在[PR #90](https://github.com/Vc-great/kube-triage-agent/pull/90)核对。
 
 ## 实现与锁定 SDK 实测
 
@@ -33,15 +34,17 @@ FakeModel 根据真实 ToolMessage 的成功/失败决定下一步；主流程�
 | V2-A2 | PASS | 同一专项实际 UTF-8 写/读/目录/grep/非零 offset、配对 Tool ID、原生覆盖与错误；37项专项通过 |
 | V2-A3 | PASS | 同一专项普通两轮/Checkpoint 读取/新 Thread、预算/路径错误；HTTP/PG 验收见 A4 |
 | V2-A4 | PASS | 固定8000端点、独立API/PG/Web启动；`ISSUE69_TEST_API_URL=http://127.0.0.1:12069 uv run --frozen pytest -q -s tests/test_offload_protocol.py`：3 PASS；真实SSE/PG、普通三轮/刷新/新Thread/可见错误。AO Browser打开已完成Thread，实际显示四文件工具参数、ID、结果和中文结论；停止清理已实测 |
-| V2-A5 | NOT RUN | Ruff PASS；Web修改后lint/build PASS（18条现有lint warning、既有Tailwind格式warning）；最终全量存在一项既有loopback超时，CI/独立AO Review待运行，完成后更新 |
+| V2-A5 | PASS | Ruff、Web lint/build通过；Linux CI全量919 PASS/50 SKIP、Notes CI 40 PASS；[七项CI全部通过](https://github.com/Vc-great/kube-triage-agent/actions/runs/40048459322)；[独立AO Review approved](https://github.com/Vc-great/kube-triage-agent/pull/90#pullrequestreview-5636031524)，无需修改。中文运行/回退/风险见本文 |
 
-初次全量：913 PASS / 4 FAIL / 47 SKIP，四项新增测试失败来自 SDK Profile 排除项混用；改为专用 `notes_fake` 后第二轮全量921 PASS / 47 SKIP；新增伪造输入检查后专项37 PASS，最后一轮含真实HTTP全量：924 PASS / 1 FAIL / 44 SKIP，失败为既有 `test_inherited_keepalive_loss_never_reconnects` 连接自身loopback临时端口超时；其定点重跑见PR验证记录。首轮专项的测试假设错误（正文类型、原生覆盖行为、Fake provider标识）已据实际SDK修正，不更改功能Gate。
+验收结论：V2-A0～A5通过，Phase A可独立交付。独立AO批准是内部审查结论，不等同于GitHub独立账户审批，不授权合并。首轮CI：Ubuntu/Python3.13，`uv run --frozen pytest -q`为919 PASS / 50 SKIP（227.38s），Notes job为40 PASS（3.73s）；Web lint/build与现有回归job均通过。本地Web lint/build通过（18条现有lint warning、既有Tailwind格式warning）。下面保留过程中失败和重跑证据，不把历史失败改写成通过。
+
+初次全量：913 PASS / 4 FAIL / 47 SKIP，四项新增测试失败来自 SDK Profile 排除项混用；改为专用 `notes_fake` 后第二轮全量921 PASS / 47 SKIP；新增伪造输入检查后专项37 PASS，最后一轮含真实HTTP全量：924 PASS / 1 FAIL / 44 SKIP，失败为既有 `test_inherited_keepalive_loss_never_reconnects` 连接自身loopback临时端口超时；其定点重跑1 PASS（0.68s），最终原生专项+真实HTTP重跑40 PASS（2.82s）。首轮专项的测试假设错误（正文类型、原生覆盖行为、Fake provider标识）已据实际SDK修正，不更改功能Gate。
 
 初次HTTP主流程因试用18069触发固定Reader endpoint拒绝而FAIL；端口变更已完全撤回，经其他会话自行释放8000后固定端点重跑3 PASS，Reader白名单零修改。
 
 AO Browser自动化检查：刷新加载HTTP已完成Thread的文件工具卡片/回执/结论为PASS；在聊天输入框fill/type后点击Send或Enter没有出现可观察的提交，新Notes Thread按钮也未产生可观察导航，未捕获页面error，原因 **UNKNOWN**，不声称浏览器发送验收PASS。真人交互验收留给#86；HTTP发送、多轮、PG读取已独立通过。
 
-跳过的现有集成测试需要它们自己的服务与显式环境变量，SKIP 不代表 PASS。真实模型质量/费用收益、真实 Kubernetes、真人 Web QA #86：**NOT RUN**。Phase B V2-B0～B6：**NOT RUN**。旧 S1 12 PASS / 3 FAIL、**F3 FAIL / STOP 保持原始历史记录**；本 PR 不修复、不复判该历史失败。
+不同平台的条件跳过数不同；跳过的现有集成测试需要它们自己的服务与显式环境变量，SKIP 不代表 PASS。真实模型质量/费用收益、真实 Kubernetes、真人 Web QA #86：**NOT RUN**。Phase B V2-B0～B6：**NOT RUN**。旧 S1 12 PASS / 3 FAIL、**F3 FAIL / STOP 保持原始历史记录**；本 PR 不修复、不复判该历史失败。
 
 ## 启动、演示与验证
 
