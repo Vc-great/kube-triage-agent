@@ -2,7 +2,7 @@
 
 > - GitHub Issues：[Phase A/B #91](https://github.com/Vc-great/kube-triage-agent/issues/91)；[Phase C/D #92](https://github.com/Vc-great/kube-triage-agent/issues/92)
 > - 状态：**Proposed（Planning PR 未合入，不是已实现）**
-> - 规划 PR：**待创建/回填**
+> - 规划 PR：[Draft #93](https://github.com/Vc-great/kube-triage-agent/pull/93)（仅设计，不代表批准或实现）
 > - 设计基线：2026-10-26，`origin/main=7b3a9bd8a507145a95fe39e5b47f173a9673d48e`（实施前重新 `git fetch origin`）
 > - 适用版本：以当前仓库锁定的 Aegra 0.10.8、LangGraph 1.x、Langfuse Cloud Japan 为准；外部 API/SDK 运行时重新核对
 > - 规划评审：用户认可“真实模型 + 合成 Mock 故障 + 云端 Langfuse 可见”方向，**设计合入 main 之前不实施**
