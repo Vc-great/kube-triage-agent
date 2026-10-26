@@ -26,6 +26,32 @@ def test_isolation_never_inherits_host_secrets_or_kubeconfig(monkeypatch):
     assert mock["TRIAGE_ENV"] == "test"
 
 
+@pytest.mark.parametrize("tracing", [True, False])
+def test_japan_proxy_bypass_is_fixed_and_only_in_api(monkeypatch, tracing):
+    monkeypatch.setenv("NO_PROXY", "*")
+    monkeypatch.setenv("no_proxy", "unapproved.test")
+    values = {"LLM_MODEL": "synthetic", "LLM_API_KEY": "fake", "LLM_BASE_URL": "https://example.test"}
+    api, mock = lab.environments(values, {}, {"pg": 1, "redis": 2, "api": 3}, "batch", tracing)
+    assert api["NO_PROXY"] == api["no_proxy"] == "localhost,127.0.0.1,::1,jp.cloud.langfuse.com"
+    assert "NO_PROXY" not in mock
+    assert "no_proxy" not in mock
+
+
+def test_requests_bypasses_system_proxy_for_japan_without_network(monkeypatch):
+    from requests import utils
+
+    monkeypatch.setattr(utils, "getproxies", lambda: {"https": "http://system-proxy.invalid:8888"})
+    monkeypatch.setattr(utils, "proxy_bypass", lambda host: False)
+    values = {"LLM_MODEL": "synthetic", "LLM_API_KEY": "fake", "LLM_BASE_URL": "https://example.test"}
+    api, _ = lab.environments(values, {}, {"pg": 1, "redis": 2, "api": 3}, "batch")
+    for key in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(key, api[key])
+    url = "https://jp.cloud.langfuse.com/api/public/otel/v1/traces"
+    assert utils.select_proxy(url, utils.get_environ_proxies(url)) is None
+    other = "https://other.invalid/"
+    assert utils.select_proxy(other, utils.get_environ_proxies(other)) is not None
+
+
 def observation(identifier, kind, start, end, parent="root", trace="real"):
     return {"id": identifier, "type": kind, "traceId": trace,
             "sessionId": "thread", "metadata": {"run_id": "run"},
