@@ -89,3 +89,31 @@ def test_duplicate_call_ids_are_not_valid_pairs():
         {"type": "tool", "tool_call_id": "same"},
         {"type": "tool", "tool_call_id": "same"}]}}
     assert lab.inspect_run(state, [], [])["tool_pairs_valid"] is False
+
+
+@pytest.mark.parametrize("url", ["https://unapproved.test/v1", "http://127.0.0.1:8317/v1",
+                                "http://192.168.31.110:8317/v1?key=secret",
+                                "http://192.168.31.110:8318/v1"])
+def test_unapproved_provider_rejected_before_sending_credentials(url):
+    with pytest.raises(RuntimeError, match="拒绝出站"):
+        lab.validate_provider(url)
+
+
+def test_partial_batch_cloud_recovery_uses_each_run_time_window(tmp_path):
+    windows = []
+
+    class ReadOnlyCloud:
+        def observations(self, row, start, end):
+            windows.append((row["run_id"], start, end))
+            return []
+
+    manifest = {"project_id": "p", "runs": [
+        {"scenario_id": "S01", "repeat": 1, "thread_id": "t1", "run_id": "r1",
+         "start": "start-1", "end": "end-1"},
+        {"scenario_id": "S02", "repeat": 1, "thread_id": "t2", "run_id": "r2",
+         "start": "start-2", "end": "end-2"},
+        {"scenario_id": "S03", "repeat": 1, "start": "start-3", "end": "end-3"}]}
+    assert lab.refresh_cloud(ReadOnlyCloud(), manifest, tmp_path) is False
+    assert windows == [("r1", "start-1", "end-1"), ("r2", "start-2", "end-2")]
+    assert manifest["runs"][0]["cloud"]["status"] == "ingestion_pending"
+    assert manifest["runs"][2]["cloud"]["status"] == "unknown"

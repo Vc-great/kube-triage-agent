@@ -23,10 +23,17 @@ from eval_phase3a import api, message_type, private_directory, write_private
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / "server/.venv/bin/python"
 CASES = {"S01": "healthy-pod", "S02": "crashloop-pod", "S03": "imagepull-pod"}
+# Same explicit Provider boundary as the existing native deep-demo profile.
+APPROVED_PROVIDER_URL = "http://192.168.31.110:8317/v1"
 
 
 def utc():
     return datetime.now(UTC).isoformat()
+
+
+def validate_provider(url):
+    if url.rstrip("/") != APPROVED_PROVIDER_URL:
+        raise RuntimeError("BLOCKED: Provider 不匹配项目已授权 endpoint；拒绝出站")
 
 
 def configuration(path):
@@ -35,14 +42,7 @@ def configuration(path):
     cloud = dev.read_langfuse_env(path)
     if any(not values.get(k) for k in ("LLM_MODEL", "LLM_API_KEY", "LLM_BASE_URL")):
         raise RuntimeError("BLOCKED: 缺少真实模型配置")
-    address = urllib.parse.urlsplit(values["LLM_BASE_URL"])
-    if (address.scheme not in {"http", "https"} or not address.hostname
-            or address.username or address.password or address.query or address.fragment):
-        raise RuntimeError("BLOCKED: Provider URL 配置异常")
-    # The existing project profile explicitly authorizes this LAN proxy endpoint.
-    if address.scheme == "http" and address.hostname not in {
-            "127.0.0.1", "localhost", "192.168.31.110"}:
-        raise RuntimeError("BLOCKED: 未授权的明文 Provider endpoint")
+    validate_provider(values["LLM_BASE_URL"])
     if not PYTHON.is_file() or (ROOT / "server/.env").exists():
         raise RuntimeError("BLOCKED: 需要锁定的 server/.venv 且不能有 server/.env")
     return values, cloud
@@ -320,6 +320,20 @@ def export_failures(out):
     return {"failure_count": len(failures), "http_statuses": codes}
 
 
+def refresh_cloud(cloud, manifest, out):
+    """Read existing evidence only, including after a partial batch STOP."""
+    ready = True
+    for row in manifest["runs"]:
+        if not row.get("thread_id") or not row.get("run_id"):
+            row["cloud"] = {"status": "unknown", "reason": "missing_runtime_identity"}
+        else:
+            observations = cloud.observations(row, row["start"], row["end"])
+            write_private(out / f"{row['scenario_id']}-{row['repeat']}-cloud.json", observations)
+            row["cloud"] = verify_cloud(observations, row, manifest["project_id"])
+        ready &= row["cloud"]["status"] == "verified"
+    return ready
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
@@ -359,11 +373,15 @@ def main():
             for scenario in args.scenarios:
                 for repeat in range(args.repeats):
                     row = {"scenario_id": scenario, "repeat": repeat + 1,
-                           "protocol_status": "unknown"}
+                           "protocol_status": "unknown", "start": utc()}
                     manifest["runs"].append(row)
                     write_private(out / "manifest.json", manifest)
-                    execute(base, token, scenario, batch, args.timeout, row,
-                            out / f"{scenario}-{repeat + 1}-private.json")
+                    try:
+                        execute(base, token, scenario, batch, args.timeout, row,
+                                out / f"{scenario}-{repeat + 1}-private.json")
+                    finally:
+                        row["end"] = utc()
+                        write_private(out / "manifest.json", manifest)
                     write_private(out / "manifest.json", manifest)
                     if (row["protocol_status"] != "success" or row["sse_error"]
                             or not row["models_observed"] or row["model_decisions"] > 4
@@ -376,12 +394,7 @@ def main():
         manifest["exporter"] = export_failures(out)
         until = time.monotonic() + args.cloud_wait
         while True:
-            ready = True
-            for row in manifest["runs"]:
-                observations = cloud.observations(row, manifest["start"], manifest["end"])
-                write_private(out / f"{row['scenario_id']}-{row['repeat']}-cloud.json", observations)
-                row["cloud"] = verify_cloud(observations, row, projects[0]["id"])
-                ready &= row["cloud"]["status"] == "verified"
+            ready = refresh_cloud(cloud, manifest, out)
             write_private(out / "manifest.json", manifest)
             if ready or time.monotonic() >= until:
                 break
@@ -391,8 +404,15 @@ def main():
         if not ready:
             raise RuntimeError("STOP: Cloud Trace 关联无法确认，禁止 Phase B")
     except Exception as exc:
+        manifest["end"] = utc()
         manifest["stop"] = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
         manifest["exporter"] = export_failures(out)
+        # A bounded read of already-created Runs never replays model requests.
+        if manifest.get("project_id") and manifest["runs"]:
+            try:
+                refresh_cloud(cloud, manifest, out)
+            except (OSError, ValueError, RuntimeError) as cloud_error:
+                manifest["cloud_recovery_error"] = type(cloud_error).__name__
         write_private(out / "manifest.json", manifest)
         raise
 

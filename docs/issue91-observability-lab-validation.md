@@ -32,7 +32,7 @@ cd ..
 git diff --check
 ```
 
-完整 pytest：**889 passed / 44 skipped**（177.18 秒；新增失败摘要测试前）。新增测试后定向复验：**7 passed**。Skipped 项不算 PASS。Ruff 已通过；未修改前端，不以本地前端测试作为证据。CI 状态由 PR checks 提供，未完成时不能标 PASS。
+完整 pytest：**889 passed / 44 skipped**（177.18 秒；新增失败摘要测试前）。新增测试后定向复验：**12 passed**。Skipped 项不算 PASS。Ruff 已通过；未修改前端，不以本地前端测试作为证据。CI 状态由 PR checks 提供，未完成时不能标 PASS。
 
 用户授权配置以 `OBS_LAB_ENV` 显式指定；不复制源文件，不在报告记录内容。源文件为当前用户持有、普通文件、0600。
 
@@ -50,7 +50,7 @@ server/.venv/bin/python scripts/obs_lab.py \
   --timeout 150 --cloud-wait 120
 ```
 
-运行需要 Docker、已有 `pgvector/pgvector:0.8.7-pg18-bookworm` 和 `redis:8.4.7-alpine` 镜像及 AO_SESSION_ID；不拉取镜像，不复用稳定 PG/Redis。实验入口明确直连已配置 Provider 和 Langfuse Japan，保留 TLS 校验，不继承 Host proxy。正式 `dev.py` 的代理策略不变。
+运行需要 Docker、已有 `pgvector/pgvector:0.8.7-pg18-bookworm` 和 `redis:8.4.7-alpine` 镜像及 AO_SESSION_ID；不拉取镜像，不复用稳定 PG/Redis。实验入口仅允许与既有原生 deep-demo 相同的 CPA endpoint（精确 URL 白名单），明确直连该 Provider 和 Langfuse Japan，保留 TLS 校验，不继承 Host proxy。正式 `dev.py` 的代理策略不变。
 
 真实 Smoke 批次：`issue91-20261026-220630-831875`，2026-10-26 14:06 UTC 开始。
 
@@ -84,7 +84,7 @@ server/.venv/bin/python scripts/obs_lab.py \
 ## 失败记录与恢复边界
 
 1. 第一轮在模型和容器启动前因硬编码本机 proxy 7890 不监听而返回 URLError，0 Run。一次无凭据 Host 诊断确认直连 Japan HTTPS 正常，测试入口改为明确直连；不更改正式启动器或代理服务。
-2. 直连后的唯一真实 Smoke 如上，模型成功但 OTLP 403，Cloud Gate 阻塞。按设计停止，不重新调用模型补 Trace。后续补充启动前失败 manifest 保存、导出错误脱敏摘要、中断和协议异常证据保存，未再次执行真实模型。
+2. 直连后的唯一真实 Smoke 如上，模型成功但 OTLP 403，Cloud Gate 阻塞。按设计停止，不重新调用模型补 Trace。后续补充启动前失败 manifest 保存、导出错误脱敏摘要、中断和协议异常证据保存。原生审查后进一步加入 Provider 精确 URL 白名单、逐 Run 起止时间与异常批次只读 Cloud 证据恢复；新增离线测试通过，未再次执行真实模型或 Cloud 查询。
 
 需由授权人确认 Langfuse OTLP 403 的写入权限/网络原因，再明确恢复。不能从 REST 读取成功推断 OTLP 写入成功，也不能把 403 简单解释为摄取延迟。恢复时先只读核对既有 Trace，不为补索引重复付费 Run；若需复测 Smoke，仍显式限制 Run 数。
 
