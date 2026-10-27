@@ -4,7 +4,7 @@
 
 ## 2026-10-27 Phase A 收口：当前状态
 
-**A0–A4 PASS；A5 NOT RUN（等待本轮新 PR CI/原生审查），尚不宣称 READY FOR PHASE B。** 本轮只做 Phase A；不实施 S04–S08、#92，不关闭 #91，不自动合并。PR #94 已合并，但其 A3 BLOCKED 不是本轮完成证明。
+**A0–A5 PASS；Phase A READY FOR PHASE B。** 本结论对应本轮已验证的新实现，不表示自动合并或授权实施 Phase B。 本轮只做 Phase A；不实施 S04–S08、#92，不关闭 #91，不自动合并。PR #94 已合并，但其 A3 BLOCKED 不是本轮完成证明。
 
 基线：`origin/main=7b9a908b6dd33fcf33b4fbb9a542334d096f4dde`。独立 Worktree `/private/tmp/kta-issue91-phase-a-closeout`、分支 `ao/observability-lab/phase-a-closeout`。Python 3.13.14、Aegra 0.10.8、LangGraph 1.2.14、OTel 1.45.1，锁文件未改；uv 使用本机缓存，无工具/依赖升级。只读取用户明确授权的私有配置源，忽略已注释的旧组，不复制配置；源文件权限和属主校验保留。
 
@@ -25,7 +25,7 @@
 | A2 | PASS | 下表三个场景均从同一认证项目的 Cloud v2 唯一反查真实 Trace；public=false，链接须有项目权限账号登录；人工 UI 访问 NOT RUN，未伪称手动打开 |
 | A3 | PASS | 三个场景均 chain_verified=true；完整根/时间/父链与逐 Tool ID 桥接已核对，具体 ID 见下表；不是由数量猜测 |
 | A4 | PASS | 第5 Run OTel OFF、无 exporter；第6 Run 专属回环接收器实际拒绝3批导出，Agent 仍 success；两者目标 Ready 证据、工具协议、State/History配对及诊断完成断言与正常S01一致。文字/调用次数允许真实模型差异，不宣称逐字一致或诊断质量评分。原生 flush 异常不改变执行结果另有确定性测试。源凭据/编码认证串审计0命中；仅合成数据；本次资源已全部清理 |
-| A5 | NOT RUN | 最终 make Smoke 实际退出0且完整Cloud链通过；Ruff、定向pytest与完整离线回归通过；尚待新Implementation PR的实际CI/原生审查结果 |
+| A5 | PASS | 最终 make Smoke 实际退出0且完整Cloud链通过；Ruff、37项定向测试通过；代码head `12d8024` 的[6项CI全部通过](https://github.com/Vc-great/kube-triage-agent/actions/runs/40438912755)，Python CI 919 passed/47 skipped，AO原生审查 approved；最终报告更新不改运行代码 |
 
 ### 真实 Cloud 链与 Tool ID 证据
 
@@ -108,7 +108,7 @@ server/.venv/bin/python scripts/obs_lab.py --env-file /absolute/path/to/authoriz
 server/.venv/bin/python scripts/obs_lab.py --env-file /absolute/path/to/authorized-private.env --scenarios S01 --repeats 1 --max-runs 1 --export-mode failure --timeout 150 --cloud-wait 0
 ```
 
-完整离线回归 **916 passed、44 skipped**（193.26秒，新增后续6项测试前）；最终定向 **37 passed**、Ruff/diff check PASS。最终验收器还仅用六个保存的State/History及四条保存Cloud链重验：模型序列/回执均匹配，四条链均通过，不重放模型。CI待新PR实际结果；Skipped不算PASS。
+完整离线回归 **916 passed、44 skipped**（193.26秒，新增后续6项测试前）；最终定向 **37 passed**、Ruff/diff check PASS。最终验收器还仅用六个保存的State/History及四条保存Cloud链重验：模型序列/回执均匹配，四条链均通过，不重放模型。代码head `12d80244804b94f0b5e0d7ee9a113f5db87c6eab` 的[CI](https://github.com/Vc-great/kube-triage-agent/actions/runs/40438912755)六项全部PASS，Python 919 passed/47 skipped（235.87秒），AO原生审查approved。Linux与本机的跳过数量不同，Skipped均不算PASS。最终报告提交的checks另见PR #95。
 
 新增回归覆盖完整链、缺根/缺最终Generation/缺Tool、错误Run/Session/参数/ID、时间倒序/循环父链、保留历史ToolMessage的多轮匹配、单参数标量表示、文本提到ID不能冒充ToolMessage、异步摄取补齐/预算耗尽、History缺最终模型、原生worker drain后flush及flush失败不改变执行结果。
 
