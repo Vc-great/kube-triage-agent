@@ -1,8 +1,8 @@
 # Issue #91/#92：Observability Fault Lab V1 — 真实模型、故障注入与 Langfuse 可回查实验
 
 > - GitHub Issues：[Phase A/B #91](https://github.com/Vc-great/kube-triage-agent/issues/91)；[Phase C/D #92](https://github.com/Vc-great/kube-triage-agent/issues/92)
-> - 状态：**Proposed（Planning PR 未合入，不是已实现）**
-> - 规划 PR：[Draft #93](https://github.com/Vc-great/kube-triage-agent/pull/93)（仅设计，不代表批准或实现）
+> - 状态：**原设计已通过 PR #93 合入；Phase A 经 PR #95 验收 PASS，Phase B 在 PR #97 的 S04 实测后仍 BLOCKED**。以下新增口径须经本次增量 Planning PR 合并后生效；历史报告不得追溯改判。
+> - 原规划 PR：[已合并 #93](https://github.com/Vc-great/kube-triage-agent/pull/93)；[S04 真实失败报告 PR #97](https://github.com/Vc-great/kube-triage-agent/pull/97) 已合并（并不表示 Phase B 验收通过）
 > - 设计基线：2026-10-26，`origin/main=7b3a9bd8a507145a95fe39e5b47f173a9673d48e`（实施前重新 `git fetch origin`）
 > - 适用版本：以当前仓库锁定的 Aegra 0.10.8、LangGraph 1.x、Langfuse Cloud Japan 为准；外部 API/SDK 运行时重新核对
 > - 规划评审：用户认可“真实模型 + 合成 Mock 故障 + 云端 Langfuse 可见”方向，**设计合入 main 之前不实施**
@@ -89,6 +89,21 @@ flowchart TD
 - State/Checkpoint/History/原始 ToolMessage 正文不写入自定义 metadata；若 Aegra 自动 Span 默认包含合成 Prompt/Message，仅测试隔离数据可上云。禁止任何真实凭据和真实集群数据。
 - Trace/Run 状态分别记录：`protocol_status`、`tool_outcome`、`diagnosis_score`。Span ERROR 用于真实异常，适当采用可筛选的业务结果字段，不改 Graph 错误语义以美化 Dashboard。
 
+### 3.3.1 Phase B 增量澄清：故障可观测性 ≠ 原生 Span 完整性（2026-10-27）
+
+**目标不变**：真实 LLM 自主调用合成 Mock MCP；在 Langfuse 可复查「故障发生→工具回执→模型如何处理」。正常场景（Phase A）的原生 LLM→TOOL→LLM 完整链 Gate **保持不变**。故障场景（Phase B）分别记录，不用一个布尔值混淆：
+
+- \`trace_verified\`：Cloud API 返回真实、唯一的 Project/Thread/Run/Trace 身份与可用 URL；仅证明 Trace 存在。
+- \`scenario_observable\`：Cloud 中有能与本地 State/History **逐 Tool Call ID** 核对的故障业务 Observation、LLM 请求/回执与最后响应，足以分析本场景的故障传播；不是单凭 Agent \`success\`、本地日志或 Trace 存在即 PASS。
+- \`native_trace_complete\`：所有预期原生 Generation/TOOL、完整父链和时间线均能证明；独立记录 \`PASS / FAIL / UNKNOWN\` 与缺失项。**不可因 \`scenario_observable=PASS\` 将其改写为 PASS**。
+- \`diagnosis_behavior\`、\`event_result\`：分别记录模型是否正确说明证据边界、S08 是否真实触发重复；不把业务行为、Trace 完整度、事件触发混成一种结论。Gate 仍使用 §5 的状态集合。
+
+Phase B 的 \`scenario_observable=PASS\` 最低必要证据：① Cloud API 唯一 Trace、完整已出现节点的根/祖先和时间关系；② Cloud Generation output 中真实 Tool Call ID/参数与后续 Generation input 中对应 ToolMessage ID，且 State/History 请求与回执配对；③ Cloud 实际 \`reader_outcome\` 的工具名、Call ID、业务结果和外层状态与 State/History 及注入场景一致，关联到同一可信根；④ 模型最终回答存在，且不把缺失证据编造成已获取的事实。上述任一证据缺失、错配或身份歧义即 **BLOCKED**，不能靠合成补报 Tool/Generation 获得 PASS。
+
+**唯一受限降级**：S04 经真实超时及锁定 SDK 取消路径复现，可能出现 \`reader_outcome(timeout)\` 正常结束、但被取消的原生 \`pods_log\` TOOL 缺失。只有逐条满足上述最低证据、**缺失仅限已证实的超时取消 TOOL**，并且记录实际缺失的 Call ID、Cloud 结构、取消复现、原始 \`native_trace_complete=FAIL\` 时，允许 \`scenario_observable=PASS\` 并继续其他独立场景。该降级是「可用于学习的故障链」，**不是**「原生完整链已修复」，不取消可观测性缺陷记录。对非预期工具、正常工具、Generation、业务 Span、根/身份或其他未知缺失均不得套用此例外。
+
+S07 应使合成 429 的 **attempt 编号、错误类型、恢复或失败结果**在对应 Cloud Trace 的脱敏业务 Span/事件中可定位，并与本地代理记录交叉核对；不把本地代理 429 冒充 Provider 返回的 429 或伪造 Generation。无法安全关联时保留 \`BLOCKED\`，不得放宽固定 Provider 白名单。所有场景索引应分别展示 \`trace_verified / scenario_observable / native_trace_complete\` 与证据缺口，Langfuse UI 人工访问另列 PASS/NOT RUN。
+
 ### 3.4 Cloud API、Trace 唯一映射与报告
 
 - 唯一 Trace 摄取仍通过 Aegra OTel→Langfuse Japan。**实际查询 API 为 `GET /api/public/v2/observations`**，可用 `sessionId`、`environment`、时间窗与 metadata 过滤；返回的是 observation rows，**按 `traceId` 分组**，不能用 `run_id` 冒充 Trace ID。多个候选必须核对 trusted Run metadata / root / 时间窗；关联仍歧义则 `UNKNOWN`，不猜。
@@ -134,11 +149,11 @@ flowchart TD
 | **A4 非污染与关闭** | 合成数据/密钥审计、OTel OFF/网络故障不改变 Agent 诊断执行结果；不影响正式 Aegra/Reader/HITL/Memory/SSE | 负测、无敏感输出、回归结果 |
 | **A5 交付** | `make obs-lab-smoke` 可重复、单场景运行报告，Ruff/pytest/适用 CI；真实 Smoke 执行与 Cloud 链接同时 PASS | PR + CI、命令、Cloud 链接 |
 | **B0 注入正确** | S04–S06 故障由 Mock MCP 受控引发，经过现有合法 Reader 工具路径；8s/16KiB/白名单不放松 | Fixture 断言、工具轨迹 |
-| **B1 错误语义** | S04 timeout、S05 403、S06 `ok=false` 在对应云端 Observation/业务标签可区分；Run OK 与 Tool Error 可同时成立 | 每类 Trace URL 与状态 |
-| **B2 模型请求故障** | S07 本地测试桩可靠产生首次 429，记录是否重试、重试次数/最终恢复或真实失败；后续确有真实 Provider 调用才标恢复 PASS | 带编号 attempt（无密钥）、Trace URL |
+| **B1 错误语义** | S04 timeout、S05 403、S06 `ok=false` 的云端业务 Observation、真实 Call ID、State/History 回执和模型处理符合 §3.3.1 最低证据；Run OK 与 Tool Error 可并存；S04 已知取消导致的原生 TOOL 缺失单独记 `native_trace_complete=FAIL`，不得谎称已修复 | 每类真实 Trace URL、业务 Span/LLM 关联、原生缺失清单 |
+| **B2 模型请求故障** | S07 测试桩确有首次合成 429；Cloud 同 Trace 可定位脱敏 attempt/重试结果，且本地记录与实际 Provider 转发、恢复或失败交叉核验；只有确实转发并成功才标恢复；不伪造 Generation | Cloud 业务事件、带编号 attempt（无密钥）、真实 Trace URL |
 | **B3 重复工具** | S08 实际真实模型轨迹可核对每次请求/响应；重复未触发标 `NOT_TRIGGERED`，规则/度量正确性通过确定性样本测试；**不强制重复出现** | 实际调用轨迹与判定依据 |
-| **B4 真云端链接** | S01–S08 每个计划 Run 有 `verified / failed / ingestion_pending / unknown` 精确状态；有 Trace 的记录包含从 Cloud 返回的真实 ID 和可点链接，无 Trace 不拼假链接 | 私有场景索引/Cloud API 摘要 |
-| **B5 #91 收口** | 所有必要 A/B Gate PASS，S08 的非触发不冒充 PASS；回归、CI、隔离/清理、中文复现实验步骤完成 | Implementation PR、Gate 表及残余风险 |
+| **B4 真云端链接** | S01–S08 每个实际计划 Run 的 Cloud 摄取状态准确；有 Trace 才列实际 ID/URL，无 Trace 不拼假链接；Phase B 另列 `trace_verified / scenario_observable / native_trace_complete`，已知缺失不能写成完整链 PASS，UI 人工查看单列 | 私有场景索引、Cloud API 摘要、原生缺失清单 |
+| **B5 #91 收口** | A0–A5 原 Gate 不变；B0–B4 均有真实验收，S04–S08 达到 §3.3.1 的场景可观测性条件（S08 可客观记录 `NOT_TRIGGERED`，不冒充事件触发）；已知 S04 原生 TOOL 缺失可列 `native_trace_complete=FAIL` 及风险而不单独阻止本 Gate；其他缺失/歧义仍 BLOCKED。回归、CI、隔离/清理和中文复现步骤完成 | Implementation PR、逐 Gate 与双维度状态、故障 Trace 索引、残余风险 |
 | **C0 触发 Summary** | 在真实模型多轮实际触发 Summary；云端可区分 adopted/fallback，Token 与实际触发阈值对照；失败不得伪称采用 | S09 Session/Trace 与上下文审计 |
 | **C1 诊断误判** | S10 包含弱/冲突 UID Event 与已知 Ground Truth；输出结论和证据校验可复查 | 原样记录成功/失败与差异 |
 | **C2 Scores** | 规则 Score 实际写入并从 Cloud Scores v3 回查关联 Trace；来源/版本明确；Judge 若未运行标 NOT RUN | Score ID/Trace、口径 |
@@ -156,7 +171,7 @@ Gate 状态仅允许 `PASS / FAIL / NOT RUN / BLOCKED / UNKNOWN`；S08 自主触
 ### 停止条件（立即 STOP、保留反例）
 1. 隔离实例意外连接真实 K8s/Repair；扩权/写入；发现真实日志/Token/私有历史准备外发。
 2. 需要禁用 TLS、放宽 Namespace/Reader 参数、删除/修改稳定数据库或跳过 Checkpoint/审批来让实验“通过”。
-3. Phase A Cloud 无法校验真实 Tool Trace/Run 关联；不得跳入 Phase B。S07 无法保持限域 Provider 请求桩安全时，仅停止该子场景并报告。
+3. Phase A Cloud 无法校验真实 Tool Trace/Run 关联，不得跳入 Phase B。Phase B 出现可信身份/业务关联歧义、意外 Span 缺失或假证据必须 STOP；仅 §3.3.1 已证实的 S04 取消 TOOL 缺失允许留痕并继续**其他独立场景**，不追溯改写原 STOP 历史。S07 无法保持限域 Provider 请求桩安全时停止该子场景并报告。
 4. Run/模型请求预算超限、API 认证/代理身份异常、重复 Model 调用失控或错误的 Cloud Project，停止批次。
 5. 旧 Aegra SSE、Memory、HITL、repair、安全回归出现新增 P0/P1；保留失败结果，不能以 Mock PASS 冲抵。
 
@@ -164,7 +179,8 @@ Gate 状态仅允许 `PASS / FAIL / NOT RUN / BLOCKED / UNKNOWN`；S08 自主触
 
 | 日期 | 变更 | Gate | 状态 |
 | --- | --- | --- | --- |
-| 2026-10-26 | 为 #91/#92 提出统一 Observability Lab V1 方案，Planning PR 仅文档 | A0–D5 | **全部 NOT RUN** |
+| 2026-10-26 | 为 #91/#92 提出统一 Observability Lab V1 方案，Planning PR 仅文档 | A0–D5 | **当时全部 NOT RUN** |
+| 2026-10-27 | PR #97 实测 S04 超时：Cloud 业务 Span/模型决策存在、被取消的原生 TOOL 缺失；增量澄清 Phase B 双维度验收与有限降级，历史失败不追溯改判 | B1/B2/B4/B5 | **设计修订待本次 Planning PR 合并；Phase B 仍 BLOCKED** |
 
 后续实施 PR 应记录真实 `main` SHA、模型回显与请求数量、Cloud Trace/Scores URL、CI、失败/缺失样本；只在 Gate 满足后更新现状文档。本文件处于 Proposed 不代表线上功能存在。
 
