@@ -71,8 +71,9 @@ def retry_recovered(attempts, decisions):
 
 def observed_reader(original):
     async def call(name, arguments, thread_id=None):
-        from kube_triage.app_storage import _reader_context
         from opentelemetry import trace
+
+        from kube_triage.app_storage import _reader_context
 
         context = _reader_context.get() or {}
         # This provider is Aegra's existing provider; no exporter is constructed here.

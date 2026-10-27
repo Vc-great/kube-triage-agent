@@ -45,7 +45,7 @@ cd ..
 git diff --check
 ```
 
-第一轮完整回归：**939 passed、44 skipped，168.57 秒**，发生在后续观测包装/客户端重试/索引测试补充前。最终完整回归 **950 passed、44 skipped，165.49 秒**；随后收紧目标故障匹配和 S07 恢复判定，并补7项规则测试，其9项相关定向测试通过。最终全部 Phase A/B 定向测试 **72 passed，13.49 秒**。Ruff/diff check 通过。Skipped 不算 PASS。Sandbox 禁止回环绑定时保留了 PermissionError 反例，随后在 Host 重跑离线测试通过，未据此降低验证要求。
+第一轮完整回归：**939 passed、44 skipped，168.57 秒**，发生在后续观测包装/客户端重试/索引测试补充前。最终完整回归 **950 passed、44 skipped，165.49 秒**；随后收紧目标故障匹配和 S07 恢复判定，并补7项规则测试，其9项相关定向测试通过。最终全部 Phase A/B 定向测试 **72 passed，13.49 秒**。Ruff/diff check 通过。Skipped 不算 PASS。首轮 [CI](https://github.com/Vc-great/kube-triage-agent/actions/runs/40443685657) 五项通过，Python 因两个新脚本的 import 分组失败；本地根目录 Ruff 未复现该工作目录差异，随后在 `server/` 下按 CI 原命令复现并修复，完整 Ruff 命令通过。最新 CI 与独立审查结果待回查，不把首轮失败改写为成功。Sandbox 禁止回环绑定时保留了 PermissionError 反例，随后在 Host 重跑离线测试通过，未据此降低验证要求。
 
 ## 获得本轮授权配置后才可执行
 

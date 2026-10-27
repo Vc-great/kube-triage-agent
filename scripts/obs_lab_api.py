@@ -36,8 +36,9 @@ def serve(port):
     if os.getenv("OBS_LAB_SCENARIO"):
         if os.environ["OBS_LAB_SCENARIO"] not in {"S04", "S05", "S06", "S07", "S08"}:
             raise RuntimeError("Unknown test-only lab scenario")
-        from kube_triage import mcp_client
         from obs_lab_faults import observed_reader
+
+        from kube_triage import mcp_client
 
         mcp_client.call_tool = observed_reader(mcp_client.call_tool)
     import uvicorn
