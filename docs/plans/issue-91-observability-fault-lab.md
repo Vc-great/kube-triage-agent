@@ -5,8 +5,8 @@
 > - 原规划 PR：[已合并 #93](https://github.com/Vc-great/kube-triage-agent/pull/93)；[S04 真实失败报告 PR #97](https://github.com/Vc-great/kube-triage-agent/pull/97) 已合并（并不表示 Phase B 验收通过）
 > - 设计基线：2026-10-26，`origin/main=7b3a9bd8a507145a95fe39e5b47f173a9673d48e`（实施前重新 `git fetch origin`）
 > - 适用版本：以当前仓库锁定的 Aegra 0.10.8、LangGraph 1.x、Langfuse Cloud Japan 为准；外部 API/SDK 运行时重新核对
-> - 规划评审：用户认可“真实模型 + 合成 Mock 故障 + 云端 Langfuse 可见”方向，**设计合入 main 之前不实施**
-> - 当前允许实施范围：规划合并后仅 **#91 Phase A → Phase B（A Gate 通过后）**；**#92 Phase C/D 后置**
+> - 规划评审：用户已认可“真实模型 + 合成 Mock 故障 + 云端 Langfuse 可见”方向；原设计已合并，本次只澄清 Phase B 的验收口径
+> - 当前允许实施范围：#91 Phase A 已完成；本次增量规划合并后实施 **#91 Phase B 最小修复与剩余场景验收**，**#92 Phase C/D 后置**
 > - **唯一验收标准权威来源：本文件 §5**。两个 Issue 与 Implementation PR 只链接 Gate，不复制成第二套标准。
 
 ## 1. 背景与现状
@@ -93,16 +93,16 @@ flowchart TD
 
 **目标不变**：真实 LLM 自主调用合成 Mock MCP；在 Langfuse 可复查「故障发生→工具回执→模型如何处理」。正常场景（Phase A）的原生 LLM→TOOL→LLM 完整链 Gate **保持不变**。故障场景（Phase B）分别记录，不用一个布尔值混淆：
 
-- \`trace_verified\`：Cloud API 返回真实、唯一的 Project/Thread/Run/Trace 身份与可用 URL；仅证明 Trace 存在。
-- \`scenario_observable\`：Cloud 中有能与本地 State/History **逐 Tool Call ID** 核对的故障业务 Observation、LLM 请求/回执与最后响应，足以分析本场景的故障传播；不是单凭 Agent \`success\`、本地日志或 Trace 存在即 PASS。
-- \`native_trace_complete\`：所有预期原生 Generation/TOOL、完整父链和时间线均能证明；独立记录 \`PASS / FAIL / UNKNOWN\` 与缺失项。**不可因 \`scenario_observable=PASS\` 将其改写为 PASS**。
-- \`diagnosis_behavior\`、\`event_result\`：分别记录模型是否正确说明证据边界、S08 是否真实触发重复；不把业务行为、Trace 完整度、事件触发混成一种结论。Gate 仍使用 §5 的状态集合。
+- `trace_verified`：Cloud API 返回真实、唯一的 Project/Thread/Run/Trace 身份与可用 URL；仅证明 Trace 存在。
+- `scenario_observable`：Cloud 中有能与本地 State/History **逐 Tool Call ID** 核对的故障业务 Observation、LLM 请求/回执与最后响应，足以分析本场景的故障传播；不是单凭 Agent `success`、本地日志或 Trace 存在即 PASS。
+- `native_trace_complete`：所有预期原生 Generation/TOOL、完整父链和时间线均能证明；独立记录 `PASS / FAIL / UNKNOWN` 与缺失项。**不可因 `scenario_observable=PASS` 将其改写为 PASS**。
+- `diagnosis_behavior`、`event_result`：分别记录模型是否正确说明证据边界、S08 是否真实触发重复；不把业务行为、Trace 完整度、事件触发混成一种结论。Gate 仍使用 §5 的状态集合。
 
-Phase B 的 \`scenario_observable=PASS\` 最低必要证据：① Cloud API 唯一 Trace、完整已出现节点的根/祖先和时间关系；② Cloud Generation output 中真实 Tool Call ID/参数与后续 Generation input 中对应 ToolMessage ID，且 State/History 请求与回执配对；③ Cloud 实际 \`reader_outcome\` 的工具名、Call ID、业务结果和外层状态与 State/History 及注入场景一致，关联到同一可信根；④ 模型最终回答存在，且不把缺失证据编造成已获取的事实。上述任一证据缺失、错配或身份歧义即 **BLOCKED**，不能靠合成补报 Tool/Generation 获得 PASS。
+Phase B 的 `scenario_observable=PASS` 最低必要证据：① Cloud API 唯一 Trace、完整已出现节点的根/祖先和时间关系；② Cloud Generation output 中真实 Tool Call ID/参数与后续 Generation input 中对应 ToolMessage ID，且 State/History 请求与回执配对；③ Cloud 实际 `reader_outcome` 的工具名、Call ID、业务结果和外层状态与 State/History 及注入场景一致，关联到同一可信根；④ 模型最终回答存在，且不把缺失证据编造成已获取的事实。上述任一证据缺失、错配或身份歧义即 **BLOCKED**，不能靠合成补报 Tool/Generation 获得 PASS。
 
-**唯一受限降级**：S04 经真实超时及锁定 SDK 取消路径复现，可能出现 \`reader_outcome(timeout)\` 正常结束、但被取消的原生 \`pods_log\` TOOL 缺失。只有逐条满足上述最低证据、**缺失仅限已证实的超时取消 TOOL**，并且记录实际缺失的 Call ID、Cloud 结构、取消复现、原始 \`native_trace_complete=FAIL\` 时，允许 \`scenario_observable=PASS\` 并继续其他独立场景。该降级是「可用于学习的故障链」，**不是**「原生完整链已修复」，不取消可观测性缺陷记录。对非预期工具、正常工具、Generation、业务 Span、根/身份或其他未知缺失均不得套用此例外。
+**唯一受限降级**：S04 经真实超时及锁定 SDK 取消路径复现，可能出现 `reader_outcome(timeout)` 正常结束、但被取消的原生 `pods_log` TOOL 缺失。只有逐条满足上述最低证据、**缺失仅限已证实的超时取消 TOOL**，并且记录实际缺失的 Call ID、Cloud 结构、取消复现、原始 `native_trace_complete=FAIL` 时，允许 `scenario_observable=PASS` 并继续其他独立场景。该降级是「可用于学习的故障链」，**不是**「原生完整链已修复」，不取消可观测性缺陷记录。对非预期工具、正常工具、Generation、业务 Span、根/身份或其他未知缺失均不得套用此例外。
 
-S07 应使合成 429 的 **attempt 编号、错误类型、恢复或失败结果**在对应 Cloud Trace 的脱敏业务 Span/事件中可定位，并与本地代理记录交叉核对；不把本地代理 429 冒充 Provider 返回的 429 或伪造 Generation。无法安全关联时保留 \`BLOCKED\`，不得放宽固定 Provider 白名单。所有场景索引应分别展示 \`trace_verified / scenario_observable / native_trace_complete\` 与证据缺口，Langfuse UI 人工访问另列 PASS/NOT RUN。
+S07 应使合成 429 的 **attempt 编号、错误类型、恢复或失败结果**在对应 Cloud Trace 的脱敏业务 Span/事件中可定位，并与本地代理记录交叉核对；不把本地代理 429 冒充 Provider 返回的 429 或伪造 Generation。无法安全关联时保留 `BLOCKED`，不得放宽固定 Provider 白名单。所有场景索引应分别展示 `trace_verified / scenario_observable / native_trace_complete` 与证据缺口，Langfuse UI 人工访问另列 PASS/NOT RUN。
 
 ### 3.4 Cloud API、Trace 唯一映射与报告
 
