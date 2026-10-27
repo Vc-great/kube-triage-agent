@@ -47,4 +47,4 @@ OBS_LAB_ENV ?= $(CURDIR)/.env
 obs-lab-smoke:
 	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --max-runs 1
 obs-lab-phase-a:
-	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --scenarios S01 S02 S03 --repeats 2 --max-runs 6
+	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --scenarios S01 S02 S03 --repeats 1 --max-runs 3

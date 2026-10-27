@@ -1,8 +1,130 @@
-# Issue #91 Phase A 实测与 STOP 记录
+# Issue #91 Phase A 验收报告（含历史 STOP）
+
+权威验收仍是 [设计 §5](plans/issue-91-observability-fault-lab.md#5-唯一权威验收-gate全部初始-not-run)，本报告只列实测证据，不更改 Gate。
+
+## 2026-10-27 Phase A 收口：当前状态
+
+**A0–A5 PASS；Phase A READY FOR PHASE B。** 本结论对应本轮已验证的新实现，不表示自动合并或授权实施 Phase B。 本轮只做 Phase A；不实施 S04–S08、#92，不关闭 #91，不自动合并。PR #94 已合并，但其 A3 BLOCKED 不是本轮完成证明。
+
+基线：`origin/main=7b9a908b6dd33fcf33b4fbb9a542334d096f4dde`。独立 Worktree `/private/tmp/kta-issue91-phase-a-closeout`、分支 `ao/observability-lab/phase-a-closeout`。Python 3.13.14、Aegra 0.10.8、LangGraph 1.2.14、OTel 1.45.1，锁文件未改；uv 使用本机缓存，无工具/依赖升级。只读取用户明确授权的私有配置源，忽略已注释的旧组，不复制配置；源文件权限和属主校验保留。
+
+### 根因与最小修复
+
+1. **先只读旧 Trace** `71131804848f292fa6f215d7db86836d`：按真实 ID、扩大至原 Run 前后各 60 秒的限定窗口分页回查，仍只有 8 条（1 Generation、2 Tool、5 Chain），缺根及最终 Generation。旧 State/History 两次模型决策、两次 Reader 与 Tool ID 配对正常。数据仍缺失，不能归因为短延迟、Session 过滤或猜错 Trace。
+2. **导出生命周期**：Aegra 0.10.8 lifespan 在 worker drain 后不显式 flush；Uvicorn 0.54.0 的 `capture_signals()` 在清理后重新触发 SIGTERM，不能依赖 Python atexit 排空 BatchSpanProcessor。旧 Runner 收到 Run 成功后立即终止整个 CLI/API 进程组，尾部 Span 会留在批队列。新增 `scripts/obs_lab_api.py` 仅包裹测试 API 的原生 lifespan，在 native worker drain 后对**同一个原生 TracerProvider**调用 10 秒有界 `force_flush`。无第二套 exporter、无重复 Generation、无正式 Graph/SDK/协议改动。新 Run 已实际出现完整根及尾部 Generation，验证此修复路径。
+3. **验收逻辑**：旧 Runner 仅以 Trace 存在退出0。现在区分 `trace_verified` / `chain_verified`；必须有完整唯一根、无缺失/循环的祖先链、父时间覆盖子时间，所有模型调用/工具数量与 State 相符。每个调用逐项核对 Cloud Generation 输出 ID/名称/参数、Tool Span 名称/参数/时间、紧接的后续 Generation 输入 ToolMessage ID，并核对本地 State/History 模型序列与工具执行回执。任一项缺失就 BLOCKED，异步摄取只读等待有界，不补跑模型。
+4. **观测表示兼容**：原生单参数 Reader（events_list/pods_list_in_namespace）Span input 实际可能是 Namespace 标量。仅按既有单参数 Schema 规范化；不猜测多参数工具、不放宽 Namespace/Reader 参数。首个新 S01 因这一兼容问题非零退出，原记录保留；修正后只用同份已保存 Cloud 数据复验完整链，通过后才用预留预算复验最终 Smoke。
+5. **复用冻结数据**：S01=`sample-e`（Running/Ready）、S02=`sample-a`（APP_CONFIG_PATH 缺失）、S03=`sample-c`（镜像 NotFound），复用 #12 的 `issue12-blind-v1` Fixture 与证据检查。既有 memory-web 仅为旧报告数据，不将其较泛的错误描述冒充上述新案例。无新增 Mock 权限/接口。
+
+### 本轮逐 Gate
+
+| Gate | 状态 | 可核对证据 |
+| --- | --- | --- |
+| A0 | PASS | 上述 main SHA/独立 Worktree；PG/Redis 专属临时存储与 ao.session 标签、API 回环端口、Mock 固定允许端点；test、Repair OFF、Memory/History/Evidence OFF，无 kubeconfig；原有 kta-issue78-pg 未动 |
+| A1 | PASS | S01/S02/S03 均经真实 Aegra Thread/Run/SSE，Provider 回显 gpt-6-luna；每条协议 success、Reader 合法及目标证据满足、State/History 模型序列和ToolID配对通过 |
+| A2 | PASS | 下表三个场景均从同一认证项目的 Cloud v2 唯一反查真实 Trace；public=false，链接须有项目权限账号登录；人工 UI 访问 NOT RUN，未伪称手动打开 |
+| A3 | PASS | 三个场景均 chain_verified=true；完整根/时间/父链与逐 Tool ID 桥接已核对，具体 ID 见下表；不是由数量猜测 |
+| A4 | PASS | 第5 Run OTel OFF、无 exporter；第6 Run 专属回环接收器实际拒绝3批导出，Agent 仍 success；两者目标 Ready 证据、工具协议、State/History配对及诊断完成断言与正常S01一致。文字/调用次数允许真实模型差异，不宣称逐字一致或诊断质量评分。原生 flush 异常不改变执行结果另有确定性测试。源凭据/编码认证串审计0命中；仅合成数据；本次资源已全部清理 |
+| A5 | PASS | 最终 make Smoke 实际退出0且完整Cloud链通过；Ruff、37项定向测试通过；代码head `12d8024` 的[6项CI全部通过](https://github.com/Vc-great/kube-triage-agent/actions/runs/40438912755)，Python CI 919 passed/47 skipped，AO原生审查 approved；最终报告更新不改运行代码 |
+
+### 真实 Cloud 链与 Tool ID 证据
+
+Tool Span 本身不一定带直接 Tool Call ID。这里的 ID 证据来自 **Cloud Generation 的结构化工具请求/ToolMessage输入 + Tool Span 名称/规范化参数/所处时间段 + 本地 State/History 配对**。没有把本地结果冒充 Cloud 上直接存在的 Tool ID 字段。所有相关 Span 必须沿实际 parentObservationId 回到各自根，并满足 `request.end ≤ tool.start ≤ tool.end ≤ response.start`。
+
+| 场景 | 实际 Aegra Run ID | Generation/Tool | Cloud 根 | 真实链接 |
+| --- | --- | --- | --- | --- |
+| S01 | `f2f07909-5603-42da-a89d-5cfb0c2bd164` | 3/3 | `7fea1fe0493c90ab` | [Trace](https://jp.cloud.langfuse.com/project/cmvpzre7e002pad0evz874brn/traces/11261c84e536e52bad62a3be836213c7) |
+| S02 | `148ddbc8-9e3d-41cf-b4fa-29b72d9562c1` | 2/3 | `9cae04f569187ad1` | [Trace](https://jp.cloud.langfuse.com/project/cmvpzre7e002pad0evz874brn/traces/b4b180df4d414eae557fe6217a1207ea) |
+| S03 | `cf2fa83d-35fa-4ec9-a7c2-aebefda9fb32` | 2/3 | `74a57b0dcb8f8100` | [Trace](https://jp.cloud.langfuse.com/project/cmvpzre7e002pad0evz874brn/traces/0ee9f699494f065937f31e347477d6e7) |
+
+| 场景 | Tool Call ID（State/History和Cloud Generation IO一致） | 请求Generation → Tool Observation → 响应Generation |
+| --- | --- | --- |
+| S01 | `call_E4EXfKeybSNY6eMl28Sdlodm` | `b78da39f4637b92a` → `b05ee16be0e3aea6` → `4571fbf3aec4c08d` |
+| S01 | `call_8fKLVrI5eDBk4Il23Rxb6Xj2` | `4571fbf3aec4c08d` → `8f463b739e1a1215` → `0a5fe3fa2b3d284b` |
+| S01 | `call_fGP3U7USdh7ZkdG16iBOAXts` | `4571fbf3aec4c08d` → `d4534153cdb2b28b` → `0a5fe3fa2b3d284b` |
+| S02 | `call_Y89BMKq28qFcXfP7l3irfAH8` | `62871faa1a0d2831` → `c8aeb4aab688e706` → `a0ae86eda44549c2` |
+| S02 | `call_7qdIb0MVhitNgO2hX1GUeC39` | `62871faa1a0d2831` → `b9189f82c3de40ae` → `a0ae86eda44549c2` |
+| S02 | `call_uz2qtJCGXP4WOa2C8otbg30R` | `62871faa1a0d2831` → `fae73702deecb672` → `a0ae86eda44549c2` |
+| S03 | `call_RX1F3pRswVhfDCfNI716DGoG` | `ac0e5d6ee98a8369` → `84dfba88e5bcc53e` → `75cb5ae51cf44e7c` |
+| S03 | `call_VYhkyKygkl2bhI5Uz2aLmtv7` | `ac0e5d6ee98a8369` → `54ee87d816a1fd7a` → `75cb5ae51cf44e7c` |
+| S03 | `call_tTxiARJvZCZegGBOj2laWJoQ` | `ac0e5d6ee98a8369` → `8a309664d2fcb7d6` → `75cb5ae51cf44e7c` |
+
+S01 的实际父链与时间（UTC；各节点的父 ID 均来自 Cloud，而非人工补齐）：
+
+| Observation | 类型 | parentObservationId | startTime → endTime |
+| --- | --- | --- | --- |
+| `7fea1fe0493c90ab` | CHAIN | `None` | 2026-10-27T02:02:36.301Z → 2026-10-27T02:02:50.422Z |
+| `52934e2fbfba0d4c` | CHAIN | `7fea1fe0493c90ab` | 2026-10-27T02:02:36.315Z → 2026-10-27T02:02:39.037Z |
+| `b78da39f4637b92a` | GENERATION | `52934e2fbfba0d4c` | 2026-10-27T02:02:36.421Z → 2026-10-27T02:02:39.033Z |
+| `c3b59d69816c9010` | CHAIN | `7fea1fe0493c90ab` | 2026-10-27T02:02:39.062Z → 2026-10-27T02:02:39.121Z |
+| `b05ee16be0e3aea6` | TOOL | `c3b59d69816c9010` | 2026-10-27T02:02:39.066Z → 2026-10-27T02:02:39.120Z |
+| `7e2225f1a1589d8e` | CHAIN | `7fea1fe0493c90ab` | 2026-10-27T02:02:39.130Z → 2026-10-27T02:02:42.640Z |
+| `4571fbf3aec4c08d` | GENERATION | `7e2225f1a1589d8e` | 2026-10-27T02:02:39.132Z → 2026-10-27T02:02:42.637Z |
+| `fce4f8e2f3d6f65a` | CHAIN | `7fea1fe0493c90ab` | 2026-10-27T02:02:42.651Z → 2026-10-27T02:02:42.734Z |
+| `8f463b739e1a1215` | TOOL | `fce4f8e2f3d6f65a` | 2026-10-27T02:02:42.653Z → 2026-10-27T02:02:42.696Z |
+| `d4534153cdb2b28b` | TOOL | `fce4f8e2f3d6f65a` | 2026-10-27T02:02:42.697Z → 2026-10-27T02:02:42.733Z |
+| `1a38449bfcc20131` | CHAIN | `7fea1fe0493c90ab` | 2026-10-27T02:02:42.749Z → 2026-10-27T02:02:50.396Z |
+| `0a5fe3fa2b3d284b` | GENERATION | `1a38449bfcc20131` | 2026-10-27T02:02:42.753Z → 2026-10-27T02:02:50.389Z |
+
+表中包含实际 llm/tools Chain 节点，校验器完整遍历父链；私有完整 Observation JSON 保存在各批次目录，不提交原始 Prompt/ToolMessage。
+
+### 实际调用预算、失败与负测
+
+本轮 **6/6 Agent Run，串行**；共 **17 次模型客户端 HTTP POST、17 次 State 模型决策、19 次 Reader 执行**。17 次模型 HTTP 请求均为日志可见请求；Provider/代理内部调用或费用 UNKNOWN，不按公开价格估计。保留 SDK max_retries=1、单Run 150秒（允许参数30–180秒）、模型4次/工具6次、Cloud120秒；后台Job重试0，无自动补跑。
+
+| 顺序 | 场景/模式 | Run ID | 模型/工具 | 结果 |
+| --- | --- | --- | --- | --- |
+| 1 | S01/cloud | `94d13bbf-435d-42aa-8bbf-21c2f72e14a0` | 4/3 | 首次解析缺陷：make非零，原manifest BLOCKED保留；同份数据后验链PASS |
+| 2 | S01/cloud | `f2f07909-5603-42da-a89d-5cfb0c2bd164` | 3/3 | Cloud链PASS、命令退出0 |
+| 3 | S02/cloud | `148ddbc8-9e3d-41cf-b4fa-29b72d9562c1` | 2/3 | Cloud链PASS、命令退出0 |
+| 4 | S03/cloud | `cf2fa83d-35fa-4ec9-a7c2-aebefda9fb32` | 2/3 | Cloud链PASS、命令退出0 |
+| 5 | S01/off | `f87e1a8e-0c38-4760-9c53-91dff2440803` | 3/4 | A4负测PASS，未尝试Cloud摄取 |
+| 6 | S01/failure | `f182b285-0df3-4901-9696-083185a9fee2` | 3/3 | A4负测PASS，未尝试Cloud摄取 |
+
+批次：`issue91-20261027-095729-45e3fb`（首轮失败）、`issue91-20261027-100230-ec4360`（最终Smoke）、`issue91-20261027-100504-cd801e`（S02/S03）、`issue91-20261027-100831-0c5ef6`（OFF）、`issue91-20261027-101134-8824b9`（受控失败）。首次失败包含在6 Run内，不删除/改写其原manifest；后验复验另存文件。
+
+A4受控失败仅将原生唯一 Langfuse exporter 的目标改为本次创建的127.0.0.1接收器，并替换为合成认证值；不将真实Cloud密钥发送到本地，不记录请求Header/Body。接收器3次实际403与日志3次导出失败一致，Reader本身无403/超时，未实施Phase B。Otel OFF不向API传Cloud凭据；负测记录明确`chain_status=NOT RUN`，不生成伪链接。
+
+### 复现与离线验证
+
+以下命令仅为未来明确授权后的复现说明；**本轮6 Run已用尽，不再执行付费命令**。`make obs-lab-phase-a`默认各1次、共3 Run，避免默认批次耗尽整个6 Run额度；若重复运行需先重新核对总预算。
+
+```sh
+cd server
+uv sync --frozen --offline --python 3.13
+uv run --frozen ruff check src tests ../scripts/obs_lab.py ../scripts/obs_lab_api.py ../scripts/obs_lab_verify.py
+uv run --frozen pytest -q
+uv run --frozen pytest -q tests/test_obs_lab.py
+cd ..
+git diff --check
+
+# 本轮已实际执行：Run #1/#2；第二次最终Smoke通过，第一次失败原样保留。
+make obs-lab-smoke OBS_LAB_ENV=/absolute/path/to/authorized-private.env
+# 本轮已实际执行：Run #3/#4
+server/.venv/bin/python scripts/obs_lab.py --env-file /absolute/path/to/authorized-private.env --scenarios S02 S03 --repeats 1 --max-runs 2 --timeout 150 --cloud-wait 120
+# 本轮已实际执行：Run #5
+server/.venv/bin/python scripts/obs_lab.py --env-file /absolute/path/to/authorized-private.env --scenarios S01 --repeats 1 --max-runs 1 --export-mode off --timeout 150 --cloud-wait 0
+# 本轮已实际执行：Run #6
+server/.venv/bin/python scripts/obs_lab.py --env-file /absolute/path/to/authorized-private.env --scenarios S01 --repeats 1 --max-runs 1 --export-mode failure --timeout 150 --cloud-wait 0
+```
+
+完整离线回归 **916 passed、44 skipped**（193.26秒，新增后续6项测试前）；最终定向 **37 passed**、Ruff/diff check PASS。最终验收器还仅用六个保存的State/History及四条保存Cloud链重验：模型序列/回执均匹配，四条链均通过，不重放模型。代码head `12d80244804b94f0b5e0d7ee9a113f5db87c6eab` 的[CI](https://github.com/Vc-great/kube-triage-agent/actions/runs/40438912755)六项全部PASS，Python 919 passed/47 skipped（235.87秒），AO原生审查approved。Linux与本机的跳过数量不同，Skipped均不算PASS。最终报告提交的checks另见PR #95。
+
+新增回归覆盖完整链、缺根/缺最终Generation/缺Tool、错误Run/Session/参数/ID、时间倒序/循环父链、保留历史ToolMessage的多轮匹配、单参数标量表示、文本提到ID不能冒充ToolMessage、异步摄取补齐/预算耗尽、History缺最终模型、原生worker drain后flush及flush失败不改变执行结果。
+
+所有私有原始数据只留新Worktree的Git忽略`.local/observability-lab`，0700/0600；源模型/Langfuse凭据及编码认证串审计0命中。三个共享链接均public=false。未连接真实Kubernetes，未改变正式Reader/Namespace/8s/16KiB、Repair/HITL、Memory、Checkpoint或SSE。没有修改旧Worktree、稳定数据库/卷/端口或其他项目资源。
+
+### 回退与边界
+
+回退本轮新PR提交即可恢复旧Lab入口；正式服务的原有入口和配置从未改变。只关闭本次记录的进程/容器，不能执行全局down/prune。现有合成证据保留以便复核。A0–A5全部PASS后只报告Phase A READY FOR PHASE B；Phase B/#92仍须后续任务，不自动实施，不关闭#91。
+
+---
+
+## PR #94 历史报告（原样保留事实，不代表本轮状态）
 
 权威 Gate：[已合并设计 §5](plans/issue-91-observability-fault-lab.md#5-唯一权威验收-gate全部初始-not-run)。本报告仅记录实测，不降低或替代 Gate。
 
-## 当前结论
+### 当时结论
 
 **Phase A BLOCKED / STOP；Phase B NOT RUN。** 最新第三批是用户单独授权的一次 S01（最多 1 Run），使用新账号未注释配置与实验 API 专属 33210 代理，已通过 Cloud API 唯一关联真实 Trace：[S01 实际 Trace](https://jp.cloud.langfuse.com/project/cmvpzre7e002pad0evz874brn/traces/71131804848f292fa6f215d7db86836d)。无 exporter 错误，但 Cloud 仅查到 1 个 Generation、2 个 Tool，本地为 2 次模型决策，完整 LLM→Tool→LLM 未证实，A3 不得 PASS。S02/S03 未运行，不能宣称 Phase A 完成，不进入 Phase B，不关闭 #91，不实施 #92。
 
