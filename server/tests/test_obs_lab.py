@@ -27,29 +27,35 @@ def test_isolation_never_inherits_host_secrets_or_kubeconfig(monkeypatch):
 
 
 @pytest.mark.parametrize("tracing", [True, False])
-def test_japan_proxy_bypass_is_fixed_and_only_in_api(monkeypatch, tracing):
+def test_local_proxy_is_fixed_and_only_in_api(monkeypatch, tracing):
     monkeypatch.setenv("NO_PROXY", "*")
     monkeypatch.setenv("no_proxy", "unapproved.test")
+    monkeypatch.setenv("HTTPS_PROXY", "http://unapproved.test:9999")
     values = {"LLM_MODEL": "synthetic", "LLM_API_KEY": "fake", "LLM_BASE_URL": "https://example.test"}
     api, mock = lab.environments(values, {}, {"pg": 1, "redis": 2, "api": 3}, "batch", tracing)
-    assert api["NO_PROXY"] == api["no_proxy"] == "localhost,127.0.0.1,::1,jp.cloud.langfuse.com"
-    assert "NO_PROXY" not in mock
-    assert "no_proxy" not in mock
+    assert api["HTTP_PROXY"] == api["HTTPS_PROXY"] == "http://127.0.0.1:33210"
+    assert api["NO_PROXY"] == api["no_proxy"] == "localhost,127.0.0.1,::1,192.168.31.110"
+    assert not any(key.lower().endswith("_proxy") for key in mock)
 
 
-def test_requests_bypasses_system_proxy_for_japan_without_network(monkeypatch):
+def test_requests_uses_33210_for_japan_but_not_local_services(monkeypatch):
+    from urllib.request import getproxies_environment
+
     from requests import utils
 
-    monkeypatch.setattr(utils, "getproxies", lambda: {"https": "http://system-proxy.invalid:8888"})
+    monkeypatch.setattr(utils, "getproxies", lambda: getproxies_environment() or {
+        "https": "http://system-proxy.invalid:8888"})
     monkeypatch.setattr(utils, "proxy_bypass", lambda host: False)
     values = {"LLM_MODEL": "synthetic", "LLM_API_KEY": "fake", "LLM_BASE_URL": "https://example.test"}
     api, _ = lab.environments(values, {}, {"pg": 1, "redis": 2, "api": 3}, "batch")
-    for key in ("NO_PROXY", "no_proxy"):
+    for key in ("http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(key, raising=False)
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "no_proxy"):
         monkeypatch.setenv(key, api[key])
     url = "https://jp.cloud.langfuse.com/api/public/otel/v1/traces"
-    assert utils.select_proxy(url, utils.get_environ_proxies(url)) is None
-    other = "https://other.invalid/"
-    assert utils.select_proxy(other, utils.get_environ_proxies(other)) is not None
+    assert utils.select_proxy(url, utils.get_environ_proxies(url)) == "http://127.0.0.1:33210"
+    for local in ("http://127.0.0.1:8000/mcp", lab.APPROVED_PROVIDER_URL):
+        assert utils.select_proxy(local, utils.get_environ_proxies(local)) is None
 
 
 def observation(identifier, kind, start, end, parent="root", trace="real"):
