@@ -82,7 +82,10 @@ services:
       mock-mcp: {condition: service_started}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:2026/health', timeout=3)"]
-      interval: 5s
+      # Demo: probe during startup, then daily to limit Langfuse ingestion.
+      interval: 24h
+      start_period: 150s
+      start_interval: 5s
       timeout: 4s
       retries: 30
     restart: unless-stopped

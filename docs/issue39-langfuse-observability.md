@@ -15,6 +15,8 @@
 
 Compose 覆盖层无法通过格式校验证明 Key 属于预期项目，也不会替你审查真实数据。先核对目标 API、项目/卷归属、数据范围和访问控制；不要把 `docker compose config` 的完整输出贴到日志或 PR，因为其中可能含 Key。运行时不改变 Reader/Repair 权限，但正式 API 的输入、输出和工具结果可能被导出。本次已单独重建 dev01 正式 API，没有对真实集群运行云端 Smoke。
 
+正式与隔离测试 Compose 的 API 健康检查在就绪后每 24 小时执行一次，以减少 Demo 的 Langfuse 用量。启动宽限期为 150 秒，期间每 5 秒探测，首次成功后转为每日检查，避免依赖 `service_healthy` 的 Web 等待一天。dev01 继承正式配置；Docker Engine 须支持 `start_interval`（25.0+），Compose 须为 2.20.2+。这些设置需重建对应 API 容器才会生效。模型与 Graph 的 Langfuse 导出设置保持不变；降低探测频率不会恢复本账期已经耗尽的额度。
+
 ## 7890 代理
 
 所有本机原生 API 模式固定设置 `HTTP_PROXY` 和 `HTTPS_PROXY` 为 `http://127.0.0.1:7890`，不继承启动终端的其他代理值。无 Langfuse Key 时，模型请求仍走代理；有完整有效 Key 时，Aegra 的 OTLP HTTP 导出也走同一代理。Web、Mock MCP、Tunnel 不接收代理。模型与 Langfuse 的目标 URL 保持原样，不把代理写进 `LLM_BASE_URL` 或 `LANGFUSE_BASE_URL`。
