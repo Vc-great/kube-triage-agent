@@ -28,6 +28,8 @@ def objects(value):
 
 def signature(name, arguments):
     args = decoded(arguments)
+    if name in {"events_list", "pods_list_in_namespace"} and isinstance(args, str):
+        args = {"namespace": args}
     if not isinstance(args, dict):
         return None
     args = dict(args)
@@ -161,6 +163,9 @@ def verify_cloud(observations, row, project):
     for call in calls:
         identifier, name = call.get("id"), call.get("name")
         sig = signature(name, call.get("args"))
+        if not identifier or sig is None:
+            missing.append("invalid_local_call")
+            continue
         requests = [g for g in generations if (cloud_calls(g.get("output")) or {}).get(identifier) == sig]
         candidates = [t for t in tools if t.get("name") == name and
                       signature(name, decoded(t.get("input"))) == sig and t.get("id") not in used]

@@ -296,3 +296,21 @@ def test_tool_id_mentioned_only_in_user_text_is_not_tool_message_proof():
     row, rows = complete_evidence()
     rows[3]["input"] = {"messages": [{"role": "user", "content": '{"tool_call_id":"call-1"}'}]}
     assert not lab.verify_cloud(rows, row, "p")["chain_verified"]
+
+
+@pytest.mark.parametrize("name", ["events_list", "pods_list_in_namespace"])
+def test_native_single_argument_tool_input_is_normalized_from_its_schema(name):
+    row, rows = complete_evidence()
+    call = {"id": "call-1", "name": name, "args": {"namespace": "kube-triage-demo"}}
+    row["tool_calls"] = [call]
+    rows[1]["output"] = {"tool_calls": [call]}
+    rows[2].update(name=name, input="kube-triage-demo")
+    assert lab.verify_cloud(rows, row, "p")["chain_verified"]
+    rows[2]["input"] = "wrong-namespace"
+    assert not lab.verify_cloud(rows, row, "p")["chain_verified"]
+
+
+def test_scalar_input_is_not_guessed_for_multi_argument_tool():
+    row, rows = complete_evidence()
+    rows[2]["input"] = "kube-triage-demo"
+    assert not lab.verify_cloud(rows, row, "p")["chain_verified"]
