@@ -4,7 +4,9 @@
 
 ## 当前结论
 
-**Phase A BLOCKED / STOP；Phase B NOT RUN。** 两个独立的 S01 Smoke 各运行 1 Run，Aegra 终态均为 success；每批 Aegra 原生 Langfuse OTLP exporter 均两次返回 HTTP 403，Cloud Observations API v2 均返回 0 行。第二批是用户单独授权、加入实验 API 专属 NO_PROXY/no_proxy 后的唯一复测，仍触发 STOP。不能确认 Trace，没有可交付的真实 Cloud Trace URL，不拼接占位链接。不关闭 #91，不实施 #92。
+**Phase A BLOCKED / STOP；Phase B NOT RUN。** 最新第三批是用户单独授权的一次 S01（最多 1 Run），使用新账号未注释配置与实验 API 专属 33210 代理，已通过 Cloud API 唯一关联真实 Trace：[S01 实际 Trace](https://jp.cloud.langfuse.com/project/cmvpzre7e002pad0evz874brn/traces/71131804848f292fa6f215d7db86836d)。无 exporter 错误，但 Cloud 仅查到 1 个 Generation、2 个 Tool，本地为 2 次模型决策，完整 LLM→Tool→LLM 未证实，A3 不得 PASS。S02/S03 未运行，不能宣称 Phase A 完成，不进入 Phase B，不关闭 #91，不实施 #92。
+
+前两个独立 S01 Smoke 各运行 1 Run，Aegra 终态均 success；每批旧账号 OTLP 均两次 403、Cloud 0 rows。后续获授权的无 Span 代理诊断得到明确错误：使用量阈值超限，摄取暂停；更换账号后的空批次接口测试恢复 200。历史失败不能删除或被新结果改写。
 
 2026-10-26 核对 Planning PR #93 已合并；实施基线 `origin/main=b259b2ba2efda251e7d657957be6583a2f9c1e35`，独立 AO Worktree、分支 `ao/observability-lab/phase-a`。设计文件顶部仍保留 Proposed 的历史描述，是否合并以 GitHub #93 的 `merged=true` 为准。
 
@@ -50,7 +52,7 @@ server/.venv/bin/python scripts/obs_lab.py \
   --timeout 150 --cloud-wait 120
 ```
 
-运行需要 Docker、已有 `pgvector/pgvector:0.8.7-pg18-bookworm` 和 `redis:8.4.7-alpine` 镜像及 AO_SESSION_ID；不拉取镜像，不复用稳定 PG/Redis。实验入口仅允许与既有原生 deep-demo 相同的 CPA endpoint（精确 URL 白名单），保留 TLS 校验，不继承 Host proxy 环境变量。REST Cloud 客户端显式禁用代理。API 子进程专属 `NO_PROXY` 与 `no_proxy` 均固定为 `localhost,127.0.0.1,::1,jp.cloud.langfuse.com`，阻止 OTel requests 隐式使用 macOS 系统代理访问 Japan；不传给 Mock，不改变其他域名的代理选择或系统配置。正式 `dev.py` 的代理策略不变。
+运行需要 Docker、已有 `pgvector/pgvector:0.8.7-pg18-bookworm` 和 `redis:8.4.7-alpine` 镜像及 AO_SESSION_ID；不拉取镜像，不复用稳定 PG/Redis。实验入口仅允许与既有原生 deep-demo 相同的 CPA endpoint（精确 URL 白名单），保留 TLS 校验，不继承 Host proxy 环境变量。最新配置仅给 API 子进程设置 `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:33210`，`NO_PROXY/no_proxy=localhost,127.0.0.1,::1,192.168.31.110`：Langfuse 走指定代理，回环服务与已批准的内网模型直连。不传给 Mock，不修改系统代理或正式 `dev.py`。Runner 的只读 Cloud 客户端仍显式禁用代理，本次该路径查询成功；本轮没有扩大改动到 Runner 网络策略。
 
 真实 Smoke 批次：`issue91-20261026-220630-831875`，2026-10-26 14:06 UTC 开始。
 
@@ -90,6 +92,27 @@ server/.venv/bin/python scripts/obs_lab.py \
 
 离线测试模拟系统 HTTPS proxy，验证 Japan 请求不再选择代理，而其他域名仍可选择系统代理，并验证大小写两字段仅存在于 API 环境。**绕过代理后仍403，说明此前发现的代理差异不是已证实的唯一根因；不能宣称 Cloud 写入权限已恢复。** 本次不再重试写入，后续须重新明确授权。
 
+### 新账号与 API 33210 代理后的唯一授权 S01
+
+2026-10-27 用户更新私有配置，旧组已注释；安全解析仅使用未注释组，存在未注释重复键时仍拒绝启动。用户随后仅授权 API 的 33210 代理、一次 S01（最多 1 Run）及有界 Cloud Trace 验证。代码提交 `0fb58d3`，运行命令与上一节相同，`--scenarios S01 --repeats 1 --max-runs 1 --timeout 150 --cloud-wait 120`；未自动补跑、未运行其他场景。
+
+| 项目 | 2026-10-27 实际结果 |
+| --- | --- |
+| 批次 | `issue91-20261027-091807-60f9a6` |
+| Run 时间窗 | 01:18:15.152854–01:18:25.607849 UTC |
+| S01 Thread | `9947eab1-7ab0-4d22-be07-12d7d6f31daf` |
+| S01 Run | `f39c0c05-b186-4678-9b99-004444794bad`（不是 Trace ID） |
+| 模型/工具 | `gpt-6-luna`，本地 State 2 次模型决策、`pods_get/pods_log` 共 2 次，Tool Call ID 配对通过；Aegra success，SSE 无 error；不外推诊断正确 |
+| 导出 | exporter failure_count=0，无 403；Runner 退出码 0 表示协议/Trace 关联检查成功，不等于 A3 或全部 Gate PASS |
+| 实际 Cloud Trace | `71131804848f292fa6f215d7db86836d`；[真实链接](https://jp.cloud.langfuse.com/project/cmvpzre7e002pad0evz874brn/traces/71131804848f292fa6f215d7db86836d) |
+| Cloud 唯一关联 | 同一认证项目返回 project ID；Session 与可信 Run metadata 唯一映射到上述实际 traceId；在 120 秒预算内按 Session 与实际 Trace ID 分别分页只读查询 |
+| Cloud Observation | 两种读取均 8 条：1 GENERATION、2 TOOL、5 CHAIN；两条 Tool 均在首个 Generation 结束后开始，共同父节点为 tools CHAIN；完整根节点和尾部 Generation 在预算内未查到 |
+| 完整链路 | timeline_status=UNKNOWN、tool_call_id_status=NOT RUN、chain_status=UNKNOWN；不能用本地第二次模型响应代替 Cloud 尾部 Generation 证据，不为补 Trace 重跑模型 |
+| 链接访问 | Cloud rows 的 public 均 false；链接须由有该新项目权限的账号登录查看；人工 UI 访问 NOT RUN |
+| 清理/隐私 | 本次 API/Mock 和实验容器全部退出；既有 `kta-issue78-pg` 保留；输出 0700/0600，模型/Langfuse 配置凭据命中 0 |
+
+当前离线测试 15 passed、Ruff/diff check PASS。代理选择测试已改为验证 Japan 明确使用 33210，回环 MCP 与已批准内网 Provider 不使用代理；仅 API 子进程收到代理配置。真实 Trace 已摄取和可唯一关联；完整链路仍缺证据，按停止边界收尾，不增加 Run 或进入 Phase B。
+
 原始合成 State/History/SSE/Cloud rows 与日志位于 Git 忽略的 `.local/observability-lab/<batch_id>/`，目录 0700、文件 0600。不提交原始轨迹、密钥或项目私有信息。
 
 ## 逐 Gate 状态
@@ -97,11 +120,11 @@ server/.venv/bin/python scripts/obs_lab.py \
 | Gate | 状态 | 证据/缺口 |
 | --- | --- | --- |
 | A0 | PASS | 最新 main/锁版本核对；独立容器、端口、进程；test/Repair OFF/无 kubeconfig；未触碰 PR #90 |
-| A1 | BLOCKED | 两批各 1 次 S01 真模型+HTTP Thread/Run/SSE 已运行，S02/S03 因 Cloud STOP 未运行 |
-| A2 | BLOCKED | NO_PROXY 前后均 OTLP 403、v2 0 rows；URL/UI 均无法验证 |
-| A3 | BLOCKED | 本地 Tool 配对成功；Cloud 父子/时间线/Tool Call ID 未证实 |
+| A1 | BLOCKED | 三批各 1 次 S01；最新模型/协议成功，S02/S03 未获本轮运行授权且未执行 |
+| A2 | BLOCKED | 最新 S01 已 Cloud VERIFIED 并有实际链接；S02/S03 仍未验证，人工 UI NOT RUN，不以单场景冒充全部通过 |
+| A3 | BLOCKED | 最新 Cloud 1 Generation/2 Tool 与局部父子关系可见，本地 2 次模型决策；尾部 Generation/完整树与 Tool Call ID 云端核对未证实，链路 UNKNOWN |
 | A4 | NOT RUN | 离线回归通过、凭据审计 0 命中；真实 OTel OFF/网络故障行为对照未运行 |
-| A5 | BLOCKED | 两次 Smoke 均非零退出；即便 CI 通过也未满足 Cloud 完整链路，入口不代表验收通过 |
+| A5 | BLOCKED | 前两次 Smoke 非零，最新一次退出0且真实 Trace关联成功；但A1–A4未全部满足，即便CI通过也不能判收口 |
 | B0–B5 | NOT RUN | 未通过 Phase A，禁止进入 Phase B |
 
 ## 失败记录与恢复边界
@@ -109,7 +132,9 @@ server/.venv/bin/python scripts/obs_lab.py \
 1. 第一轮在模型和容器启动前因硬编码本机 proxy 7890 不监听而返回 URLError，0 Run。一次无凭据 Host 诊断确认直连 Japan HTTPS 正常，测试入口改为明确直连；不更改正式启动器或代理服务。
 2. 首个真实 Smoke 如上，模型成功但 OTLP 403，Cloud Gate 阻塞。按设计停止，不自动重发模型补 Trace。后续补充启动前失败 manifest 保存、导出错误脱敏摘要、中断和协议异常证据保存。原生审查后进一步加入 Provider 精确 URL 白名单、逐 Run 起止时间与异常批次只读 Cloud 证据恢复；该轮修复仅离线测试。
 3. 只读定位发现 requests 仍可能选中 macOS 系统代理，而 REST 查询显式绕过代理。用户随后单独授权实验 API 的 NO_PROXY/no_proxy 最小修复和 1 Run 复测。本次复测仍两次 403、Cloud 0 rows，已再次 STOP；没有因为修复假设而标 PASS，也未继续 Phase B。
+4. 用户明确要求通过本机 33210 代理诊断；项目 GET 200，两个无 Span 空批次 POST 均 403，脱敏 JSON 明确为 `Ingestion suspended: Usage threshold exceeded. Please upgrade your plan.`。旧账号摄取被用量阈值暂停，而非已证实的单纯代理故障；没有修改套餐或凭据。用户自行更新账号后，一次项目 GET 和一次空 OTLP POST 均200，没有模型/Span调用。
+5. 最新一次真实 S01 如上，已解除本次403症状并提供实际 Cloud链接，但完整 LLM→Tool→LLM仍不能确认。未进一步修改exporter/生命周期/正式Graph或新增模型调用来补证据。
 
-需由授权人确认 Langfuse OTLP 403 的写入权限/网络原因，再明确恢复。不能从 REST 读取成功推断 OTLP 写入成功，也不能把 403 简单解释为摄取延迟。恢复时先只读核对既有 Trace，不为补索引重复付费 Run；若需复测 Smoke，仍显式限制 Run 数。
+旧账号的403已有明确使用量阈值错误，新账号已实际摄取 S01 Trace。当前剩余问题是有界查询未证实完整链路，后续排查或复测需明确授权，不能自动扩大到S02/S03或B。任何恢复优先只读核对既有 Trace，不为补索引重复付费 Run；真实模型复测仍须显式限定 Run 数。
 
 回退：本 PR 仅增加入口/测试/说明与 Make targets，不改变正式服务默认值。退出启动器会关闭其创建的子进程和容器；数据库存储为临时数据，不影响现有卷。失败后先查看本批次资源记录，仅清理本批次标识的残留资源；不得全局 `docker compose down` 或 prune。删除本任务私有输出前由用户决定是否保留反例；回退代码可 revert 本 PR 提交。
