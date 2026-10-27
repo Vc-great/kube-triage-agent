@@ -1,4 +1,4 @@
-"""Issue #91 Phase A: isolated real-model Aegra + synthetic MCP + Cloud reads."""
+"""Issue #91 Phase A/B: isolated real-model Aegra + synthetic MCP + Cloud reads."""
 
 import argparse
 import base64
@@ -22,11 +22,12 @@ from pathlib import Path
 import dev
 from eval_issue12 import inspect as inspect_evidence
 from eval_phase3a import api, message_type, private_directory, write_private
+from obs_lab_faults import FAULTS, inspect_faults, model_429, retry_recovered
 from obs_lab_verify import history_matches, verify_cloud
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / "server/.venv/bin/python"
-CASES = {"S01": "sample-e", "S02": "sample-a", "S03": "sample-c"}
+CASES = {"S01": "sample-e", "S02": "sample-a", "S03": "sample-c", **{f"S0{i}": "sample-a" for i in range(4, 9)}}
 # Same explicit Provider boundary as the existing native deep-demo profile.
 APPROVED_PROVIDER_URL = "http://192.168.31.110:8317/v1"
 
@@ -101,10 +102,14 @@ def environments(values, cloud, ports, batch, tracing=True):
                    "NO_PROXY": "localhost,127.0.0.1,::1,192.168.31.110",
                    "no_proxy": "localhost,127.0.0.1,::1,192.168.31.110",
                    "SERVER_URL": f"http://127.0.0.1:{ports['api']}"}
+    if values.get("OBS_LAB_SCENARIO"):
+        environment["OBS_LAB_SCENARIO"] = values["OBS_LAB_SCENARIO"]
     if tracing:
         environment.update(cloud)
     mock = {**dev.safe_host_env(), "TRIAGE_ENV": "test", "TRIAGE_MOCK_DATASET": "issue12-blind-v1",
             "MOCK_MCP_HOST": "127.0.0.1"}
+    if values.get("OBS_LAB_SCENARIO"):
+        mock["OBS_LAB_SCENARIO"] = values["OBS_LAB_SCENARIO"]
     return environment, mock
 
 
@@ -123,11 +128,13 @@ def wait_ready(check, children, timeout=120):
 
 
 @contextmanager
-def isolated_processes(values, cloud, out, tracing=True, fault_endpoint=None):
+def isolated_processes(values, cloud, out, tracing=True, fault_endpoint=None, model_endpoint=None):
     if dev.occupied(8000):
         raise RuntimeError("BLOCKED: Mock 专用端口 8000 已被占用，不操作既有服务")
     ports = {name: free_port() for name in ("pg", "redis", "api")}
     env, mock = environments(values, cloud, ports, out.name, tracing)
+    if model_endpoint:
+        env["LLM_BASE_URL"] = model_endpoint
     if fault_endpoint:
         env.update(LANGFUSE_BASE_URL=fault_endpoint, LANGFUSE_PUBLIC_KEY="pk-lf-lab-only",
                    LANGFUSE_SECRET_KEY="sk-lf-lab-only")
@@ -223,7 +230,12 @@ def rejecting_exporter(out):
 
 @contextmanager
 def isolated(values, cloud, out, export_mode="cloud"):
-    if export_mode == "failure":
+    if values.get("OBS_LAB_SCENARIO") == "S07":
+        with (model_429(values, validate_provider,
+                       lambda records: write_private(out / "model-attempts.json", records)) as endpoint,
+              isolated_processes(values, cloud, out, model_endpoint=endpoint) as connection):
+            yield connection
+    elif export_mode == "failure":
         with (rejecting_exporter(out) as endpoint,
               isolated_processes(values, cloud, out, fault_endpoint=endpoint) as connection):
             yield connection
@@ -267,10 +279,15 @@ def execute(base, token, scenario, batch, timeout, row, evidence_path):
     write_private(evidence_path, raw_evidence)
     payload = {"assistant_id": "agent", "stream_mode": ["values"],
                "metadata": {"environment": "obs-lab", "batch_id": batch,
-                            "scenario_id": scenario, "case_version": "issue12-blind-v1-phase-a2"},
+                            "scenario_id": scenario, "case_version": ("issue12-blind-v1-phase-b1" if scenario in {"S04", "S05", "S06", "S07", "S08"}
+                                             else "issue12-blind-v1-phase-a2")},
                "input": {"messages": [{"role": "human", "content":
                    f"请只读诊断 kube-triage-demo 中 {CASES[scenario]}，先获取当前证据再回答，"
-                   "说明证据支持的结论和不确定性。不要执行修复。"}]}}
+                   + ("说明证据支持的结论和不确定性。不要执行修复。"
+                    + ("请检查 Pod 详情及容器日志；工具不可用时明确说明证据缺口。"
+                       if scenario in FAULTS else "")
+                    + ("关注是否存在瞬态变化，可在有必要时重新查询同一工具确认，"
+                       "最终说明每次查询的用途。" if scenario == "S08" else ""))}]}}
     request = urllib.request.Request(base + f"/threads/{thread}/runs/stream",
         data=json.dumps(payload).encode(), headers={"X-Api-Key": token,
         "Content-Type": "application/json", "Accept": "text/event-stream"})
@@ -302,6 +319,8 @@ def execute(base, token, scenario, batch, timeout, row, evidence_path):
                                raw_evidence.get("runs") or [], events))
         row["history_tool_pairs_valid"] = history_matches(
             raw_evidence.get("state") or {}, raw_evidence.get("history"))
+        messages = (raw_evidence.get("state") or {}).get("values", {}).get("messages", [])
+        row["fault_evidence"] = inspect_faults(messages, scenario)
         cases = json.loads((ROOT / "eval/issue12/blind-v1.json").read_text())["cases"]
         case = next(c for c in cases if c["target_pod"] == CASES[scenario])
         details = inspect_evidence((raw_evidence.get("state") or {}).get("values", {}).get("messages", []), case)
@@ -398,6 +417,51 @@ def wait_for_chain(cloud, manifest, out, timeout, now=time.monotonic, sleep=time
     return False
 
 
+def model_request_summary(out):
+    import re
+
+    path = out / "api.log"
+    statuses = []
+    for line in path.read_text().splitlines() if path.exists() else []:
+        match = re.search(r'HTTP Request: POST http://(?:192\.168\.31\.110:8317|127\.0\.0\.1:\d+)/v1/chat/completions "HTTP/1\.1 (\d{3})', line)
+        if match:
+            statuses.append(int(match.group(1)))
+    result = {"source": "model_client_http_log", "http_post_count": len(statuses) if statuses else None,
+              "statuses": statuses, "provider_internal_requests": "UNKNOWN"}
+    attempts = out / "model-attempts.json"
+    if attempts.exists():
+        result["fault_proxy_attempts"] = json.loads(attempts.read_text())
+    return result
+
+
+def write_index(out, manifest):
+    lines = ["# Observability Lab 实测索引", "", "仅引用 Cloud 实际返回的 ID；缺链不算验收通过。", "",
+             "| 场景 | Run | 协议 | 模型决策 | 业务结果 | Cloud/完整链 | 实际 Trace |",
+             "| --- | --- | --- | --- | --- | --- | --- |"]
+    for row in manifest["runs"]:
+        cloud = row.get("cloud") or {}
+        fault = row.get("fault_evidence") or {}
+        labels = ", ".join(sorted({r["outcome"] for r in fault.get("records", [])})) or "UNKNOWN"
+        link = f"[Trace]({cloud['url']})" if cloud.get("trace_verified") and cloud.get("url") else "无"
+        lines.append(f"| {row['scenario_id']} | {row.get('run_id', 'UNKNOWN')} | "
+                     f"{row['protocol_status']} | {row.get('model_decisions', 'UNKNOWN')} | "
+                     f"{labels} | {cloud.get('status', 'unknown')}/{cloud.get('chain_status', 'NOT RUN')} | {link} |")
+    (out / "index.md").write_text("\n".join(lines) + "\n")
+
+
+def run_accepted(row):
+    evidence = row["reader_evidence"]
+    common = (row["tool_pairs_valid"] and row["history_tool_pairs_valid"]
+              and evidence["tool_selection_compliant"] and not evidence["event_uid_mismatch"]
+              and not evidence["budget_exhausted"] and not evidence["model_execution_failure"]
+              and evidence["final_answer_present"])
+    fault = row["fault_evidence"]
+    if row["scenario_id"] in FAULTS:
+        return bool(common and fault["fault_observed"] and not fault["unexpected_outcomes"])
+    return bool(common and evidence["evidence_sufficient"] and not evidence["tool_failure_count"]
+                and not fault["unexpected_outcomes"])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--export-mode", choices=("cloud", "off", "failure"), default="cloud")
@@ -409,9 +473,15 @@ def main():
     parser.add_argument("--cloud-wait", type=int, default=120)
     args = parser.parse_args()
     count = len(args.scenarios) * args.repeats
-    if not (1 <= count <= args.max_runs <= 6 and 30 <= args.timeout <= 180
+    if not (1 <= count <= args.max_runs <= 10 and 30 <= args.timeout <= 180
             and 0 <= args.cloud_wait <= 960):
-        parser.error("需要 1..6 个有界 Run、30..180 秒超时、0..960 秒 Cloud 等待")
+        parser.error("需要 1..10 个有界 Run、30..180 秒超时、0..960 秒 Cloud 等待")
+    phase_b = any(s in {"S04", "S05", "S06", "S07", "S08"} for s in args.scenarios)
+    if phase_b and (len(args.scenarios) != 1 or not 1 <= args.repeats <= 2
+                    or args.export_mode != "cloud" or (args.scenarios == ["S07"] and args.repeats != 1)):
+        parser.error("Phase B 每批仅一个场景、最多2 Run、Cloud ON；S07每批1 Run以隔离首次429")
+    if not phase_b and args.max_runs > 6:
+        parser.error("Phase A 保留原最多6 Run预算")
     os.umask(0o077)
 
     def interrupted(_signum, _frame):
@@ -420,6 +490,8 @@ def main():
     signal.signal(signal.SIGINT, interrupted)
     signal.signal(signal.SIGTERM, interrupted)
     values, credentials = configuration(args.env_file)
+    if phase_b:
+        values["OBS_LAB_SCENARIO"] = args.scenarios[0]
     batch = "issue91-" + datetime.now().strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(3)
     out = ROOT / ".local/observability-lab" / batch
     private_directory(out)
@@ -441,30 +513,36 @@ def main():
                            "protocol_status": "unknown", "start": utc()}
                     manifest["runs"].append(row)
                     write_private(out / "manifest.json", manifest)
+                    previous_http = len(model_request_summary(out)["statuses"])
                     try:
                         execute(base, token, scenario, batch, args.timeout, row,
                                 out / f"{scenario}-{repeat + 1}-private.json")
                     finally:
                         row["end"] = utc()
+                        statuses = model_request_summary(out)["statuses"][previous_http:]
+                        row["model_http_requests"] = {"count": len(statuses) if statuses else None,
+                                                      "statuses": statuses,
+                                                      "source": "model_client_http_log"}
                         write_private(out / "manifest.json", manifest)
                     write_private(out / "manifest.json", manifest)
                     if (row["protocol_status"] != "success" or row["sse_error"]
                             or not row["models_observed"] or row["model_decisions"] > 4
                             or row["tool_count"] > 6):
                         raise RuntimeError("STOP: 模型/协议失败或预算超限，后续 Run NOT RUN")
-                    evidence = row["reader_evidence"]
-                    if (not row["tool_pairs_valid"] or not row["history_tool_pairs_valid"]
-                            or not evidence["tool_selection_compliant"]
-                            or not evidence["evidence_sufficient"] or evidence["tool_failure_count"]
-                            or evidence["event_uid_mismatch"] or evidence["budget_exhausted"]
-                            or evidence["model_execution_failure"] or not evidence["final_answer_present"]):
-                        raise RuntimeError("STOP: Reader/State/History 证据或诊断执行失败")
+                    if not run_accepted(row):
+                        raise RuntimeError("STOP: Reader/State/History 或预期故障验收失败")
                     failures = export_failures(out)
                     if failures["failure_count"] and args.export_mode == "cloud":
                         raise RuntimeError("STOP: Cloud exporter 失败，不继续模型 Run")
+        if args.scenarios == ["S07"]:
+            attempts = json.loads((out / "model-attempts.json").read_text())
+            manifest["model_attempts"] = attempts
+            if not retry_recovered(attempts, sum(r["model_decisions"] for r in manifest["runs"])):
+                raise RuntimeError("STOP: S07 首次429/真实Provider恢复未证实")
         manifest["end"] = utc()
         manifest["lifecycle"] = lifecycle_result(out)
         manifest["exporter"] = export_failures(out)
+        manifest["model_requests"] = model_request_summary(out)
         if args.export_mode != "cloud":
             fault = json.loads((out / "export-fault.json").read_text()) if args.export_mode == "failure" else {}
             for row in manifest["runs"]:
@@ -481,13 +559,15 @@ def main():
         ready = wait_for_chain(cloud, manifest, out, args.cloud_wait)
         print(json.dumps([{k: row.get(k) for k in ("scenario_id", "run_id", "cloud")}
                           for row in manifest["runs"]], ensure_ascii=False), flush=True)
+        write_index(out, manifest)
         if not ready:
-            raise RuntimeError("STOP: Cloud 完整调用链未证实，A3 BLOCKED，禁止 Phase B")
+            raise RuntimeError("STOP: Cloud 完整调用链/业务结果未证实，当前 Gate BLOCKED")
     except Exception as exc:
         manifest["end"] = utc()
         manifest["lifecycle"] = lifecycle_result(out)
         manifest["stop"] = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
         manifest["exporter"] = export_failures(out)
+        manifest["model_requests"] = model_request_summary(out)
         # A bounded read of already-created Runs never replays model requests.
         if manifest.get("project_id") and manifest["runs"] and not getattr(cloud, "deadline", None):
             try:
@@ -496,6 +576,7 @@ def main():
             except (OSError, ValueError, RuntimeError) as cloud_error:
                 manifest["cloud_recovery_error"] = type(cloud_error).__name__
         write_private(out / "manifest.json", manifest)
+        write_index(out, manifest)
         raise
 
 

@@ -33,6 +33,14 @@ def serve(port):
     if (os.getenv("TRIAGE_ENV") != "test" or os.getenv("OBS_LAB_ENTRY") != "true"
             or os.getenv("REPAIR_ENABLED") != "false"):
         raise RuntimeError("Observability Lab API requires isolated test mode and Repair OFF")
+    if os.getenv("OBS_LAB_SCENARIO"):
+        if os.environ["OBS_LAB_SCENARIO"] not in {"S04", "S05", "S06", "S07", "S08"}:
+            raise RuntimeError("Unknown test-only lab scenario")
+        from obs_lab_faults import observed_reader
+
+        from kube_triage import mcp_client
+
+        mcp_client.call_tool = observed_reader(mcp_client.call_tool)
     import uvicorn
     from aegra_api.main import app
 

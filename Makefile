@@ -48,3 +48,9 @@ obs-lab-smoke:
 	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --max-runs 1
 obs-lab-phase-a:
 	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --scenarios S01 S02 S03 --repeats 1 --max-runs 3
+
+# Phase B is deliberately one scenario per isolated batch; no Phase C/D entry.
+.PHONY: obs-lab-phase-b
+OBS_LAB_SCENARIO ?= S04
+obs-lab-phase-b:
+	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --scenarios "$(OBS_LAB_SCENARIO)" --repeats 1 --max-runs 1 --timeout 150 --cloud-wait 120
