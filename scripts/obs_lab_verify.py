@@ -155,6 +155,15 @@ def verify_cloud(observations, row, project):
             observation = parent
         return False
 
+    def ancestors(observation):
+        identifiers = set()
+        while observation and observation.get("id") not in identifiers:
+            identifiers.add(observation.get("id"))
+            observation = by_id.get(observation.get("parentObservationId"))
+        return identifiers
+
+    phase_b = row.get("scenario_id") in {"S04", "S05", "S06", "S07", "S08"}
+    business = [o for o in selected if o.get("name") == "reader_outcome"] if phase_b else []
     if not all(path_to_root(o) for o in selected):
         missing.append("complete_parent_tree")
     calls = row.get("tool_calls") or []
@@ -177,6 +186,14 @@ def verify_cloud(observations, row, project):
         requests = [g for g in generations if (cloud_calls(g.get("output")) or {}).get(identifier) == sig]
         candidates = [t for t in tools if t.get("name") == name and
                       signature(name, decoded(t.get("input"))) == sig and t.get("id") not in used]
+        if phase_b:
+            # Identical arguments may occur twice in one model decision. A trusted
+            # business Runnable carries the actual Call ID and owns its native Tool.
+            owners = [o for o in business if isinstance(decoded(o.get("output")), dict)
+                      and decoded(o["output"]).get("tool_call_id") == identifier
+                      and decoded(o["output"]).get("tool_name") == name]
+            candidates = ([t for t in candidates if owners[0]["id"] in ancestors(t)]
+                          if len(owners) == 1 else [])
         matches = []
         for left in requests:
             left_end = timestamp(left.get("endTime"))
@@ -205,8 +222,7 @@ def verify_cloud(observations, row, project):
     result["tool_call_id_source"] = (
         "Cloud Generation output/input IDs + Tool name/arguments/time + State/History pairing; "
         "Tool Span itself need not carry a direct Tool Call ID")
-    if row.get("scenario_id") in {"S04", "S05", "S06", "S07", "S08"}:
-        business = [o for o in selected if o.get("name") == "reader_outcome"]
+    if phase_b:
         records = (row.get("fault_evidence") or {}).get("records", [])
         if len(business) != len(calls) or len(records) != len(calls):
             missing.append("all_business_outcomes")
@@ -223,12 +239,7 @@ def verify_cloud(observations, row, project):
                 continue
             obs, tool = matches[0], by_id[bridge["tool_observation"]]
             # The business wrapper must enclose this exact native Tool execution.
-            parent = tool
-            ancestors = set()
-            while parent and parent.get("id") not in ancestors:
-                ancestors.add(parent.get("id"))
-                parent = by_id.get(parent.get("parentObservationId"))
-            if obs["id"] not in ancestors or not path_to_root(obs):
+            if obs["id"] not in ancestors(tool) or not path_to_root(obs):
                 missing.append("business_tool_parent:" + str(record["tool_call_id"]))
             business_proof.append({"tool_call_id": record["tool_call_id"],
                                    "observation_id": obs["id"], "outcome": record["outcome"]})

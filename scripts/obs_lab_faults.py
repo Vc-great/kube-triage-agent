@@ -1,6 +1,5 @@
 """Test-only Phase B outcomes and bounded, fixed-origin model fault injection."""
 
-import json
 import threading
 import urllib.error
 import urllib.request
@@ -71,23 +70,24 @@ def retry_recovered(attempts, decisions):
 
 def observed_reader(original):
     async def call(name, arguments, thread_id=None):
-        from opentelemetry import trace
+        from langchain_core.runnables import RunnableLambda
 
         from kube_triage.app_storage import _reader_context
 
         context = _reader_context.get() or {}
-        # This provider is Aegra's existing provider; no exporter is constructed here.
-        with trace.get_tracer("obs-lab").start_as_current_span("reader_outcome") as span:
-            span.set_attribute("openinference.span.kind", "CHAIN")
-            span.set_attribute("input.value", json.dumps({"tool_name": name,
-                               "tool_call_id": context.get("tool_call_id")}))
+        payload = None
+
+        async def invoke(_input):
+            nonlocal payload
             payload = await original(name, arguments, thread_id)
-            label = outcome(payload)
-            summary = {"tool_outcome": label, "wrapper_success": payload.get("ok"),
-                       "tool_name": name, "tool_call_id": context.get("tool_call_id")}
-            span.set_attribute("output.value", json.dumps(summary))
-            span.set_attribute("metadata", json.dumps(summary))
-            return payload
+            return {"tool_outcome": outcome(payload), "wrapper_success": payload.get("ok"),
+                    "tool_name": name, "tool_call_id": context.get("tool_call_id")}
+
+        # OpenInference propagates LangChain callback parents, not OTel current spans.
+        # The real Tool runs inside this Runnable; only the summary is its output.
+        await RunnableLambda(invoke, name="reader_outcome").ainvoke({
+            "tool_name": name, "tool_call_id": context.get("tool_call_id")})
+        return payload
     return call
 
 

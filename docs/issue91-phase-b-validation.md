@@ -17,7 +17,7 @@ Host 能力检查确认 Python 3.13.14、uv、两张锁定 Docker 镜像已存�
 - S06：Mock 的 `pods_log` 正常返回内层 `ok=false`，Reader 仍保持正式外层 `ok=true`。测试观测将其分类为 `business_error`，不改变原返回值或正式 Graph 的 ToolMessage 状态语义。
 - S07：仅回环监听的测试桩，首请求合成 429，随后仅转发至原已批准 Provider 的固定 `/v1/chat/completions`。不跟随重定向，不继承代理，不关闭 TLS 校验，不记录 Header/Body。每批仅 1 Run，最多 8 HTTP attempt；原 SDK `max_retries=1`、30 秒模型请求超时、4 次模型决策/6 次工具执行不变。编号 attempt 记录合成 429 与转发状态；实际 Provider 200、Run 和完整 Cloud 链均满足才可认定恢复。离线客户端重试测试使用明确的本地替身响应，不能证明真实 Provider 恢复。
 - S08：只提示模型在必要时确认瞬态变化，不生成/修改模型 Tool Call。按实际工具名和规范化参数计算重复次数，保留 Call ID、模型决策阶段；未触发时事件结果为 `NOT_TRIGGERED`。重复是否不必要、模型动机不能仅由次数推断。本轮未运行真实模型，因此事件结果为 **NOT RUN**，不能填写 NOT_TRIGGERED。
-- 实验 API 在实际 Reader 调用外创建 `reader_outcome` 业务 CHAIN 子 Span；复用 Aegra 的同一个 TracerProvider/exporter，原生 Tool/Generation 不重复上报。只记录工具名、实际 Call ID、业务分类和 wrapper 状态，不新增原始证据正文。正式 API 入口、Reader 策略、Repair/HITL、Checkpoint、Memory/SSE 均未修改。
+- 实验 API 将实际 Reader 调用包装为 `reader_outcome` LangChain Runnable，由原生 OpenInference callback 创建业务 CHAIN 子 Span并传播父链；复用 Aegra 的同一个 TracerProvider/exporter，原生 Tool/Generation 不重复上报。只记录工具名、实际 Call ID、业务分类和 wrapper 状态，不新增原始证据正文。正式 API 入口、Reader 策略、Repair/HITL、Checkpoint、Memory/SSE 均未修改。
 - Runner 将协议、业务结果、Trace 完整性分别记录。S04–S06 允许预期故障导致证据不足；仍要求故障实际发生、无其他错误、合法工具、State/History 配对及最终回答，不能仅凭注入成功判整个实验通过。最终回答的实际不确定性还需真实实验复核。
 - 保留 Phase A 全部完整链校验；Phase B 额外逐 Call ID 匹配 Cloud 业务输出，并验证业务 Span 是对应原生 Tool 的祖先。缺根/Generation/Tool/业务 Span、错误参数/ID/业务标签或父子关系均不得通过。只有从同一认证 Cloud 项目实际返回的 Trace ID 才生成 URL；未查询到的不拼接链接。
 - 每批一个场景、最多两 Run（S07 每批一 Run），并发 1；Phase A 原最多 6 Run 边界保留。私有 `manifest.json`、State/History/Cloud 数据与 `index.md` 位于 Git 忽略目录，继承 0700/0600。新增模型客户端 HTTP 日志计数；无可观察请求时为 NULL，Provider 内部调用数为 UNKNOWN，不估算费用。
@@ -64,4 +64,14 @@ make obs-lab-phase-b OBS_LAB_ENV=/absolute/path/to/authorized-private.env OBS_LA
 
 所有离线模型响应均明确作为测试替身，不生成真实 Run/Trace。没有读取真实集群数据、kubeconfig、私有历史，没有 Kubernetes 写入、Repair 或外部数据发送。正式入口不启用测试包装；回退本 PR 即移除新实验行为。仅清理本次创建的资源，禁止全局 down/prune。
 
-尚未验证：Cloud 对新增业务 Span output/metadata 的实际表示、原生 LangChain Span 与业务 Span 在 Aegra 中的真实父链、各场景模型自主工具选择、真实 429 恢复、S08 自主重复调用。离线父链/契约测试不能替代这些证据。须收到本轮配置路径授权并实际验收后才能完成 Phase B。
+尚未验证：Cloud 对新增业务 Span output/metadata 的实际表示、Aegra 云端导出后的原生 LangChain Span 与业务 Span 的父链、各场景模型自主工具选择、真实 429 恢复、S08 自主重复调用。离线父链/契约测试不能替代这些证据。须收到本轮配置路径授权并实际验收后才能完成 Phase B。
+
+
+## 首轮原生审查修复
+
+AO 原生审查对首个代码 head 提出两项有效问题，均在离线范围修复：
+
+1. P1：原手工 `start_as_current_span` 不符合锁定 OpenInference 的 LangChain callback 父级选择机制，会把业务 Span 分离到另一 Trace。改为实际执行的 `reader_outcome` Runnable，内部调用原 Reader，Runnable 仅返回脱敏业务摘要，外部仍返回原 payload。实际锁定 instrumentor + Runnable + StructuredTool 的离线集成验证单 Trace、`tools → reader_outcome → pods_log` 父链、输出不含额外 result 正文及关闭 OTel 后返回值不变。旧手工嵌套测试已替换，不能用其先前通过作为真实父链证据。
+2. P2：同一 Generation 中同名同参数不同 ID 的两个真实调用，不能仅靠名称/参数/时间窗区分。Phase B 匹配器先由业务 Runnable 的实际 Call ID 和原生 Tool 祖先链缩小候选，再保留原完整根/Generation/Tool/时间与 State/History 校验。增加同轮重复完整 Cloud 合成样本，以及错误 ID/父链/缺业务 Span 负例。不修改 Phase A 匹配条件，不放宽 Trace 完整性。
+
+这些修复只证明离线机制，仍没有真实 Cloud 证据。B1–B5 保持 BLOCKED；真实模型0/10、Cloud0请求。

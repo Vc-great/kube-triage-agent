@@ -203,35 +203,59 @@ def test_fault_through_real_mcp_transport_and_reader(monkeypatch, tmp_path, scen
             process.wait(timeout=10)
 
 
-def test_business_span_uses_existing_provider_and_preserves_reader_result(monkeypatch):
+def test_business_runnable_uses_real_openinference_parent_chain(monkeypatch):
+    from langchain_core.runnables import RunnableLambda
+    from langchain_core.tools import StructuredTool
     from obs_lab_faults import observed_reader
-    from opentelemetry import trace
+    from openinference.instrumentation.langchain import LangChainInstrumentor
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
     from kube_triage.app_storage import reader_context
 
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    monkeypatch.setattr(trace, "get_tracer", provider.get_tracer)
+    instrumentor = LangChainInstrumentor()
+    assert not instrumentor.is_instrumented_by_opentelemetry
+    instrumentor.instrument(tracer_provider=provider)
     payload = {"ok": True, "result": '{"ok":false}'}
 
-    async def original(name, arguments, thread_id):
-        with provider.get_tracer("native").start_as_current_span(name):
-            return payload
+    async def native(namespace: str, name: str):
+        return {"ok": False}
 
-    with reader_context(graph_id="agent", tool_call_id="actual-id"):
-        result = asyncio.run(observed_reader(original)("pods_log", {}, "thread"))
-    assert result is payload
-    native, business = exporter.get_finished_spans()
-    assert native.parent.span_id == business.context.span_id
-    assert business.name == "reader_outcome"
-    assert json.loads(business.attributes["output.value"]) == {
-        "tool_outcome": "business_error", "wrapper_success": True,
-        "tool_name": "pods_log", "tool_call_id": "actual-id"}
-    provider.shutdown()
+    tool = StructuredTool.from_function(coroutine=native, name="pods_log", description="Offline Tool")
+
+    async def original(name, arguments, thread_id):
+        assert await tool.ainvoke(arguments) == {"ok": False}
+        return payload
+
+    async def node(_input):
+        with reader_context(graph_id="agent", tool_call_id="actual-id"):
+            return await observed_reader(original)("pods_log", {
+                "namespace": "kube-triage-demo", "name": "sample-a"}, "thread")
+
+    try:
+        result = asyncio.run(RunnableLambda(node, name="tools").ainvoke({}))
+        assert result is payload
+        spans = {span.name: span for span in exporter.get_finished_spans()}
+        assert set(spans) == {"tools", "reader_outcome", "pods_log"}
+        native_span, business, outer = (spans[n] for n in ("pods_log", "reader_outcome", "tools"))
+        assert native_span.parent.span_id == business.context.span_id
+        assert business.parent.span_id == outer.context.span_id
+        assert len({span.context.trace_id for span in spans.values()}) == 1
+        assert json.loads(business.attributes["output.value"]) == {
+            "tool_outcome": "business_error", "wrapper_success": True,
+            "tool_name": "pods_log", "tool_call_id": "actual-id"}
+        assert "result" not in business.attributes["output.value"]
+    finally:
+        instrumentor.uninstrument()
+        provider.shutdown()
+    # Disabling OTel must preserve the actual Reader result as well.
+    assert asyncio.run(RunnableLambda(node, name="tools").ainvoke({})) is payload
+    assert len(exporter.get_finished_spans()) == 3
 
 
 def test_locked_model_client_retries_synthetic_429_once(monkeypatch):
@@ -329,3 +353,40 @@ def test_retry_recovery_requires_numbered_real_forwarding_and_model_count(fault)
     elif fault == "failure":
         attempts[1]["status"] = 403
     assert retry_recovered(attempts, decisions) is (fault is None)
+
+
+@pytest.mark.parametrize("broken", [None, "wrong_call_id", "sibling_tool", "missing_business"])
+def test_same_generation_duplicate_tools_match_by_business_call_id(broken):
+    row, _ = complete_evidence()
+    first = row["tool_calls"][0]
+    second = {**first, "id": "call-2"}
+    row.update(scenario_id="S08", tool_calls=[first, second])
+    rows = [observation("root", "CHAIN", "0", "15", None),
+            observation("request", "GENERATION", "1", "2"),
+            observation("response", "GENERATION", "12", "13")]
+    rows[1]["output"] = {"tool_calls": [first, second]}
+    rows[2]["input"] = {"messages": [{"tool_call_id": c["id"], "content": "synthetic"}
+                                    for c in (first, second)]}
+    records = []
+    for index, call in enumerate((first, second)):
+        offset = 3 + index * 4
+        business = observation(f"business-{index}", "CHAIN", str(offset), str(offset + 3))
+        business.update(name="reader_outcome", output={"tool_call_id": call["id"],
+                        "tool_name": call["name"], "tool_outcome": "success", "wrapper_success": True})
+        tool = observation(f"tool-{index}", "TOOL", str(offset + 1), str(offset + 2), parent=business["id"])
+        tool.update(name=call["name"], input=call["args"])
+        records.append({"tool_call_id": call["id"], "name": call["name"],
+                        "outcome": "success", "wrapper_success": True})
+        rows.extend([business, tool])
+    row["fault_evidence"] = {"records": records}
+    if broken == "wrong_call_id":
+        rows[5]["output"]["tool_call_id"] = "wrong"
+    elif broken == "sibling_tool":
+        rows[6]["parentObservationId"] = "root"
+    elif broken == "missing_business":
+        rows.pop(5)
+    result = lab.verify_cloud(rows, row, "project")
+    assert result["chain_verified"] is (broken is None)
+    if broken is None:
+        assert len(result["tool_call_proof"]) == 2
+        assert {p["tool_observation"] for p in result["tool_call_proof"]} == {"tool-0", "tool-1"}
