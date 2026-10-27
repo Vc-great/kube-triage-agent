@@ -78,10 +78,18 @@ def history_matches(state, history):
         return ([(x.get("id"), signature(x.get("name"), x.get("args"))) for x in c],
                 [(x.get("tool_call_id"), x.get("status"), x.get("content")) for x in t])
 
+    def model_sequence(messages):
+        return [(msg.get("response_metadata", {}).get("model_name") or
+                 msg.get("response_metadata", {}).get("model"),
+                 [call.get("id") for call in msg.get("tool_calls", [])])
+                for msg in messages if msg.get("type", msg.get("role")) in {"ai", "assistant"}]
+
     expected = projection(calls, tools)
+    expected_models = model_sequence(state.get("values", {}).get("messages", []))
     for snapshot in history:
         c, t, matched = message_pairs(snapshot.get("values", {}).get("messages", []))
-        if matched and projection(c, t) == expected:
+        if (matched and projection(c, t) == expected
+                and model_sequence(snapshot.get("values", {}).get("messages", [])) == expected_models):
             return True
     return False
 

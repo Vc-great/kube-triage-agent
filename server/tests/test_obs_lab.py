@@ -314,3 +314,17 @@ def test_scalar_input_is_not_guessed_for_multi_argument_tool():
     row, rows = complete_evidence()
     rows[2]["input"] = "kube-triage-demo"
     assert not lab.verify_cloud(rows, row, "p")["chain_verified"]
+
+
+def test_history_with_missing_final_model_decision_is_not_complete_evidence():
+    from obs_lab_verify import history_matches
+
+    state = {"values": {"messages": [
+        {"type": "ai", "response_metadata": {"model_name": "synthetic"},
+         "tool_calls": [{"id": "c", "name": "events_list", "args": {"namespace": "kube-triage-demo"}}]},
+        {"type": "tool", "tool_call_id": "c", "content": "synthetic"},
+        {"type": "ai", "response_metadata": {"model_name": "synthetic"}, "content": "done"}]}}
+    history = deepcopy(state)
+    history["values"]["messages"].pop()
+    assert not history_matches(state, [history])
+    assert history_matches(state, [deepcopy(state)])
