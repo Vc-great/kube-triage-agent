@@ -75,3 +75,6 @@ AO 原生审查对首个代码 head 提出两项有效问题，均在离线范�
 2. P2：同一 Generation 中同名同参数不同 ID 的两个真实调用，不能仅靠名称/参数/时间窗区分。Phase B 匹配器先由业务 Runnable 的实际 Call ID 和原生 Tool 祖先链缩小候选，再保留原完整根/Generation/Tool/时间与 State/History 校验。增加同轮重复完整 Cloud 合成样本，以及错误 ID/父链/缺业务 Span 负例。不修改 Phase A 匹配条件，不放宽 Trace 完整性。
 
 这些修复只证明离线机制，仍没有真实 Cloud 证据。B1–B5 保持 BLOCKED；真实模型0/10、Cloud0请求。
+
+
+审查修复后的代码 head `f62d7c8`：`server/` 下完整 Ruff 命令及 diff check PASS，全部 Phase A/B 定向 **76 passed（14.06秒）**，完整后端回归 **961 passed / 44 skipped（177.95秒）**。其 [CI](https://github.com/Vc-great/kube-triage-agent/actions/runs/40444429515) 在本次报告更新时仍运行中，最终 CI/原生复审状态见 [PR #96 checks](https://github.com/Vc-great/kube-triage-agent/pull/96/checks) 与 PR 最新验收记录；此处不预判通过。两项已修复的审查线程已标记 resolved，不等同复审批准。真实模型与 Cloud 调用继续为0，PR保持Draft。
