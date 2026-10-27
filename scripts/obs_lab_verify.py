@@ -1,4 +1,4 @@
-"""Pure Phase A evidence validation: existence is separate from a proven chain."""
+"""Pure Phase A/B evidence validation: existence is separate from a proven chain."""
 
 import json
 from collections import Counter
@@ -205,6 +205,36 @@ def verify_cloud(observations, row, project):
     result["tool_call_id_source"] = (
         "Cloud Generation output/input IDs + Tool name/arguments/time + State/History pairing; "
         "Tool Span itself need not carry a direct Tool Call ID")
+    if row.get("scenario_id") in {"S04", "S05", "S06", "S07", "S08"}:
+        business = [o for o in selected if o.get("name") == "reader_outcome"]
+        records = (row.get("fault_evidence") or {}).get("records", [])
+        if len(business) != len(calls) or len(records) != len(calls):
+            missing.append("all_business_outcomes")
+        business_proof = []
+        for record in records:
+            matches = [o for o in business if isinstance(decoded(o.get("output")), dict)
+                       and decoded(o["output"]).get("tool_call_id") == record["tool_call_id"]
+                       and decoded(o["output"]).get("tool_name") == record["name"]
+                       and decoded(o["output"]).get("tool_outcome") == record["outcome"]
+                       and decoded(o["output"]).get("wrapper_success") == record["wrapper_success"]]
+            bridge = next((p for p in proof if p["tool_call_id"] == record["tool_call_id"]), None)
+            if len(matches) != 1 or not bridge:
+                missing.append("business_outcome:" + str(record["tool_call_id"]))
+                continue
+            obs, tool = matches[0], by_id[bridge["tool_observation"]]
+            # The business wrapper must enclose this exact native Tool execution.
+            parent = tool
+            ancestors = set()
+            while parent and parent.get("id") not in ancestors:
+                ancestors.add(parent.get("id"))
+                parent = by_id.get(parent.get("parentObservationId"))
+            if obs["id"] not in ancestors or not path_to_root(obs):
+                missing.append("business_tool_parent:" + str(record["tool_call_id"]))
+            business_proof.append({"tool_call_id": record["tool_call_id"],
+                                   "observation_id": obs["id"], "outcome": record["outcome"]})
+        result["business_proof"] = business_proof
+        if missing:
+            result["status"] = "ingestion_pending"
     result["chain_verified"] = not missing
     if not missing:
         result.update(chain_status="PASS", timeline_status="PASS", tool_call_id_status="PASS")

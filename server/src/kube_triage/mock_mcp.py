@@ -43,6 +43,15 @@ def load_pods() -> dict:
 PODS = load_pods()
 
 
+def lab_fault():
+    scenario = os.getenv("OBS_LAB_SCENARIO", "")
+    if scenario and (os.getenv("TRIAGE_ENV") != "test"
+                     or os.getenv("TRIAGE_MOCK_DATASET") != "issue12-blind-v1"
+                     or scenario not in {"S04", "S05", "S06", "S07", "S08"}):
+        raise ValueError("Invalid test-only Observability Lab scenario")
+    return scenario
+
+
 def check_namespace(namespace: str) -> None:
     if namespace != NAMESPACE:
         raise ValueError(f"Namespace denied: only {NAMESPACE} is allowed")
@@ -79,6 +88,8 @@ def pods_get(namespace: str, name: str) -> dict:
             import time
             time.sleep(8.2)  # Exercise the real Reader's existing 8s deadline.
             raise TimeoutError("Synthetic delayed Reader timeout")
+    if lab_fault() == "S05" and name == "sample-a":
+        raise ValueError("Synthetic 403 Forbidden")
     item = PODS[name]
     if os.getenv("TRIAGE_MOCK_DATASET") == "review-web":
         return {"kind": "Pod", "metadata": {"namespace": namespace, "name": name,
@@ -126,6 +137,14 @@ def pods_log(namespace: str, name: str, tail: int = 20, container: str | None = 
         raise ValueError("tail must be an integer from 1 to 100")
     if container is not None and container != "app":
         raise ValueError("Unknown demo container")
+    scenario = lab_fault()
+    if name == "sample-a":
+        if scenario == "S04":
+            import time
+            time.sleep(8.2)  # Existing Reader 8s deadline remains authoritative.
+        if scenario == "S06":
+            return {"mock": True, "ok": False, "error_type": "business_error",
+                    "error": "Synthetic log archive unavailable"}
     fixture = PODS.get(name, {"log": None})["log"]
     return {"mock": True, "source": "static-fixture", "namespace": namespace,
             "name": name, "container": container or "app", "available": fixture is not None,
@@ -145,4 +164,5 @@ if __name__ == "__main__":
 
     if not test_mode():
         raise SystemExit("Mock MCP 仅允许 TRIAGE_ENV=test")
+    lab_fault()
     mcp.run(transport="streamable-http")
