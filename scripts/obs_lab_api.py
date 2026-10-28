@@ -41,10 +41,31 @@ def serve(port):
         from kube_triage import mcp_client
 
         mcp_client.call_tool = observed_reader(mcp_client.call_tool)
+    attempt_client = None
+    if os.getenv("OBS_LAB_SCENARIO") == "S07":
+        import httpx
+        from obs_lab_faults import attempt_transport, observed_model_factory
+
+        from kube_triage import llm
+
+        # Only the test process uses this factory. Graph imports it after installation.
+        attempt_client = httpx.AsyncClient(transport=attempt_transport(httpx.AsyncHTTPTransport()))
+        llm.chat_model = observed_model_factory(llm.chat_model, attempt_client)
     import uvicorn
     from aegra_api.main import app
 
-    app.router.lifespan_context = draining_lifespan(app.router.lifespan_context)
+    original = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            async with original(app):
+                yield
+        finally:
+            if attempt_client is not None:
+                await attempt_client.aclose()
+
+    app.router.lifespan_context = draining_lifespan(lifespan)
     uvicorn.run(app, host="127.0.0.1", port=port)
 
 

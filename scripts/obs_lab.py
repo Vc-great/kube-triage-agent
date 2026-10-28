@@ -23,7 +23,7 @@ import dev
 from eval_issue12 import inspect as inspect_evidence
 from eval_phase3a import api, message_type, private_directory, write_private
 from obs_lab_faults import FAULTS, inspect_faults, model_429, retry_recovered
-from obs_lab_verify import history_matches, verify_cloud
+from obs_lab_verify import final_answer, history_answer_matches, history_matches, verify_cloud
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / "server/.venv/bin/python"
@@ -321,6 +321,10 @@ def execute(base, token, scenario, batch, timeout, row, evidence_path):
             raw_evidence.get("state") or {}, raw_evidence.get("history"))
         messages = (raw_evidence.get("state") or {}).get("values", {}).get("messages", [])
         row["fault_evidence"] = inspect_faults(messages, scenario)
+        row["history_final_answer_valid"] = history_answer_matches(
+            raw_evidence.get("state") or {}, raw_evidence.get("history"))
+        row["final_answer"] = final_answer(messages)
+        row["tool_receipts"] = [m for m in messages if message_type(m) == "tool"]
         cases = json.loads((ROOT / "eval/issue12/blind-v1.json").read_text())["cases"]
         case = next(c for c in cases if c["target_pod"] == CASES[scenario])
         details = inspect_evidence((raw_evidence.get("state") or {}).get("values", {}).get("messages", []), case)
@@ -398,7 +402,8 @@ def refresh_cloud(cloud, manifest, out):
                 observations = cloud.observations(row, start, end, trace_id=preliminary["trace_id"])
             write_private(out / f"{row['scenario_id']}-{row['repeat']}-cloud.json", observations)
             row["cloud"] = verify_cloud(observations, row, manifest["project_id"])
-        ready &= row["cloud"].get("chain_verified", False)
+        ready &= (row["cloud"].get("scenario_observable") == "PASS" if row.get("scenario_id") in
+                  {"S04", "S05", "S06", "S07", "S08"} else row["cloud"].get("chain_verified", False))
     return ready
 
 
@@ -435,9 +440,9 @@ def model_request_summary(out):
 
 
 def write_index(out, manifest):
-    lines = ["# Observability Lab 实测索引", "", "仅引用 Cloud 实际返回的 ID；缺链不算验收通过。", "",
-             "| 场景 | Run | 协议 | 模型决策 | 业务结果 | Cloud/完整链 | 实际 Trace |",
-             "| --- | --- | --- | --- | --- | --- | --- |"]
+    lines = ["# Observability Lab 实测索引", "", "仅引用 Cloud 实际返回的 ID；场景可观测性与原生完整性分别验收。", "",
+             "| 场景 | Run | 协议 | 模型决策 | 业务结果 | trace_verified | scenario_observable | native_trace_complete | diagnosis_behavior | event_result | 缺失/来源 | 实际 Trace |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for row in manifest["runs"]:
         cloud = row.get("cloud") or {}
         fault = row.get("fault_evidence") or {}
@@ -445,7 +450,11 @@ def write_index(out, manifest):
         link = f"[Trace]({cloud['url']})" if cloud.get("trace_verified") and cloud.get("url") else "无"
         lines.append(f"| {row['scenario_id']} | {row.get('run_id', 'UNKNOWN')} | "
                      f"{row['protocol_status']} | {row.get('model_decisions', 'UNKNOWN')} | "
-                     f"{labels} | {cloud.get('status', 'unknown')}/{cloud.get('chain_status', 'NOT RUN')} | {link} |")
+                     f"{labels} | {cloud.get('trace_verified', False)} | {cloud.get('scenario_observable', 'NOT RUN')} | "
+                     f"{cloud.get('native_trace_complete', 'UNKNOWN')} | {cloud.get('diagnosis_behavior', 'UNKNOWN')} | "
+                     f"{cloud.get('event_result', 'NOT RUN')} | "
+                     f"{cloud.get('missing', [])}; {cloud.get('scenario_missing', [])}; "
+                     f"{cloud.get('evidence_source', 'UNKNOWN')} | {link} |")
     (out / "index.md").write_text("\n".join(lines) + "\n")
 
 
@@ -537,6 +546,8 @@ def main():
         if args.scenarios == ["S07"]:
             attempts = json.loads((out / "model-attempts.json").read_text())
             manifest["model_attempts"] = attempts
+            for row in manifest["runs"]:
+                row["model_attempts"] = attempts
             if not retry_recovered(attempts, sum(r["model_decisions"] for r in manifest["runs"])):
                 raise RuntimeError("STOP: S07 首次429/真实Provider恢复未证实")
         manifest["end"] = utc()
@@ -561,7 +572,7 @@ def main():
                           for row in manifest["runs"]], ensure_ascii=False), flush=True)
         write_index(out, manifest)
         if not ready:
-            raise RuntimeError("STOP: Cloud 完整调用链/业务结果未证实，当前 Gate BLOCKED")
+            raise RuntimeError("STOP: Cloud/场景证据或模型回答审阅未完成，当前 Gate BLOCKED")
     except Exception as exc:
         manifest["end"] = utc()
         manifest["lifecycle"] = lifecycle_result(out)
