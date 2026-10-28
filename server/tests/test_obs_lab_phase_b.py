@@ -328,3 +328,16 @@ def test_history_final_answer_must_match_same_complete_snapshot():
     assert history_answer_matches(state, [history])
     history["values"]["messages"][-1]["content"] = "contradictory history"
     assert not history_answer_matches(state, [history])
+
+
+def test_complete_native_chain_and_wrong_business_label_are_independent_dimensions():
+    row, rows = cancelled_evidence()
+    tool = observation("log-tool", "TOOL", "7", "8", "log-business")
+    tool.update(name="pods_log", input=row["tool_calls"][1]["args"])
+    rows.append(tool)
+    rows[6]["output"]["tool_outcome"] = "success"  # Wrong Cloud business classification.
+    result = verify_cloud(rows, row, "project")
+    assert result["native_trace_complete"] == "PASS"
+    assert result["native_missing"] == []
+    assert result["scenario_observable"] == "BLOCKED"
+    assert not result["chain_verified"]  # Legacy combined gate remains strict.

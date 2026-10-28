@@ -18,11 +18,11 @@
 | 无独立字段 | `native_trace_complete` | PASS / FAIL / UNKNOWN；仅已证实 S04 timeout 取消 TOOL 可场景 PASS、原生 FAIL |
 | `final_answer_present` 仅证明存在 | `diagnosis_behavior` | 显式证据审阅 PASS / FAIL / UNKNOWN，绑定最终回答 SHA-256 和审阅来源；Codex/人工来源如实区分 |
 | `duplicate_event` / 本地代理记录 | `event_result` | S08 从实际调用名/规范化参数度量；未触发 NOT_TRIGGERED；S07 只有本地与 Cloud attempt/模型决策关联齐备才 RECOVERED |
-| `missing` | 保留原生失败清单，新增 `scenario_missing`、`cancelled_tool_calls`、`scenario_proof`、`evidence_source` | 分开保留缺失项、Call ID、业务 Observation ID、前后 Generation ID 与来源，不把缺原生桥误写为业务 Span 不存在 |
+| `missing` | 保留严格组合失败清单，新增独立 `native_missing`、`scenario_missing`、`cancelled_tool_calls`、`scenario_proof`、`evidence_source` | 分开保留缺失项、Call ID、业务 Observation ID、前后 Generation ID 与来源，不把缺原生桥误写为业务 Span 不存在 |
 
 S04 例外只覆盖本实验 `pods_log(namespace=kube-triage-demo,name=sample-a)` 的真实 timeout 回执，wrapper=false、业务耗时至少 8 秒，业务 Span 与原有 `tools` 父链/前后 Generation 时序一致；原生匹配 TOOL 确实缺失，正常工具必须完整。额外 TOOL、缺 Generation/业务 Span、错父链/Call ID/参数/分类/身份、State 回执正文不一致、最终回答不一致均 BLOCKED。不添加替代 TOOL，不抑制取消，不延长超时。
 
-S05/S06 仍要求原生 TOOL 与业务错误双维度证明。S01–S03 继续由原有完整链 Gate 决定，Phase B 的已知例外不会用于 Phase A。
+S05/S06 仍要求原生 TOOL 与业务错误双维度证明。原生链完整但业务标签错误时，`native_trace_complete=PASS`、`scenario_observable=BLOCKED`；业务错误不会污染原生完整性字段，旧组合 Gate 仍失败。S01–S03 继续由原有完整链 Gate 决定，Phase B 的已知例外不会用于 Phase A。
 
 实时 Runner 没有人工审阅文件，故新 Phase B Run 的 `diagnosis_behavior=UNKNOWN`、`scenario_observable=BLOCKED`，会保留证据并 STOP，不自动开始下一批。完成回答审阅后用下述离线入口形成单独结果；不重放模型，也不回写历史 manifest。
 
@@ -89,7 +89,7 @@ cd ..
 git diff --check
 ```
 
-最终 Ruff 与 `git diff --check` PASS，Phase A/B 定向 **115 passed（13.35秒）**；冻结最终代码后的完整后端回归 **1000 passed / 44 skipped（160.68秒）**；CI/原生评审待回查。首次 sandbox 定向 99 passed / 3 skipped / 2 failed：回环 bind 被隔离禁止；Host 重跑104 passed，补业务属性与回执校验后105 passed。补充取消复现、离线 CLI 输出权限/禁止覆盖、S05/S06 双维度、History 最终回答和决策分组后定向115 passed。一次完整回归在运行中修改模块，导致旧 Verifier 与新入口混用 ImportError（997 passed / 44 skipped / 1 failed）；该轮不计 PASS，冻结代码后重新运行完整回归。Skipped 不计 PASS。前端无变更，前端本地 lint/build NOT RUN；CI 按仓库流程核验。
+最终 Ruff 与 `git diff --check` PASS，字段独立性修正后 Phase A/B 定向 **116 passed（13.40秒）**。修正前冻结代码完整后端回归 **1000 passed / 44 skipped（160.68秒）**；修正后的完整回归、最新 CI/原生评审结果见 PR #99 与最终交付记录。首次 sandbox 定向 99 passed / 3 skipped / 2 failed：回环 bind 被隔离禁止；Host 重跑104 passed，补业务属性与回执校验后105 passed。补充取消复现、离线 CLI 输出权限/禁止覆盖、S05/S06 双维度、History 最终回答和决策分组后定向115 passed。一次完整回归在运行中修改模块，导致旧 Verifier 与新入口混用 ImportError（997 passed / 44 skipped / 1 failed）；该轮不计 PASS，冻结代码后重新运行完整回归。Skipped 不计 PASS。前端无变更，前端本地 lint/build NOT RUN；CI 按仓库流程核验。
 
 ## 残余风险与回退
 
@@ -97,4 +97,4 @@ git diff --check
 
 回退：撤回本增量 PR 的提交即可恢复旧 Runner/Verifier/实验入口；正式服务部署无需调整。保留原私有证据和 #97 历史失败，不执行全局 Docker 清理或修改其他会话资源。
 
-**离线准备已完成**：历史 JSON 只读复验、Ruff、115项定向及1000项完整回归已通过。是否 **READY FOR PHASE B REAL VALIDATION** 以 [PR #99 最新 CI](https://github.com/Vc-great/kube-triage-agent/pull/99/checks) 与原生评审后的最终交付结论为准；本文记录时尚在等待，不能预判 PASS。即使就绪，也不包含新增真实模型 Run 的授权。
+**离线准备已完成**：历史 JSON 只读复验、Ruff、116项定向已通过（此前完整回归1000通过/44跳过）。是否 **READY FOR PHASE B REAL VALIDATION** 以 [PR #99 最新 CI](https://github.com/Vc-great/kube-triage-agent/pull/99/checks) 与原生评审后的最终交付结论为准；本文记录时尚在等待，不能预判 PASS。即使就绪，也不包含新增真实模型 Run 的授权。

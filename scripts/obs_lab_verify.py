@@ -275,7 +275,10 @@ def history_answer_matches(state, history):
 def verify_cloud(observations, row, project):
     """Keep the native gate intact; prove Phase B independently, never synthesize spans."""
     result = verify_native(observations, row, project)
-    result.update(native_trace_complete=("PASS" if result["chain_verified"] else
+    native_missing = [m for m in result["missing"] if m != "all_business_outcomes"
+                      and not m.startswith(("business_outcome:", "business_tool_parent:"))]
+    result["native_missing"] = native_missing
+    result.update(native_trace_complete=("PASS" if result["trace_verified"] and not native_missing else
                                         "FAIL" if result["trace_verified"] else "UNKNOWN"),
                   scenario_observable="BLOCKED", diagnosis_behavior="UNKNOWN", event_result="NOT RUN",
                   scenario_missing=[], cancelled_tool_calls=[], scenario_proof=[],
