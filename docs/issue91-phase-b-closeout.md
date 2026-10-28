@@ -41,7 +41,14 @@ S07/S08 本报告首次归档时 NOT RUN；B2/B3/B5 未完成，不能建议关�
 
 S01–S03原生TOOL没有直接Call ID字段的情况，使用Generation结构化output/input、Tool名称/参数/时间与State/History建立桥接，不猜造属性；具体全部Call ID见Phase A报告。S01–S06本轮逐条审阅最终回答：S01保留快照/应用层限制，S02说明配置缺失但不猜上游原因，S03只引用目标Pod的NotFound事件，S04–S06保留上述取证缺口。审阅来源为Codex，不冒充真人独立审阅或新增诊断评分。
 
-审阅后使用当前main的 `obs_lab_reverify.reverify`（`obs_lab_reverify.py` CLI调用的同一只读函数）对五个保存批次进行复验，绑定最终回答SHA-256，结果为S01/S02/S03/S05/S06场景及原生均PASS，S04场景PASS/原生FAIL。每批manifest/private/cloud前后SHA-256一致，未读取配置、未访问模型或Cloud、未回写旧目录。审阅、复验和源完整性JSON仅保存在本会话受限产物目录，公开报告不包含原始轨迹。
+审阅后使用当前main的 `obs_lab_reverify.py` 对五个保存批次进行只读复验，绑定最终回答SHA-256，结果为S01/S02/S03/S05/S06场景及原生均PASS，S04场景PASS/原生FAIL。每批manifest/private/cloud前后SHA-256一致，未读取配置、未访问模型或Cloud、未回写旧目录。审阅、CLI复验和源完整性JSON仅保存在本会话受限产物目录，公开报告不包含原始轨迹。
+
+```sh
+server/.venv/bin/python scripts/obs_lab_reverify.py \
+  --source /absolute/path/to/saved-batch \
+  --reviews /absolute/path/to/answer-reviews.json \
+  --output /absolute/path/outside-source/new-readonly-result.json
+```
 
 ## 本轮回归与当前 Gate
 
@@ -50,7 +57,8 @@ S01–S03原生TOOL没有直接Call ID字段的情况，使用Generation结构�
 - 当前main只读重验S05/S06：均PASS，未读取凭据、未请求Cloud、未修改源证据。
 - `cd server && uv run --frozen pytest -q tests/test_obs_lab_phase_b.py tests/test_obs_lab.py tests/test_obs_lab_faults.py`：**116 passed，32.63秒**。
 - `uv run --frozen ruff check src tests ../scripts/obs_lab*.py`：PASS。
-- 完整后端回归：执行中；本PR CI：NOT RUN，不能以历史CI代替。
+- `cd server && uv run --frozen pytest -q`：**1001 passed、44 skipped，191.28秒**；Skipped不计PASS。无前端改动，本地前端构建NOT RUN。
+- 本PR CI：执行中，不能以历史CI代替；最终结果以[#100 checks](https://github.com/Vc-great/kube-triage-agent/pull/100/checks)为准。
 - 本会话UI在S01链接显示Sign In，当前UI验证NOT RUN；不将其他会话登录状态当成本会话通过证据。
 
 | Gate | 当前状态 | 依据 / 缺口 |
