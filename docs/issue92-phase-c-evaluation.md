@@ -91,6 +91,6 @@ S09最多10轮只是代码硬上限，不等于已授权10个Run；必须先批�
 | C3 质量指标 | BLOCKED（完整Gate） | 既有8 Run的usage、根Span延迟与规则分母已实算；完整Runner耗时、S09/S10真实结果、语义诊断质量未知，不外推总体 |
 | C4 C收口 | BLOCKED | #91实证已合入main；当前PR须通过最终CI/审阅，且C0–C3仍未完成。保持Draft，不关闭#92，不实施Phase D |
 
-本地验证：Python3.13.14，`uv sync --frozen --offline --python 3.13`复用Host缓存，无锁变更；后端Ruff通过。首次定向回归152 PASS；新增上传/集成反例后结果与最终head CI/AO审阅记录于PR。本地完整回归正在执行时不预报PASS。无前端代码变更，本地前端构建NOT RUN。
+本地验证：Python3.13.14，`uv sync --frozen --offline --python 3.13`复用Host缓存，无锁变更；后端Ruff通过。首次Context/A/B定向回归152 PASS；完整后端回归1028 PASS、44 SKIPPED（174.67秒），随后协议参数白名单收紧与新增用例的最终定向28 PASS（0.86秒）。最终head CI/AO审阅见PR，不能用本地结果替代。无前端代码变更，本地前端构建NOT RUN。
 
 回退：停止本任务入口，撤回本PR的test-only适配器与脚本即可；未改变正式Graph默认配置、部署或历史证据。真实数据外传、扩权、错误Project或Score关联冲突立即STOP。无Phase D、第二exporter、真实Kubernetes写入、Repair或自动关单。
