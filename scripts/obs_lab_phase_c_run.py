@@ -11,9 +11,10 @@ from pathlib import Path
 
 from eval_phase3a import api, private_directory, write_private
 from obs_lab import Cloud, configuration, inspect_run, isolated, run_deadline, utc
+from obs_lab_context_verify import verify_context_cloud
 from obs_lab_phase_c import SUMMARY_MAX_TURNS, grounding_question, summary_question
 from obs_lab_scores import current_round, frozen_cases, score_run, turn_evidence
-from obs_lab_verify import decoded, history_matches, verify_native
+from obs_lab_verify import history_matches, verify_native
 
 
 def collect_turn(base, token, thread, scenario, batch, turn, timeout, output):
@@ -68,16 +69,6 @@ def collect_turn(base, token, thread, scenario, batch, turn, timeout, output):
     return row
 
 
-def summary_outcomes(observations):
-    result = []
-    for obs in observations:
-        if obs.get("name") == "context_summary_outcome":
-            output = decoded(obs.get("output"))
-            if isinstance(output, dict):
-                result.extend(output.get("context_summary_outcomes") or [])
-    return result
-
-
 def run_sequence(scenario, max_runs, run_turn):
     """One Run per turn, same Thread managed by caller. No retry or silent continuation."""
     rows = []
@@ -130,11 +121,10 @@ def main():
                 for attempt in range(25):
                     observations = cloud.observations(row, row["start"], utc())
                     write_private(Path(str(prefix) + "-cloud.json"), observations)
-                    outcomes = summary_outcomes(observations)
-                    expected = row["model_decisions"] + sum(o.get("summary_calls", 0) for o in outcomes)
-                    row["cloud"] = verify_native(observations, {**row, "model_decisions": expected}, manifest["project_id"])
+                    verify = verify_context_cloud if args.scenario == "S09" else verify_native
+                    row["cloud"] = verify(observations, row, manifest["project_id"])
                     if row["cloud"]["chain_verified"]:
-                        row["summary_outcomes"] = outcomes
+                        row["summary_outcomes"] = row["cloud"].get("summary_outcomes", [])
                         write_private(args.output / "manifest.json", manifest)
                         return row
                     if attempt < 24:

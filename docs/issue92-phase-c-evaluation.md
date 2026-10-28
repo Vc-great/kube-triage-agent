@@ -55,7 +55,7 @@ server/.venv/bin/python scripts/obs_lab_scores.py \
 
 当前只生成40条候选Scores（8×5）。上传字段仅稳定ID、已有真实traceId、规则名、分类值、固定timestamp、source=API、environment=obs-lab、含版本/来源/证据与GT哈希/适用性的comment；不含问题、回答、Tool正文、真实日志或凭据。脱敏范围、目标项目与精确计划哈希须先获批准，不自动沿用#91模型预算。Score ID由版本/项目/批次/Run/Trace/规则确定，timestamp固定为原Run结束时间，禁止更换ID制造重复批次。
 
-按2026-10-28核对的[官方Scores说明](https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk)和[官方OpenAPI](https://cloud.langfuse.com/generated/api/openapi.yml)，POST `/api/public/scores`接收数组；GET `/api/public/v3/scores`显式取 `core,details,subject`，分类value是字符串、关联在 `subject.kind=trace / subject.id`，不能拿旧API的numeric mapping/stringValue或顶层traceId代替。回查核对每个Score的ID、值、时间、来源、comment与真实Trace关联。模拟Cloud覆盖首次写入、重复跳过、项目/关联冲突和写后错配；真实API契约仍需批准后的实测。
+按2026-10-28核对的[官方Scores说明](https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk)和[官方OpenAPI](https://cloud.langfuse.com/generated/api/openapi.yml)，POST `/api/public/scores`接收数组；GET `/api/public/v3/scores`显式取 `details,subject`，core始终返回，不可作为fields字段组；分类value是字符串、关联在 `subject.kind=trace / subject.id`，不能拿旧API的numeric mapping/stringValue或顶层traceId代替。精确ID查询限定最多2条、不加时间过滤，跨秒/跨日同ID或重复身份均在POST前STOP；回查核对每个Score的ID、值、时间、来源、comment与真实Trace关联。模拟Cloud覆盖首次写入、重复跳过、项目/关联冲突和写后错配；真实API契约仍需批准后的实测。
 
 以下为批准后的命令模板，**展示不构成执行授权**；配置必须来自本会话明确获准、属主/0600/非符号链接的配置文件，不复制其他Worktree的.env：
 
@@ -91,6 +91,6 @@ S09最多10轮只是代码硬上限，不等于已授权10个Run；必须先批�
 | C3 质量指标 | BLOCKED（完整Gate） | 既有8 Run的usage、根Span延迟与规则分母已实算；完整Runner耗时、S09/S10真实结果、语义诊断质量未知，不外推总体 |
 | C4 C收口 | BLOCKED | #91实证已合入main；当前PR须通过最终CI/审阅，且C0–C3仍未完成。保持Draft，不关闭#92，不实施Phase D |
 
-本地验证：Python3.13.14，`uv sync --frozen --offline --python 3.13`复用Host缓存，无锁变更；后端Ruff通过。首次Context/A/B定向回归152 PASS；完整后端回归1028 PASS、44 SKIPPED（174.67秒），随后协议参数白名单收紧与新增用例的最终定向28 PASS（0.86秒）。最终head CI/AO审阅见PR，不能用本地结果替代。无前端代码变更，本地前端构建NOT RUN。
+本地验证：Python3.13.14，`uv sync --frozen --offline --python 3.13`复用Host缓存，无锁变更；后端Ruff通过。首次Context/A/B定向回归152 PASS；完整后端回归1028 PASS、44 SKIPPED（174.67秒），随后协议参数白名单收紧与新增用例的最终定向28 PASS（0.86秒）。首轮head941b995六项CI全部PASS；AO审阅发现API字段/时间窗与Summary插入配对问题，已修复并通过115项定向回归（1.75秒）、Ruff。S09按可信Summary父链区分角色，所有Generation仍校验数量/父链/时间；在线与离线共用校验。最终head CI/AO复审见PR，不能用旧head替代。无前端代码变更，本地前端构建NOT RUN。
 
 回退：停止本任务入口，撤回本PR的test-only适配器与脚本即可；未改变正式Graph默认配置、部署或历史证据。真实数据外传、扩权、错误Project或Score关联冲突立即STOP。无Phase D、第二exporter、真实Kubernetes写入、Repair或自动关单。

@@ -42,10 +42,9 @@ class ScoreCloud:
             return json.load(response)
 
     def read_score(self, score):
-        moment = datetime.fromisoformat(score["timestamp"])
-        query = {"id": score["id"], "fromTimestamp": (moment - timedelta(seconds=1)).isoformat(),
-                 "toTimestamp": (moment + timedelta(seconds=1)).isoformat(), "limit": 100,
-                 "fields": "core,details,subject"}
+        # Exact ID plus limit bounds the read while covering *all* timestamps/dates.
+        # A time filter here could hide a conflicting record that must block the POST.
+        query = {"id": score["id"], "limit": 2, "fields": "details,subject"}
         result = self.request("v3/scores", query)
         if result.get("meta", {}).get("cursor"):
             raise ValueError("STOP: score ID unexpectedly requires pagination")

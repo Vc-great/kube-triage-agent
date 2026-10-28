@@ -171,18 +171,19 @@ def evaluate(sources):
             inspected = inspect_run(raw.get("state") or {}, raw.get("runs") or [], raw.get("events") or [])
             if inspected["run_id"] != row["run_id"] or raw.get("thread_id") != row.get("thread_id"):
                 raise ValueError("STOP: saved Run/Thread identity mismatch")
+            verification_row = {**row, **inspected, "history_tool_pairs_valid": history_matches(
+                raw.get("state") or {}, raw.get("history"))}
             if row["scenario_id"] == "S09":
-                from obs_lab_phase_c_run import summary_outcomes
+                from obs_lab_context_verify import verify_context_cloud
 
-                inspected["model_decisions"] += sum(o.get("summary_calls", 0) for o in summary_outcomes(observations))
-            native = verify_native(observations, {**row, **inspected,
-                                   "history_tool_pairs_valid": history_matches(
-                                       raw.get("state") or {}, raw.get("history"))}, manifest["project_id"])
+                native = verify_context_cloud(observations, verification_row, manifest["project_id"])
+            else:
+                native = verify_native(observations, verification_row, manifest["project_id"])
             if not native["trace_verified"]:
                 raise ValueError("STOP: Cloud Trace identity unverified")
             scored = score_run(row, raw, cases[TARGETS[row["scenario_id"]]])
             if row["scenario_id"] == "S09":
-                scored["summary_outcomes"] = summary_outcomes(observations)
+                scored["summary_outcomes"] = native.get("summary_outcomes", [])
             scored.update(scenario_id=row["scenario_id"], run_id=row["run_id"],
                           thread_id=row["thread_id"], project_id=manifest["project_id"],
                           trace_id=native["trace_id"], batch_id=manifest["batch_id"],

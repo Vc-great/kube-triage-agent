@@ -103,7 +103,7 @@ def timestamp(value):
         return None
 
 
-def verify_native(observations, row, project):
+def verify_native(observations, row, project, *, summary_generation_ids=frozenset()):
     result = {"status": "ingestion_pending", "trace_verified": False, "chain_verified": False,
               "chain_status": "BLOCKED", "timeline_status": "UNKNOWN",
               "tool_call_id_status": "NOT RUN", "missing": []}
@@ -126,6 +126,9 @@ def verify_native(observations, row, project):
     result.update(status="verified", trace_verified=True, trace_id=trace_id,
                   url=f"https://jp.cloud.langfuse.com/project/{project}/traces/{trace_id}")
     generations = [o for o in selected if o.get("type") == "GENERATION"]
+    # Phase C identifies summary roles from a separately verified parent chain.
+    # All generations still participate in count/tree/time checks below.
+    diagnostic = [g for g in generations if g.get("id") not in summary_generation_ids]
     tools = [o for o in selected if o.get("type") == "TOOL"]
     by_id = {o.get("id"): o for o in selected}
     roots = [o for o in selected if not o.get("parentObservationId")]
@@ -184,7 +187,7 @@ def verify_native(observations, row, project):
         if not identifier or sig is None:
             missing.append("invalid_local_call")
             continue
-        requests = [g for g in generations if (cloud_calls(g.get("output")) or {}).get(identifier) == sig]
+        requests = [g for g in diagnostic if (cloud_calls(g.get("output")) or {}).get(identifier) == sig]
         candidates = [t for t in tools if t.get("name") == name and
                       signature(name, decoded(t.get("input"))) == sig and t.get("id") not in used]
         if phase_b:
@@ -198,7 +201,7 @@ def verify_native(observations, row, project):
         matches = []
         for left in requests:
             left_end = timestamp(left.get("endTime"))
-            later = [g for g in generations if g["id"] != left["id"]
+            later = [g for g in diagnostic if g["id"] != left["id"]
                      and timestamp(g.get("startTime")) is not None and left_end is not None
                      and timestamp(g["startTime"]) >= left_end]
             next_start = min((timestamp(g["startTime"]) for g in later), default=None)
