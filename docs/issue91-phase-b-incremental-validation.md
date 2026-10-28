@@ -97,4 +97,4 @@ git diff --check
 
 回退：撤回本增量 PR 的提交即可恢复旧 Runner/Verifier/实验入口；正式服务部署无需调整。保留原私有证据和 #97 历史失败，不执行全局 Docker 清理或修改其他会话资源。
 
-当前 **NOT READY FOR PHASE B REAL VALIDATION**：历史 JSON 只读复验、Ruff、115项定向及1000项完整回归已通过；等待 CI 和独立评审；这些完成后再明确报告就绪性。即使就绪，也不包含新增真实模型 Run 的授权。
+**离线准备已完成**：历史 JSON 只读复验、Ruff、115项定向及1000项完整回归已通过。是否 **READY FOR PHASE B REAL VALIDATION** 以 [PR #99 最新 CI](https://github.com/Vc-great/kube-triage-agent/pull/99/checks) 与原生评审后的最终交付结论为准；本文记录时尚在等待，不能预判 PASS。即使就绪，也不包含新增真实模型 Run 的授权。
