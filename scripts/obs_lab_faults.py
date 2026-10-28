@@ -68,6 +68,22 @@ def retry_recovered(attempts, decisions):
                 and len(attempts) > 1
                 and all(a["forwarded"] and a["status"] == 200 for a in attempts[1:]))
 
+def annotate_business(config, category, failed):
+    """Update the existing callback-owned span; never create a tracer/provider."""
+    from openinference.instrumentation.langchain import LangChainInstrumentor
+
+    instrumentor = LangChainInstrumentor()
+    if not instrumentor.is_instrumented_by_opentelemetry:
+        return
+    run_id = getattr(config.get("callbacks"), "parent_run_id", None)
+    span = instrumentor.get_span(run_id) if run_id else None
+    if span is not None:
+        span.set_attribute("langfuse.observation.level", "WARNING" if failed else "DEFAULT")
+        span.set_attribute("langfuse.observation.status_message", category + "; synthetic_redacted")
+        span.set_attribute("langfuse.observation.metadata.fault_category", category)
+        span.set_attribute("langfuse.observation.metadata.data_classification", "synthetic_redacted")
+
+
 def observed_reader(original):
     async def call(name, arguments, thread_id=None):
         from langchain_core.runnables import RunnableLambda
@@ -77,10 +93,12 @@ def observed_reader(original):
         context = _reader_context.get() or {}
         payload = None
 
-        async def invoke(_input):
+        async def invoke(_input, config):
             nonlocal payload
             payload = await original(name, arguments, thread_id)
-            return {"tool_outcome": outcome(payload), "wrapper_success": payload.get("ok"),
+            category = outcome(payload)
+            annotate_business(config, category, category != "success")
+            return {"tool_outcome": category, "wrapper_success": payload.get("ok"),
                     "tool_name": name, "tool_call_id": context.get("tool_call_id")}
 
         # OpenInference propagates LangChain callback parents, not OTel current spans.
@@ -141,6 +159,7 @@ def model_429(values, validate_provider, write_stats):
             record["status"] = status
             write_stats(records)
             self.send_response(status)
+            self.send_header("X-Obs-Lab-Attempt", str(number))
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
             if status == 429:
@@ -162,3 +181,43 @@ def model_429(values, validate_provider, write_stats):
         server.server_close()
         thread.join(timeout=2)
         write_stats(records)
+
+
+def attempt_transport(inner):
+    """Use inherited LangChain callbacks, not ambient OTel context or another exporter."""
+    import httpx
+    from langchain_core.runnables import RunnableLambda
+
+    class Transport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            response = None
+
+            async def invoke(_input, config):
+                nonlocal response
+                response = await inner.handle_async_request(request)
+                try:
+                    number = int(response.headers.get("X-Obs-Lab-Attempt", "0"))
+                except ValueError:
+                    number = 0
+                category = ("synthetic_rate_limit" if number == 1 and response.status_code == 429 else
+                            "provider_forward_success" if 1 < number <= 8 and response.status_code == 200
+                            else "model_http_failure")
+                annotate_business(config, category, response.status_code != 200)
+                return {"attempt": number, "forwarded": 1 < number <= 8,
+                        "status": response.status_code}
+
+            await RunnableLambda(invoke, name="model_http_attempt").ainvoke({"source": "isolated_lab_proxy"})
+            return response
+
+        async def aclose(self):
+            await inner.aclose()
+
+    return Transport()
+
+
+def observed_model_factory(original, client):
+    def factory():
+        model = original()
+        root = model.root_async_client.with_options(http_client=client)
+        return model.model_copy(update={"root_async_client": root, "async_client": root.chat.completions})
+    return factory

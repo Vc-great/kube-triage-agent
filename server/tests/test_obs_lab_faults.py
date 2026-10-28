@@ -250,6 +250,8 @@ def test_business_runnable_uses_real_openinference_parent_chain(monkeypatch):
             "tool_outcome": "business_error", "wrapper_success": True,
             "tool_name": "pods_log", "tool_call_id": "actual-id"}
         assert "result" not in business.attributes["output.value"]
+        assert business.attributes["langfuse.observation.level"] == "WARNING"
+        assert business.attributes["langfuse.observation.status_message"] == "business_error; synthetic_redacted"
     finally:
         instrumentor.uninstrument()
         provider.shutdown()
