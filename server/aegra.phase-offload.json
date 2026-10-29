@@ -1,0 +1,13 @@
+{
+  "graphs": {
+    "deep_diagnosis_offload": "./src/kube_triage/deep_diagnosis_offload_entry.py:graph"
+  },
+  "http": {
+    "app": "./src/kube_triage/app_routes.py:app",
+    "enable_custom_route_auth": true
+  },
+  "auth": {
+    "path": "./src/kube_triage/auth.py:auth",
+    "disable_studio_auth": true
+  }
+}
