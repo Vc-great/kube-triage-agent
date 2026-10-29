@@ -47,7 +47,7 @@ def lab_fault():
     scenario = os.getenv("OBS_LAB_SCENARIO", "")
     if scenario and (os.getenv("TRIAGE_ENV") != "test"
                      or os.getenv("TRIAGE_MOCK_DATASET") != "issue12-blind-v1"
-                     or scenario not in {"S04", "S05", "S06", "S07", "S08"}):
+                     or scenario not in {"S04", "S05", "S06", "S07", "S08", "S09", "S10"}):
         raise ValueError("Invalid test-only Observability Lab scenario")
     return scenario
 

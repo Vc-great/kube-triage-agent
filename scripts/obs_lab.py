@@ -104,6 +104,10 @@ def environments(values, cloud, ports, batch, tracing=True):
                    "SERVER_URL": f"http://127.0.0.1:{ports['api']}"}
     if values.get("OBS_LAB_SCENARIO"):
         environment["OBS_LAB_SCENARIO"] = values["OBS_LAB_SCENARIO"]
+    if values.get("OBS_LAB_SCENARIO") == "S09":
+        from obs_lab_phase_c import context_environments
+
+        environment = context_environments(environment)
     if tracing:
         environment.update(cloud)
     mock = {**dev.safe_host_env(), "TRIAGE_ENV": "test", "TRIAGE_MOCK_DATASET": "issue12-blind-v1",

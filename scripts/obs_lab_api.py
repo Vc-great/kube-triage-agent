@@ -34,13 +34,17 @@ def serve(port):
             or os.getenv("REPAIR_ENABLED") != "false"):
         raise RuntimeError("Observability Lab API requires isolated test mode and Repair OFF")
     if os.getenv("OBS_LAB_SCENARIO"):
-        if os.environ["OBS_LAB_SCENARIO"] not in {"S04", "S05", "S06", "S07", "S08"}:
+        if os.environ["OBS_LAB_SCENARIO"] not in {"S04", "S05", "S06", "S07", "S08", "S09", "S10"}:
             raise RuntimeError("Unknown test-only lab scenario")
         from obs_lab_faults import observed_reader
 
         from kube_triage import mcp_client
 
         mcp_client.call_tool = observed_reader(mcp_client.call_tool)
+    if os.getenv("OBS_LAB_SCENARIO") == "S09":
+        from obs_lab_context import install
+
+        install()
     attempt_client = None
     if os.getenv("OBS_LAB_SCENARIO") == "S07":
         import httpx
