@@ -2,7 +2,16 @@
 
 范围：仅 [V2 设计](plans/issue-69-deepagents-filesystem-offloading-demo.md) §6 V2-A0～A5；Implementation PR A，Refs #69。Phase B 未实施，Issue #69 保持 Open，未经批准不合并。
 
-## 基线与环境
+## 2026-10-29 Rebase 验证（当前轮次）
+
+- 最新基线：`origin/main=4bb2153380e0a79f21cf9e291b85b4ca6a77c05e`；rebase 后代码 head `66a8f05f29686c57fcb94c0ac5a61f4ed800dc13`。新独立工作树 `/private/tmp/kta-issue69-rebase`。
+- 仅 `Makefile` 发生文本冲突：保留主线 `obs-lab-smoke/obs-lab-phase-a/obs-lab-phase-b` 和本 PR 的 `dev-deep-notes-demo`。`git range-diff 7b3a9bd..ee34928 origin/main..66a8f05` 确认其他 Phase A 补丁等价；`git diff --check` 与上述四目标的 `make -n` 均 PASS，未执行任何 obs-lab 或真实模型入口。
+- 本地 Python 3.13.14 / 冻结锁文件：`uv run --frozen ruff check src tests ../scripts/skills_demo.py ../scripts/offload_demo.py` PASS；`uv run --frozen pytest -q tests/test_deep_diagnosis_offload.py tests/test_deep_diagnosis_planning.py tests/test_deep_diagnosis_skills.py tests/test_deep_diagnosis_review.py` 为 **162 PASS**（60.90s）。
+- [当前代码 CI run 40813597255](https://github.com/Vc-great/kube-triage-agent/actions/runs/40813597255)：七项 job 全部 PASS。Python 全量 **1073 PASS / 50 SKIP**（173.37s），Notes 原生文件与真实 HTTP/PG 测试 **40 PASS**（3.91s），其余 Web、Compose、Persistence、Skills、Reviewer 均通过。首次 Python job 在清华镜像下载锁定 `regex==2026.9.29` wheel 时 403，后续检查当时未运行；因此本轮 A5 曾 BLOCKED。仅重跑失败 job 后依赖同步/Ruff/全量 pytest 全部通过，未更改锁文件、依赖版本或下载策略。
+- 本轮独立 AO Review 要求补全当前 CI 证据；本文已按该要求补充。报告收尾提交的最终 CI / 独立 Review 以 [PR #90 最新检查与审查记录](https://github.com/Vc-great/kube-triage-agent/pull/90) 为准，不用旧 head 的通过记录替代当前门禁。下方原始 Gate 矩阵和首次交付结论均为 **2026-10-24 历史验证**。
+- 本次没有重新执行本地 Web 交互或真人 QA（NOT RUN）；Web/HTTP 协议回归由本轮真实 CI 执行。旧 S1 F3 FAIL/STOP 和已记录浏览器交互 UNKNOWN 保持。仅处理 rebase/冲突及必要 CI/审查收尾；不合并、不关闭 #69、不进入 Phase B。
+
+## 2026-10-24 首次交付基线与环境
 
 - 2026-10-24 fetch 后 `origin/main=7b3a9bd8a507145a95fe39e5b47f173a9673d48e`；Planning PR #89 实际已合并（Issue 和设计中的“待合并”文字是历史状态）。
 - 已读取 #69、#41，并核实 #68 已合并；#41 中旧依赖描述仅作历史，实际版本以当前锁文件和wheel为准。
@@ -25,7 +34,7 @@ SDK `StateBackend` 的 `files[path].content` 实测是字符串。原生 `write_
 
 FakeModel 根据真实 ToolMessage 的成功/失败决定下一步；主流程实际调用 Todo → Mock events_list → write_file → read_file → ls → grep → Todo，再输出中文结论。读取、刷新、不存在、越界请求也实际发 Tool Call；不伪造保存成功回复。
 
-## Gate 与证据
+## 2026-10-24 历史 Gate 与证据
 
 | Gate | 状态 | 实际证据 |
 | --- | --- | --- |
@@ -36,7 +45,7 @@ FakeModel 根据真实 ToolMessage 的成功/失败决定下一步；主流程�
 | V2-A4 | PASS | 固定8000端点、独立API/PG/Web启动；`ISSUE69_TEST_API_URL=http://127.0.0.1:12069 uv run --frozen pytest -q -s tests/test_offload_protocol.py`：3 PASS；真实SSE/PG、普通三轮/刷新/新Thread/可见错误。AO Browser打开已完成Thread，实际显示四文件工具参数、ID、结果和中文结论；停止清理已实测 |
 | V2-A5 | PASS | Ruff、Web lint/build通过；Linux CI全量919 PASS/50 SKIP、Notes CI 40 PASS；[七项CI全部通过](https://github.com/Vc-great/kube-triage-agent/actions/runs/40048459322)；[独立AO Review approved](https://github.com/Vc-great/kube-triage-agent/pull/90#pullrequestreview-5636031524)，无需修改。中文运行/回退/风险见本文 |
 
-验收结论：V2-A0～A5通过，Phase A可独立交付。独立AO批准是内部审查结论，不等同于GitHub独立账户审批，不授权合并。首轮CI：Ubuntu/Python3.13，`uv run --frozen pytest -q`为919 PASS / 50 SKIP（227.38s），Notes job为40 PASS（3.73s）；Web lint/build与现有回归job均通过。本地Web lint/build通过（18条现有lint warning、既有Tailwind格式warning）。下面保留过程中失败和重跑证据，不把历史失败改写成通过。
+2026-10-24 历史验收结论：V2-A0～A5通过，Phase A可独立交付。独立AO批准是内部审查结论，不等同于GitHub独立账户审批，不授权合并。首轮CI：Ubuntu/Python3.13，`uv run --frozen pytest -q`为919 PASS / 50 SKIP（227.38s），Notes job为40 PASS（3.73s）；Web lint/build与现有回归job均通过。本地Web lint/build通过（18条现有lint warning、既有Tailwind格式warning）。下面保留过程中失败和重跑证据，不把历史失败改写成通过。
 
 初次全量：913 PASS / 4 FAIL / 47 SKIP，四项新增测试失败来自 SDK Profile 排除项混用；改为专用 `notes_fake` 后第二轮全量921 PASS / 47 SKIP；新增伪造输入检查后专项37 PASS，最后一轮含真实HTTP全量：924 PASS / 1 FAIL / 44 SKIP，失败为既有 `test_inherited_keepalive_loss_never_reconnects` 连接自身loopback临时端口超时；其定点重跑1 PASS（0.68s），最终原生专项+真实HTTP重跑40 PASS（2.82s）。首轮专项的测试假设错误（正文类型、原生覆盖行为、Fake provider标识）已据实际SDK修正，不更改功能Gate。
 
