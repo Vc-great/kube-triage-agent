@@ -7,4 +7,5 @@ services:
       OTEL_SERVICE_NAME: kube-triage-agent-compose
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?set LANGFUSE_SECRET_KEY in private .env}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?set LANGFUSE_PUBLIC_KEY in private .env}
-      LANGFUSE_BASE_URL: https://jp.cloud.langfuse.com
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:?set LANGFUSE_BASE_URL in private .env}
+      NO_PROXY: localhost,127.0.0.1,::1,postgres,redis,k8s-mcp,mock-mcp,mock-repair-mcp,repair-mcp,api,web,host.docker.internal

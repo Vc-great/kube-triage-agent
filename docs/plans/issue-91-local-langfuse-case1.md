@@ -1,10 +1,10 @@
 # Issue #91：本地 Langfuse 面试案例一 — 工具失败后的执行与回答评价
 
 > - 关联 Issue：[Observability Lab #91](https://github.com/Vc-great/kube-triage-agent/issues/91)
-> - 状态：Proposed；用户已认可本方案，纯文档 Planning PR 合入 main 后实施。
-> - 规划 PR：[Draft #102](https://github.com/Vc-great/kube-triage-agent/pull/102)
+> - 状态：Implemented on branch；Planning PR 已合并，本地实验完成；实现 PR 待审，尚不宣称已进入 main。
+> - 规划 PR：[Merged #102](https://github.com/Vc-great/kube-triage-agent/pull/102)
 > - 设计基线：2026-11-03，已执行 git fetch origin，origin/main=`4bb2153380e0a79f21cf9e291b85b4ca6a77c05e`。
-> - 当前阶段：仅规划交付；真实运行 NOT RUN，首次交付 6 Run 预算尚未消耗。
+> - 当前阶段：实施基线 `d81d1588451821436c35ce0ef1614c59a7e73e3d`；首次交付 6/6 Run，实际结果、入口与局限见[案例教程](../langfuse-case1-guide.md)。下文保留批准时的设计；历史 NOT RUN 记录不追溯覆盖。
 > - 本地案例的权威验收标准：本文件 §5。原 #91/#92 的云端 Gate 仍以[原设计](issue-91-observability-fault-lab.md)为准，本文件不追溯改判历史结果。
 > - 约束：[AGENTS.md](../../AGENTS.md)、[协作工作流](../agent-workflow.md)、[计划规则](README.md)。
 
@@ -154,5 +154,6 @@ make langfuse-case1-report BATCH=<实际批次ID>
 | 日期 | 事件 | 状态 |
 | --- | --- | --- |
 | 2026-11-03 | 用户批准本地案例方案与限定真实模型实验；主线固定；创建纯文档规划 | Proposed；真实运行 0/6；所有运行 Gate NOT RUN |
+| 2026-11-03 | #102 合并后基于 d81d158 独立实施；完成 S01/S05/S06 各两次真实 Run、逐条 agent_review 及六条 UI 核验 | 6/6；详情见案例教程及私有活动 case1-20261103-221120-c0624e06；实现待审 |
 
 合并后的实施任务：读取本文件与最新主线，完成本地 S01/S05/S06 案例及 G00–G08；6 Run 总预算，失败不补跑；独立工作树、唯一配置源、只向本地 Langfuse 发送合成轨迹；提交 Implementation PR，Refs #91，不自动合并或关闭 Issue。
