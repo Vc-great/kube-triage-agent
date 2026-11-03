@@ -316,3 +316,4 @@ jobs:
           READER_GID: '1000'
           LANGFUSE_SECRET_KEY: ci-placeholder-only
           LANGFUSE_PUBLIC_KEY: ci-placeholder-only
+          LANGFUSE_BASE_URL: https://jp.cloud.langfuse.com
