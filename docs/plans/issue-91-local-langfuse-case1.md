@@ -2,7 +2,7 @@
 
 > - 关联 Issue：[Observability Lab #91](https://github.com/Vc-great/kube-triage-agent/issues/91)
 > - 状态：Proposed；用户已认可本方案，纯文档 Planning PR 合入 main 后实施。
-> - 规划 PR：NOT CREATED（创建后回填）
+> - 规划 PR：[Draft #102](https://github.com/Vc-great/kube-triage-agent/pull/102)
 > - 设计基线：2026-11-03，已执行 git fetch origin，origin/main=`4bb2153380e0a79f21cf9e291b85b4ca6a77c05e`。
 > - 当前阶段：仅规划交付；真实运行 NOT RUN，首次交付 6 Run 预算尚未消耗。
 > - 本地案例的权威验收标准：本文件 §5。原 #91/#92 的云端 Gate 仍以[原设计](issue-91-observability-fault-lab.md)为准，本文件不追溯改判历史结果。
