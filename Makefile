@@ -54,3 +54,12 @@ obs-lab-phase-a:
 OBS_LAB_SCENARIO ?= S04
 obs-lab-phase-b:
 	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --scenarios "$(OBS_LAB_SCENARIO)" --repeats 1 --max-runs 1 --timeout 150 --cloud-wait 120
+
+.PHONY: langfuse-case1-preflight langfuse-case1 langfuse-case1-report
+SCENARIO ?= S01
+langfuse-case1-preflight:
+	server/.venv/bin/python scripts/langfuse_case1.py preflight --env-file "$(OBS_LAB_ENV)"
+langfuse-case1:
+	server/.venv/bin/python scripts/langfuse_case1.py run --env-file "$(OBS_LAB_ENV)" --scenario "$(SCENARIO)"
+langfuse-case1-report:
+	server/.venv/bin/python scripts/langfuse_case1.py report --env-file "$(OBS_LAB_ENV)" --batch "$(BATCH)"

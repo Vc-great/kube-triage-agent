@@ -3,8 +3,9 @@
 import os
 import re
 import sys
+from urllib.parse import urlsplit
 
-from dev import ENV_FILE, read_langfuse_env
+from dev import ENV_FILE, LANGFUSE_INIT_KEYS, LANGFUSE_KEYS, read_langfuse_env
 
 STACK_FILES = {
     "formal": ("infra/compose.yaml",),
@@ -20,8 +21,12 @@ def compose_invocation(stack, project, args, host_env=None):
     credentials = read_langfuse_env(ENV_FILE, optional=True)
     source = os.environ if host_env is None else host_env
     environment = {key: value for key, value in source.items()
-                   if key not in {"LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY",
-                                  "LANGFUSE_BASE_URL"}}
+                   if key not in LANGFUSE_KEYS | LANGFUSE_INIT_KEYS}
+    if credentials:
+        address = urlsplit(credentials["LANGFUSE_BASE_URL"])
+        if address.hostname in {"localhost", "127.0.0.1", "::1"}:
+            host = "host.docker.internal" + (f":{address.port}" if address.port else "")
+            credentials["LANGFUSE_BASE_URL"] = address._replace(netloc=host).geturl()
     environment.update(credentials)
     command = ["docker", "compose", "-p", project, "--env-file", str(ENV_FILE)]
     for file in STACK_FILES[stack]:

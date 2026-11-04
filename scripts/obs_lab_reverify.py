@@ -6,7 +6,12 @@ import os
 from pathlib import Path
 
 from obs_lab_faults import inspect_faults
-from obs_lab_verify import final_answer, history_answer_matches, history_matches, verify_cloud
+from obs_lab_verify import (
+    final_answer,
+    history_answer_matches,
+    history_matches,
+    verify_cloud,
+)
 
 
 def reverify(source, reviews):
@@ -28,7 +33,8 @@ def reverify(source, reviews):
         if row["scenario_id"] == "S07":
             row["model_attempts"] = json.loads((source / "model-attempts.json").read_text())
         observations = json.loads((source / f"{prefix}-cloud.json").read_text())
-        row["cloud"] = verify_cloud(observations, row, manifest["project_id"])
+        row["cloud"] = verify_cloud(observations, row, manifest["project_id"],
+                                   base_url=manifest.get("langfuse_base_url", "https://jp.cloud.langfuse.com"))
     return {"source": str(source), "mode": "offline_read_only", "original_stop": manifest.get("stop"),
             "runs": [{k: row.get(k) for k in ("scenario_id", "run_id", "cloud")} for row in manifest["runs"]]}
 

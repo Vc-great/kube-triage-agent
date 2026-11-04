@@ -8,6 +8,8 @@ dev01 完整部署与 Mac 原生开发见 [部署与开发指南](docs/dev01-dep
 
 其余 API 模式的模型请求均通过所在宿主机 7890 代理；Compose 容器统一使用 `host.docker.internal:7890`。Langfuse Trace 见 [Issue #39 配置与隐私说明](docs/issue39-langfuse-observability.md)和[验收记录](docs/issue39-langfuse-validation.md)。对应机器根目录 `.env` 中有完整有效 Key 时自动开启，导出也走同一代理；真实 Reader、Memory 和 dev01 模式可能向云端发送 Kubernetes 或会话数据。
 
+本地 [Langfuse 面试案例一](docs/langfuse-case1-guide.md) 使用隔离的真实模型＋合成 MCP，提供正常查询、403 权限拒绝、内层业务失败的六条 Trace、查看教程和面试讲稿。`make langfuse-case1-preflight` 仅预检，`make langfuse-case1-report BATCH=<活动ID>` 只读重建报告；运行场景会调用真实模型，配置源由 `OBS_LAB_ENV` 显式指定，Langfuse 限本地 Agent Lab。
+
 单用户 AI 全栈学习与面试 Demo：Aegra Thread/Run/SSE/Checkpoint + LangGraph + 原生 Reader MCP。正式自然语言诊断恒走真实 OpenAI 兼容 LLM → 四个只读 MCP 工具 → Kubernetes API，Namespace 固定为 `kube-triage-demo`。缺配置、未批准 Reader URL 和生产模拟配置均 Fail Closed；无 Echo、固定命令或 Mock 回退。
 
 ## AI 规划与 AO 执行

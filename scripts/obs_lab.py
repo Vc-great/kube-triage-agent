@@ -23,7 +23,12 @@ import dev
 from eval_issue12 import inspect as inspect_evidence
 from eval_phase3a import api, message_type, private_directory, write_private
 from obs_lab_faults import FAULTS, inspect_faults, model_429, retry_recovered
-from obs_lab_verify import final_answer, history_answer_matches, history_matches, verify_cloud
+from obs_lab_verify import (
+    final_answer,
+    history_answer_matches,
+    history_matches,
+    verify_cloud,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / "server/.venv/bin/python"
@@ -195,6 +200,9 @@ def isolated_processes(values, cloud, out, tracing=True, fault_endpoint=None, mo
                 os.killpg(child.pid, signal.SIGKILL)
                 child.wait()
         for identifier in reversed(containers):
+            labels = json.loads(docker("inspect", "--format", "{{json .Config.Labels}}", identifier))
+            if labels.get("ao.session") != session or labels.get("obs-lab.batch") != out.name:
+                raise RuntimeError("BLOCKED: 资源归属不匹配，拒绝清理")
             docker("rm", "-f", identifier)
 
 
@@ -342,11 +350,15 @@ def execute(base, token, scenario, batch, timeout, row, evidence_path):
 class Cloud:
     def __init__(self, credentials):
         self.credentials = credentials
+        self.base_url = dev.normalize_langfuse_url(credentials.get(
+            "LANGFUSE_BASE_URL", "https://jp.cloud.langfuse.com"))
 
     def get(self, path, query=None):
         auth = base64.b64encode((self.credentials["LANGFUSE_PUBLIC_KEY"] + ":" +
                                  self.credentials["LANGFUSE_SECRET_KEY"]).encode()).decode()
-        url = "https://jp.cloud.langfuse.com/api/public/" + path
+        if path not in {"projects", "v2/observations"}:
+            raise RuntimeError("LANGFUSE_READ_PATH_INVALID")
+        url = self.base_url + "/api/public/" + path
         if query:
             url += "?" + urllib.parse.urlencode(query)
         request = urllib.request.Request(url, headers={"Authorization": "Basic " + auth})
@@ -401,11 +413,13 @@ def refresh_cloud(cloud, manifest, out):
             start = (datetime.fromisoformat(row["start"]) - timedelta(seconds=2)).isoformat()
             end = (datetime.fromisoformat(row["end"]) + timedelta(seconds=2)).isoformat()
             observations = cloud.observations(row, start, end)
-            preliminary = verify_cloud(observations, row, manifest["project_id"])
+            preliminary = verify_cloud(observations, row, manifest["project_id"],
+                                       base_url=getattr(cloud, "base_url", "https://jp.cloud.langfuse.com"))
             if preliminary["trace_verified"]:
                 observations = cloud.observations(row, start, end, trace_id=preliminary["trace_id"])
             write_private(out / f"{row['scenario_id']}-{row['repeat']}-cloud.json", observations)
-            row["cloud"] = verify_cloud(observations, row, manifest["project_id"])
+            row["cloud"] = verify_cloud(observations, row, manifest["project_id"],
+                                       base_url=getattr(cloud, "base_url", "https://jp.cloud.langfuse.com"))
         ready &= (row["cloud"].get("scenario_observable") == "PASS" if row.get("scenario_id") in
                   {"S04", "S05", "S06", "S07", "S08"} else row["cloud"].get("chain_verified", False))
     return ready
@@ -510,6 +524,7 @@ def main():
     private_directory(out)
     cloud = Cloud(credentials)
     manifest = {"batch_id": batch, "start": utc(), "max_runs": args.max_runs,
+                "langfuse_base_url": cloud.base_url,
                 "concurrency": 1, "max_model_decisions": 4, "max_tool_calls": 6,
                 "model_sdk_max_retries": 1, "export_mode": args.export_mode, "runs": []}
     write_private(out / "manifest.json", manifest)

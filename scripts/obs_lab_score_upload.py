@@ -16,6 +16,9 @@ from obs_lab_scores import VERSION, digest, upload_plan
 
 class ScoreCloud:
     def __init__(self, credentials):
+        if dev.normalize_langfuse_url(credentials.get(
+                "LANGFUSE_BASE_URL", "https://jp.cloud.langfuse.com")) != "https://jp.cloud.langfuse.com":
+            raise ValueError("BLOCKED: 历史 Score 上传入口仅支持 Japan 项目")
         self.credentials = credentials
 
     def request(self, path, query=None, payload=None):
