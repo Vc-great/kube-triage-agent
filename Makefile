@@ -54,3 +54,7 @@ obs-lab-phase-a:
 OBS_LAB_SCENARIO ?= S04
 obs-lab-phase-b:
 	server/.venv/bin/python scripts/obs_lab.py --env-file "$(OBS_LAB_ENV)" --scenarios "$(OBS_LAB_SCENARIO)" --repeats 1 --max-runs 1 --timeout 150 --cloud-wait 120
+
+.PHONY: dev-deep-notes-demo
+dev-deep-notes-demo:
+	python3 scripts/offload_demo.py

@@ -63,11 +63,11 @@ def preflight(ports, *, web):
     subprocess.run(["docker", "image", "inspect", IMAGE], check=True, stdout=subprocess.DEVNULL)
 
 
-def main(*, reviewer=False):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--api-port", type=int, default=12072 if reviewer else 12075)
-    parser.add_argument("--web-port", type=int, default=13072 if reviewer else 13075)
-    parser.add_argument("--db-port", type=int, default=15472 if reviewer else 15475)
+def main(*, reviewer=False, notes=False):
+    parser = argparse.ArgumentParser(description="Phase A 原生虚拟笔记 Fake/Mock Demo" if notes else __doc__)
+    parser.add_argument("--api-port", type=int, default=12069 if notes else 12072 if reviewer else 12075)
+    parser.add_argument("--web-port", type=int, default=13069 if notes else 13072 if reviewer else 13075)
+    parser.add_argument("--db-port", type=int, default=15469 if notes else 15472 if reviewer else 15475)
     parser.add_argument("--no-web", action="store_true")
     parser.add_argument("--persistence", action="store_true",
                         help="显式迁移隔离 PG 并打开现有 History/Evidence 路由与 Web 开关")
@@ -81,7 +81,10 @@ def main(*, reviewer=False):
         api["AEGRA_CONFIG"] = "aegra.phase-review.json"
         common["TRIAGE_MOCK_DATASET"] = api["TRIAGE_MOCK_DATASET"] = "review-web"
         web["NEXT_PUBLIC_ASSISTANT_ID"] = "deep_diagnosis_review"
-    name = "kta-review-" if reviewer else "kta-skills-"
+    if notes:
+        api["AEGRA_CONFIG"] = "aegra.phase-offload.json"
+        web["NEXT_PUBLIC_ASSISTANT_ID"] = "deep_diagnosis_offload"
+    name = "kta-notes-" if notes else "kta-review-" if reviewer else "kta-skills-"
     name = name + uuid4().hex[:12]
     processes = []
     logs = Path(tempfile.mkdtemp(prefix="kta-skills-logs-"))
@@ -137,7 +140,7 @@ def main(*, reviewer=False):
         if not args.no_web:
             launch("web", ["pnpm", "dev", "--hostname", "127.0.0.1", "--port", str(args.web_port)],
                    ROOT / "apps/web", web)
-        print(f"{'Reviewer' if reviewer else 'Skills'} Fake/Mock API: http://127.0.0.1:{args.api_port}", flush=True)
+        print(f"{'Notes' if notes else 'Reviewer' if reviewer else 'Skills'} Fake/Mock API: http://127.0.0.1:{args.api_port}", flush=True)
         if not args.no_web:
             print(f"Web: http://127.0.0.1:{args.web_port}；API Key: skills-demo-local-only", flush=True)
         print(f"仅新实验 Thread；不导入旧 pin checkpoint。日志：{logs}；Ctrl-C 清理本次资源。", flush=True)
