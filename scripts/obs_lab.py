@@ -107,6 +107,9 @@ def environments(values, cloud, ports, batch, tracing=True):
                    "NO_PROXY": "localhost,127.0.0.1,::1,192.168.31.110",
                    "no_proxy": "localhost,127.0.0.1,::1,192.168.31.110",
                    "SERVER_URL": f"http://127.0.0.1:{ports['api']}"}
+    if "INTERVIEW_EXPERIMENT" in values:
+        environment["INTERVIEW_EXPERIMENT"] = values["INTERVIEW_EXPERIMENT"]
+        environment["EVAL_PROMPT_VARIANT"] = values["EVAL_PROMPT_VARIANT"]
     if values.get("OBS_LAB_SCENARIO"):
         environment["OBS_LAB_SCENARIO"] = values["OBS_LAB_SCENARIO"]
     if values.get("OBS_LAB_SCENARIO") == "S09":
@@ -284,6 +287,16 @@ def inspect_run(state, runs, events):
             "sse_error": any(event.get("event") == "error" for event in events)}
 
 
+def scenario_question(scenario):
+    question = (f"请只读诊断 kube-triage-demo 中 {CASES[scenario]}，先获取当前证据再回答，"
+                "说明证据支持的结论和不确定性。不要执行修复。")
+    if scenario in FAULTS:
+        question += "请检查 Pod 详情及容器日志；工具不可用时明确说明证据缺口。"
+    if scenario == "S08":
+        question += "关注是否存在瞬态变化，可在有必要时重新查询同一工具确认，最终说明每次查询的用途。"
+    return question
+
+
 def execute(base, token, scenario, batch, timeout, row, evidence_path):
     thread = api(base, token, "/threads", "POST", {})["thread_id"]
     row["thread_id"] = thread
@@ -294,12 +307,7 @@ def execute(base, token, scenario, batch, timeout, row, evidence_path):
                             "scenario_id": scenario, "case_version": ("issue12-blind-v1-phase-b1" if scenario in {"S04", "S05", "S06", "S07", "S08"}
                                              else "issue12-blind-v1-phase-a2")},
                "input": {"messages": [{"role": "human", "content":
-                   f"请只读诊断 kube-triage-demo 中 {CASES[scenario]}，先获取当前证据再回答，"
-                   + ("说明证据支持的结论和不确定性。不要执行修复。"
-                    + ("请检查 Pod 详情及容器日志；工具不可用时明确说明证据缺口。"
-                       if scenario in FAULTS else "")
-                    + ("关注是否存在瞬态变化，可在有必要时重新查询同一工具确认，"
-                       "最终说明每次查询的用途。" if scenario == "S08" else ""))}]}}
+                   scenario_question(scenario)}]}}
     request = urllib.request.Request(base + f"/threads/{thread}/runs/stream",
         data=json.dumps(payload).encode(), headers={"X-Api-Key": token,
         "Content-Type": "application/json", "Accept": "text/event-stream"})
