@@ -65,8 +65,8 @@ def serve(port):
         try:
             async with original(app):
                 if os.getenv("INTERVIEW_EXPERIMENT"):
-                    from interview_spans import ExperimentSpans
                     from aegra_api.observability.otel import otel_provider
+                    from interview_spans import ExperimentSpans
 
                     otel_provider.setup()
                     trace.get_tracer_provider().add_span_processor(

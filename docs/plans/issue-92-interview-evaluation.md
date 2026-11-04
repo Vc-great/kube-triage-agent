@@ -2,7 +2,9 @@
 
 **学习问题**　日志工具没有报红，Agent 也正常结束，为什么最终回答仍可能不合格？
 
-**状态**　学习材料可直接使用。新 Dataset 和双版本实验处于规划阶段，真实 A/B、Scores 写入及 Judge 均为 NOT RUN。基线为 `d81d158`。关联 [Issue #92](https://github.com/Vc-great/kube-triage-agent/issues/92)。本次 Planning PR 使用分支 `codex/interview-eval-learning`，合并后才进入实验实现阶段。已有 [#103 的本地运行教程](https://github.com/Vc-great/kube-triage-agent/blob/cfce5fb/docs/langfuse-case1-guide.md)记录了同一版本的重复实验，适合先学 Trace。
+**实施记录**　[本地双版本实测、评分与 S06 复盘](../interview-evaluation-results.md)。真实 A/B 与 Scores 已完成，人工标注和 Judge 待进行。
+
+**规划记录**　基线为 `d81d158`。关联 [Issue #92](https://github.com/Vc-great/kube-triage-agent/issues/92)。本次 Planning PR 使用分支 `codex/interview-eval-learning`，合并后才进入实验实现阶段。已有 [#103 的本地运行教程](https://github.com/Vc-great/kube-triage-agent/blob/cfce5fb/docs/langfuse-case1-guide.md)记录了同一版本的重复实验，适合先学 Trace。
 
 ## 一、从业务目标推导评测架构
 

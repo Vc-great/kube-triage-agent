@@ -51,3 +51,14 @@ def test_wrong_trace_never_counts_as_an_experiment_match():
     with pytest.raises(ValueError, match="identity"):
         evaluation.match_item(Api(), request, {"start": "2026-01-01T12:00:00Z",
                               "cloud": {"trace_id": "actual", "root_id": "root"}})
+
+
+def test_local_score_timestamp_matches_only_its_exact_millisecond():
+    expected = {"id": "score", "traceId": "trace", "name": "a", "value": "PASS", "dataType": "CATEGORICAL",
+                    "comment": "reason", "source": "API", "environment": "obs-lab",
+                    "timestamp": "2026-11-04T00:00:00.123456+00:00"}
+    actual = {**expected, "projectId": "agent-lab", "subject": {"kind": "trace", "id": "trace"},
+              "timestamp": "2026-11-04T00:00:00.123Z"}
+    assert evaluation.matches_local_score(actual, expected)
+    assert not evaluation.matches_local_score({**actual, "value": "FAIL"}, expected)
+    assert not evaluation.matches_local_score({**actual, "timestamp": "2026-11-04T00:00:00.124Z"}, expected)
