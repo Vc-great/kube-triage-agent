@@ -64,6 +64,13 @@ def serve(port):
     async def lifespan(app):
         try:
             async with original(app):
+                if os.getenv("INTERVIEW_EXPERIMENT"):
+                    from aegra_api.observability.otel import otel_provider
+                    from interview_spans import ExperimentSpans
+
+                    otel_provider.setup()
+                    trace.get_tracer_provider().add_span_processor(
+                        ExperimentSpans(json.loads(os.environ["INTERVIEW_EXPERIMENT"])))
                 yield
         finally:
             if attempt_client is not None:

@@ -66,7 +66,8 @@ def same_score(actual, expected):
         datetime.fromisoformat(expected["timestamp"]))
 
 
-def publish(result, approved_sha, max_writes, cloud, journal, wait_seconds=60, sleep=time.sleep):
+def publish(result, approved_sha, max_writes, cloud, journal, wait_seconds=60, sleep=time.sleep,
+            matches=same_score):
     cloud.deadline = time.monotonic() + 180
     plan = upload_plan(result)
     if approved_sha != plan["plan_sha256"] or not 0 < len(plan["scores"]) <= max_writes <= 50:
@@ -95,7 +96,7 @@ def publish(result, approved_sha, max_writes, cloud, journal, wait_seconds=60, s
     pending = []
     for score in plan["scores"]:
         actual = cloud.read_score(score)
-        if actual is not None and not same_score(actual, score):
+        if actual is not None and not matches(actual, score):
             raise ValueError("STOP: existing Score association/content conflict")
         if actual is None:
             pending.append(score)
@@ -111,7 +112,7 @@ def publish(result, approved_sha, max_writes, cloud, journal, wait_seconds=60, s
             actual = cloud.read_score(score)
             if actual is None:
                 missing.append(score["id"])
-            elif not same_score(actual, score):
+            elif not matches(actual, score):
                 raise ValueError("STOP: Score readback mismatch")
         if not missing:
             return {"status": "PASS", "written": len(pending), "verified": len(plan["scores"]),
