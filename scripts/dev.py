@@ -30,6 +30,8 @@ PRIVATE_KEYS = frozenset({"POSTGRES_PASSWORD", "DEMO_API_TOKEN", "LLM_MODEL",
                           "DEV_REMOTE_API_URL", "LANGFUSE_TRACING_ENABLED"})
 LANGFUSE_KEYS = frozenset({"LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY",
                            "LANGFUSE_BASE_URL"})
+LANGFUSE_INIT_KEYS = frozenset({"LANGFUSE_INIT_USER_EMAIL", "LANGFUSE_INIT_USER_PASSWORD",
+                               "LANGFUSE_INIT_USER_NAME"})
 SHARED_FILE_KEYS = frozenset({"POSTGRES_USER", "POSTGRES_DB", "WEB_PORT", "API_PORT",
                               "NEXT_PUBLIC_API_URL", "MCP_SERVER_URL",
                               "CONTEXT_WINDOW_ENABLED", "CONTEXT_SUMMARY_ENABLED",
@@ -87,6 +89,8 @@ def read_env():
         key = key.strip()
         if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
             raise RuntimeError(f".env 第 {number} 行字段名格式错误。")
+        if key in LANGFUSE_INIT_KEYS:
+            continue
         if key not in PRIVATE_KEYS | SHARED_FILE_KEYS:
             raise RuntimeError(f".env 不允许配置 {key}；场景参数由启动命令决定。")
         if key in seen:
@@ -158,15 +162,30 @@ def read_langfuse_env(path, *, optional=False):
         return {}
     if set(values) != LANGFUSE_KEYS:
         raise RuntimeError("LANGFUSE_SOURCE_KEYS_MISSING：缺少必要字段。")
-    try:
-        address = urlsplit(values["LANGFUSE_BASE_URL"])
-    except ValueError:
-        raise RuntimeError("LANGFUSE_URL_INVALID：仅允许 Langfuse Cloud Japan。") from None
-    if (address.scheme != "https" or address.netloc != "jp.cloud.langfuse.com" or
-            address.path not in {"", "/"} or address.query or address.fragment):
-        raise RuntimeError("LANGFUSE_URL_INVALID：仅允许 Langfuse Cloud Japan。")
-    values["LANGFUSE_BASE_URL"] = "https://jp.cloud.langfuse.com"
+    values["LANGFUSE_BASE_URL"] = normalize_langfuse_url(values["LANGFUSE_BASE_URL"])
     return values
+
+
+def normalize_langfuse_url(value, *, local_only=False):
+    """Validate one origin before it is used for credentials, export or links."""
+    try:
+        address = urlsplit(value)
+        local = address.hostname in {"localhost", "127.0.0.1", "::1"}
+        cloud = address.scheme == "https" and address.netloc == "jp.cloud.langfuse.com"
+        valid = (isinstance(value, str) and value == value.strip()
+                 and not any(c.isspace() or ord(c) < 32 for c in value)
+                 and address.scheme in {"http", "https"}
+                 and (local or (cloud and not local_only))
+                 and address.username is None and address.password is None
+                 and address.path in {"", "/"} and not address.query and not address.fragment
+                 and "?" not in value and "#" not in value and "\\" not in value
+                 and (address.port is None or 1 <= address.port <= 65535)
+                 and not address.netloc.endswith(":"))
+    except (ValueError, TypeError, AttributeError):
+        valid = False
+    if not valid:
+        raise RuntimeError("LANGFUSE_URL_INVALID：须使用允许的 Langfuse 根地址。")
+    return address._replace(path="").geturl()
 
 
 def profile_summary(mode):

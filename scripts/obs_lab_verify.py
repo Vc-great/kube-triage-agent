@@ -4,6 +4,9 @@ import hashlib
 import json
 from collections import Counter
 from datetime import datetime
+from urllib.parse import quote
+
+from dev import normalize_langfuse_url
 
 
 def decoded(value):
@@ -103,7 +106,9 @@ def timestamp(value):
         return None
 
 
-def verify_native(observations, row, project, *, summary_generation_ids=frozenset()):
+def verify_native(observations, row, project, *, summary_generation_ids=frozenset(),
+                  base_url="https://jp.cloud.langfuse.com"):
+    base_url = normalize_langfuse_url(base_url)
     result = {"status": "ingestion_pending", "trace_verified": False, "chain_verified": False,
               "chain_status": "BLOCKED", "timeline_status": "UNKNOWN",
               "tool_call_id_status": "NOT RUN", "missing": []}
@@ -124,7 +129,7 @@ def verify_native(observations, row, project, *, summary_generation_ids=frozense
         result.update(status="unknown", missing=["conflicting_runtime_identity"])
         return result
     result.update(status="verified", trace_verified=True, trace_id=trace_id,
-                  url=f"https://jp.cloud.langfuse.com/project/{project}/traces/{trace_id}")
+                  url=f"{base_url}/project/{quote(str(project), safe='')}/traces/{quote(str(trace_id), safe='')}")
     generations = [o for o in selected if o.get("type") == "GENERATION"]
     # Phase C identifies summary roles from a separately verified parent chain.
     # All generations still participate in count/tree/time checks below.
@@ -275,9 +280,9 @@ def history_answer_matches(state, history):
         for snapshot in history))
 
 
-def verify_cloud(observations, row, project):
+def verify_cloud(observations, row, project, *, base_url="https://jp.cloud.langfuse.com"):
     """Keep the native gate intact; prove Phase B independently, never synthesize spans."""
-    result = verify_native(observations, row, project)
+    result = verify_native(observations, row, project, base_url=base_url)
     native_missing = [m for m in result["missing"] if m != "all_business_outcomes"
                       and not m.startswith(("business_outcome:", "business_tool_parent:"))]
     result["native_missing"] = native_missing
